@@ -3,10 +3,7 @@ package com.example.shortsgesturecontrol
 import android.app.Activity
 import android.app.AlertDialog
 import android.content.Context
-import android.content.BroadcastReceiver
 import android.content.Intent
-import android.content.IntentFilter
-import android.app.DownloadManager
 import android.graphics.Bitmap
 import android.graphics.BitmapFactory
 import android.graphics.Canvas
@@ -30,9 +27,9 @@ import android.text.InputType
 import android.widget.EditText
 import android.widget.Toast
 import androidx.core.content.FileProvider
-import androidx.core.content.ContextCompat
 import org.json.JSONObject
 import java.io.File
+import java.io.FileOutputStream
 import java.net.HttpURLConnection
 import java.net.URL
 import java.util.ArrayList
@@ -42,6 +39,9 @@ import kotlin.math.max
 import kotlin.math.min
 import kotlin.math.sin
 import kotlin.math.roundToInt
+
+private const val RIG_MESH_COLUMNS = 8
+private const val RIG_MESH_ROWS = 8
 
 class MainActivity : Activity() {
     private lateinit var gameView: PetGameView
@@ -143,41 +143,56 @@ private class AppUpdateManager(private val context: Context) {
     }
 
     private fun download(url: String) {
-        val updateFile = File(context.getExternalFilesDir(Environment.DIRECTORY_DOWNLOADS), UPDATE_FILE_NAME)
-        if (updateFile.exists()) updateFile.delete()
-        val manager = context.getSystemService(Context.DOWNLOAD_SERVICE) as DownloadManager
-        val request = DownloadManager.Request(Uri.parse(url))
-            .setTitle("Zoey's Pocket Pet update")
-            .setDescription("Downloading, then opening the installer")
-            // Without an APK MIME type Android treats the completed download as
-            // a generic file and sends the user to the Downloads app.
-            .setMimeType(APK_MIME_TYPE)
-            .setNotificationVisibility(DownloadManager.Request.VISIBILITY_VISIBLE_NOTIFY_COMPLETED)
-            .setDestinationInExternalFilesDir(context, Environment.DIRECTORY_DOWNLOADS, UPDATE_FILE_NAME)
-        val downloadId = manager.enqueue(request)
+        val downloadDirectory = context.getExternalFilesDir(Environment.DIRECTORY_DOWNLOADS)
+            ?: run {
+                Toast.makeText(context, "Couldn't create the update download.", Toast.LENGTH_LONG).show()
+                return
+            }
+        if (!downloadDirectory.exists()) downloadDirectory.mkdirs()
+        val updateFile = File(downloadDirectory, UPDATE_FILE_NAME)
+        val partialFile = File(downloadDirectory, "$UPDATE_FILE_NAME.part")
+        updateFile.delete()
+        partialFile.delete()
+        // Persist only the final path. If the process is killed during a
+        // transfer, onResume will not mistake a partial APK for a complete one.
         updatePrefs.edit().putString(PENDING_UPDATE_PATH, updateFile.absolutePath).apply()
         Toast.makeText(context, "Downloading update…", Toast.LENGTH_SHORT).show()
-        val receiver = object : BroadcastReceiver() {
-            override fun onReceive(receiverContext: Context, intent: Intent) {
-                if (intent.getLongExtra(DownloadManager.EXTRA_DOWNLOAD_ID, -1L) != downloadId) return
-                receiverContext.unregisterReceiver(this)
-                val query = DownloadManager.Query().setFilterById(downloadId)
-                manager.query(query).use { cursor ->
-                    if (!cursor.moveToFirst() || cursor.getInt(cursor.getColumnIndexOrThrow(DownloadManager.COLUMN_STATUS)) != DownloadManager.STATUS_SUCCESSFUL) {
-                        Toast.makeText(context, "The update download didn't finish.", Toast.LENGTH_SHORT).show()
-                        return
+        Thread {
+            try {
+                val connection = (URL(url).openConnection() as HttpURLConnection).apply {
+                    instanceFollowRedirects = true
+                    connectTimeout = 20_000
+                    readTimeout = 30_000
+                    setRequestProperty("Accept", "application/octet-stream")
+                    setRequestProperty("User-Agent", "ZoeysPocketPet-Updater")
+                }
+                if (connection.responseCode !in 200..299) {
+                    throw IllegalStateException("Update download returned HTTP ${connection.responseCode}")
+                }
+                connection.inputStream.use { input ->
+                    FileOutputStream(partialFile).use { output ->
+                        input.copyTo(output, DEFAULT_BUFFER_SIZE)
+                        output.fd.sync()
                     }
                 }
-                // The broadcast may arrive while the Activity is paused. Keep
-                // the file path persisted and let onResume launch the prompt
-                // from the foreground Activity.
-                // Give DownloadManager a moment to close the destination before
-                // handing the URI to PackageInstaller.
-                mainHandler.postDelayed({ tryInstall(updateFile) }, 350L)
+                connection.disconnect()
+                if (!partialFile.renameTo(updateFile)) {
+                    throw IllegalStateException("Unable to finalize update APK")
+                }
+                // This is called by the downloader itself, not by a
+                // DownloadManager broadcast that may be lost or routed to the
+                // Downloads app. If the Activity is paused, the persisted final
+                // path is picked up by onHostResume.
+                mainHandler.post { tryInstall(updateFile) }
+            } catch (_: Exception) {
+                partialFile.delete()
+                updateFile.delete()
+                updatePrefs.edit().remove(PENDING_UPDATE_PATH).apply()
+                mainHandler.post {
+                    Toast.makeText(context, "The update download didn't finish.", Toast.LENGTH_LONG).show()
+                }
             }
-        }
-        val filter = IntentFilter(DownloadManager.ACTION_DOWNLOAD_COMPLETE)
-        ContextCompat.registerReceiver(context, receiver, filter, ContextCompat.RECEIVER_NOT_EXPORTED)
+        }.start()
     }
 
     private fun resumePendingInstall() {
@@ -250,17 +265,27 @@ private class PetGameView(context: Context, private val updateManager: AppUpdate
     private val appContext = context
     private val prefs = context.getSharedPreferences("zoey_pet", Context.MODE_PRIVATE)
     private val paint = Paint(Paint.ANTI_ALIAS_FLAG)
-    private val petShapePaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
-        style = Paint.Style.FILL
+    private val rigPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+        isFilterBitmap = true
+        alpha = 255
     }
-    private val petLinePaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
-        style = Paint.Style.STROKE
-        strokeCap = Paint.Cap.ROUND
-        strokeJoin = Paint.Join.ROUND
-    }
+    // Kept only for the setup-screen art; the playground uses the textured
+    // GPU rig below for every motion state.
+    private val petShapePaint = Paint(Paint.ANTI_ALIAS_FLAG)
+    private val petLinePaint = Paint(Paint.ANTI_ALIAS_FLAG)
     private val textPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply { typeface = PaintTypeface.rounded() }
     private val pet = PetState(prefs)
     private val petArtCache = HashMap<PetKind, Bitmap>()
+    private val rigArtCache = HashMap<PetKind, Bitmap>()
+    private val rigArtBottomCache = HashMap<PetKind, Int>()
+    private val rigMeshVertices = FloatArray((RIG_MESH_COLUMNS + 1) * (RIG_MESH_ROWS + 1) * 2)
+    private val rigArtResources = mapOf(
+        PetKind.CAT to R.drawable.rig_cat,
+        PetKind.DOG to R.drawable.rig_dog,
+        PetKind.BUNNY to R.drawable.rig_bunny,
+        PetKind.HAMSTER to R.drawable.rig_hamster,
+        PetKind.DRAGON to R.drawable.rig_dragon
+    )
     private val petArtResources = mapOf(
         PetKind.CAT to R.drawable.companion_cat,
         PetKind.DOG to R.drawable.companion_dog,
@@ -296,6 +321,21 @@ private class PetGameView(context: Context, private val updateManager: AppUpdate
         }
         BitmapFactory.decodeResource(resources, petArtResources.getValue(kind), options)
             ?: error("Unable to load artwork for ${kind.label}")
+    }
+
+    private fun rigArtwork(kind: PetKind): Bitmap = rigArtCache.getOrPut(kind) {
+        BitmapFactory.decodeResource(resources, rigArtResources.getValue(kind))
+            ?: error("Unable to load rig artwork for ${kind.label}")
+    }
+
+    private fun rigArtworkBottom(kind: PetKind): Int = rigArtBottomCache.getOrPut(kind) {
+        val bitmap = rigArtwork(kind)
+        for (y in bitmap.height - 1 downTo 0) {
+            for (x in 0 until bitmap.width) {
+                if (Color.alpha(bitmap.getPixel(x, y)) != 0) return@getOrPut y + 1
+            }
+        }
+        bitmap.height
     }
 
     init {
@@ -760,6 +800,69 @@ private class PetGameView(context: Context, private val updateManager: AppUpdate
         canvas.drawOval(RectF(ankleX - 13f, ankleY - 9f, ankleX + 13f, ankleY + 3f), petShapePaint)
     }
 
+    /**
+     * Render the original side-view artwork as a GPU mesh. This is one
+     * texture per species, not a sequence of replacement pictures: the mesh
+     * vertices continuously deform the body, lower limbs, and tail between
+     * display frames while the original design remains intact.
+     */
+    private fun drawTexturedRigPet(
+        canvas: Canvas,
+        kind: PetKind,
+        centerX: Float,
+        groundY: Float,
+        artWidth: Float,
+        direction: Float,
+        phase: Float
+    ) {
+        val bitmap = rigArtwork(kind)
+        val scale = artWidth / bitmap.width
+        val left = centerX - artWidth / 2f
+        val top = groundY - rigArtworkBottom(kind) * scale
+        val twoPi = Math.PI.toFloat() * 2f
+        var vertex = 0
+        for (row in 0..RIG_MESH_ROWS) {
+            val ny = row / RIG_MESH_ROWS.toFloat()
+            for (column in 0..RIG_MESH_COLUMNS) {
+                val nx = column / RIG_MESH_COLUMNS.toFloat()
+                val sourceX = bitmap.width * nx
+                val sourceY = bitmap.height * ny
+                val upperBody = (1f - ny / .78f).coerceIn(0f, 1f)
+                val groundWeight = ((ny - .56f) / .44f).coerceIn(0f, 1f)
+                val frontWeight = (1f - nx).coerceIn(0f, 1f)
+                val legPhase = phase + if (frontWeight > .5f) 0f else Math.PI.toFloat()
+                val stride = sin(legPhase + nx * .7f)
+                var x = left + sourceX * scale
+                var y = top + sourceY * scale
+
+                // A very small body settle keeps weight readable without
+                // detaching the paws from the cached ground plane.
+                y += sin(phase * 2f) * 1.8f * upperBody * scale
+                x += sin(phase + ny * twoPi) * 1.2f * upperBody * scale
+
+                // Deform only the lower silhouette for a continuous stride.
+                // Different x zones receive opposite motion, so the near and
+                // far legs do not move as one rigid sticker.
+                x += stride * 3.6f * groundWeight * scale
+                y -= max(0f, sin(legPhase)) * 2.2f * groundWeight * scale
+
+                if (direction > 0f) x = centerX - (x - centerX)
+                rigMeshVertices[vertex++] = x
+                rigMeshVertices[vertex++] = y
+            }
+        }
+        canvas.drawBitmapMesh(
+            bitmap,
+            RIG_MESH_COLUMNS,
+            RIG_MESH_ROWS,
+            rigMeshVertices,
+            0,
+            null,
+            0,
+            rigPaint
+        )
+    }
+
     private fun drawPet(canvas: Canvas, now: Long) {
         val top = dp(77f)
         val bottom = statsTop() - dp(10f)
@@ -840,15 +943,14 @@ private class PetGameView(context: Context, private val updateManager: AppUpdate
             motionMode == MotionMode.CURIOUS -> sin(seconds * 1.8f) * .16f
             else -> 0f
         }
-        drawProceduralPet(
+        drawTexturedRigPet(
             canvas = canvas,
             kind = pet.kind,
             centerX = centerX,
             groundY = rootY,
             artWidth = artWidth,
             direction = motionDirection,
-            phase = phase,
-            playful = activeAction == Action.PLAY
+            phase = phase
         )
 
         textPaint.textAlign = Paint.Align.CENTER
