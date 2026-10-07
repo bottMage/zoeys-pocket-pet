@@ -36,7 +36,6 @@ import java.io.File
 import java.net.HttpURLConnection
 import java.net.URL
 import java.util.ArrayList
-import java.util.concurrent.Executors
 import kotlin.math.abs
 import kotlin.math.cos
 import kotlin.math.max
@@ -172,7 +171,9 @@ private class AppUpdateManager(private val context: Context) {
                 // The broadcast may arrive while the Activity is paused. Keep
                 // the file path persisted and let onResume launch the prompt
                 // from the foreground Activity.
-                mainHandler.post { tryInstall(updateFile) }
+                // Give DownloadManager a moment to close the destination before
+                // handing the URI to PackageInstaller.
+                mainHandler.postDelayed({ tryInstall(updateFile) }, 350L)
             }
         }
         val filter = IntentFilter(DownloadManager.ACTION_DOWNLOAD_COMPLETE)
@@ -205,14 +206,33 @@ private class AppUpdateManager(private val context: Context) {
         }
         unknownSourceSettingsOpened = false
         val apkUri = FileProvider.getUriForFile(context, "${context.packageName}.files", file)
-        val installIntent = Intent(Intent.ACTION_VIEW).apply {
+        val installIntent = Intent(Intent.ACTION_INSTALL_PACKAGE).apply {
             setDataAndType(apkUri, APK_MIME_TYPE)
-            addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION or Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TOP)
+            addFlags(
+                Intent.FLAG_GRANT_READ_URI_PERMISSION or
+                    Intent.FLAG_GRANT_WRITE_URI_PERMISSION or
+                    Intent.FLAG_ACTIVITY_CLEAR_TOP
+            )
             clipData = android.content.ClipData.newRawUri("APK", apkUri)
         }
         try {
             host.startActivity(installIntent)
             updatePrefs.edit().remove(PENDING_UPDATE_PATH).apply()
+        } catch (_: android.content.ActivityNotFoundException) {
+            // A few vendor ROMs expose only ACTION_VIEW for APKs. Keep the
+            // direct installer as the normal path, but still pass the APK URI
+            // and MIME type if that device lacks ACTION_INSTALL_PACKAGE.
+            val fallback = Intent(Intent.ACTION_VIEW).apply {
+                setDataAndType(apkUri, APK_MIME_TYPE)
+                addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION or Intent.FLAG_ACTIVITY_CLEAR_TOP)
+                clipData = android.content.ClipData.newRawUri("APK", apkUri)
+            }
+            try {
+                host.startActivity(fallback)
+                updatePrefs.edit().remove(PENDING_UPDATE_PATH).apply()
+            } catch (_: Exception) {
+                Toast.makeText(context, "Couldn't open the installer. Try the update again.", Toast.LENGTH_LONG).show()
+            }
         } catch (_: Exception) {
             Toast.makeText(context, "Couldn't open the installer. Try the update again.", Toast.LENGTH_LONG).show()
         }
@@ -230,14 +250,18 @@ private class PetGameView(context: Context, private val updateManager: AppUpdate
     private val appContext = context
     private val prefs = context.getSharedPreferences("zoey_pet", Context.MODE_PRIVATE)
     private val paint = Paint(Paint.ANTI_ALIAS_FLAG)
+    private val petShapePaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+        style = Paint.Style.FILL
+    }
+    private val petLinePaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+        style = Paint.Style.STROKE
+        strokeCap = Paint.Cap.ROUND
+        strokeJoin = Paint.Join.ROUND
+    }
     private val textPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply { typeface = PaintTypeface.rounded() }
     private val pet = PetState(prefs)
     private val petArtCache = HashMap<PetKind, Bitmap>()
     private val petArtworkBottomCache = HashMap<PetKind, Int>()
-    private val walkFrameCache = HashMap<String, Bitmap>()
-    private val walkFrameBottomCache = HashMap<String, Int>()
-    private val frameCacheLock = Any()
-    private val framePreloader = Executors.newSingleThreadExecutor()
     private val petArtResources = mapOf(
         PetKind.CAT to R.drawable.companion_cat,
         PetKind.DOG to R.drawable.companion_dog,
@@ -260,8 +284,7 @@ private class PetGameView(context: Context, private val updateManager: AppUpdate
     private var motionModeUntil = 0L
     private var motionLastAt = SystemClock.uptimeMillis()
     private var motionModeStartedAt = motionLastAt
-    private var walkFrameIndex = 0
-    private var walkFrameElapsedMs = 0f
+    private var walkPhase = 0f
     private var playgroundCache: Bitmap? = null
     private var setupMode = !pet.created
     private var setupKind = pet.kind
@@ -274,120 +297,6 @@ private class PetGameView(context: Context, private val updateManager: AppUpdate
         }
         BitmapFactory.decodeResource(resources, petArtResources.getValue(kind), options)
             ?: error("Unable to load artwork for ${kind.label}")
-    }
-
-    private fun walkFrameArtwork(kind: PetKind, frame: Int): Bitmap {
-        synchronized(frameCacheLock) {
-            val index = frame.mod(WALK_FRAME_COUNT)
-            val cacheKey = "${kind.name}_$index"
-            return walkFrameCache.getOrPut(cacheKey) {
-                val resourceId = resources.getIdentifier("walk_${kind.name.lowercase()}_$index", "drawable", context.packageName)
-                check(resourceId != 0) { "Missing walk frame: $cacheKey" }
-                val bitmap = BitmapFactory.decodeResource(resources, resourceId)
-                    ?: error("Unable to decode walk frame: $cacheKey")
-                removeDetachedLeftArtifacts(bitmap)
-            }
-        }
-    }
-
-    /**
-     * A few generated cels contain a disconnected sliver at the far left of
-     * the image. It reads as a second paw/ear flashing beside the pet. Keep
-     * the complete cel, but remove only a sizeable component that sits just
-     * outside the primary silhouette; small disconnected antialiasing marks
-     * and internal details remain untouched.
-     */
-    private fun removeDetachedLeftArtifacts(bitmap: Bitmap): Bitmap {
-        val width = bitmap.width
-        val height = bitmap.height
-        val pixels = IntArray(width * height)
-        bitmap.getPixels(pixels, 0, width, 0, 0, width, height)
-        val labels = IntArray(pixels.size)
-        val components = ArrayList<AlphaComponent>()
-        val stack = IntArray(pixels.size)
-        var componentId = 0
-        var largestId = -1
-        var largestArea = 0
-
-        for (start in pixels.indices) {
-            if (Color.alpha(pixels[start]) == 0 || labels[start] != 0) continue
-            componentId += 1
-            var stackSize = 0
-            stack[stackSize++] = start
-            labels[start] = componentId
-            var area = 0
-            var minX = width
-            var maxX = -1
-
-            while (stackSize > 0) {
-                val index = stack[--stackSize]
-                val x = index % width
-                val y = index / width
-                area += 1
-                minX = min(minX, x)
-                maxX = max(maxX, x)
-
-                for (dy in -1..1) {
-                    for (dx in -1..1) {
-                        if (dx == 0 && dy == 0) continue
-                        val nx = x + dx
-                        val ny = y + dy
-                        if (nx !in 0 until width || ny !in 0 until height) continue
-                        val neighbor = ny * width + nx
-                        if (Color.alpha(pixels[neighbor]) == 0 || labels[neighbor] != 0) continue
-                        labels[neighbor] = componentId
-                        stack[stackSize++] = neighbor
-                    }
-                }
-            }
-
-            components.add(AlphaComponent(area, minX, maxX))
-            if (area > largestArea) {
-                largestArea = area
-                largestId = componentId
-            }
-        }
-
-        if (largestId < 0) return bitmap
-        val primary = components[largestId - 1]
-        val removeIds = components.mapIndexedNotNull { index, component ->
-            val id = index + 1
-            val isDetachedLeftPiece = id != largestId &&
-                component.area >= 80 &&
-                component.minX < primary.minX &&
-                component.maxX <= primary.minX + 24
-            if (isDetachedLeftPiece) id else null
-        }
-        if (removeIds.isEmpty()) return bitmap
-
-        val cleaned = pixels.copyOf()
-        for (index in cleaned.indices) {
-            if (labels[index] in removeIds) cleaned[index] = Color.TRANSPARENT
-        }
-        return Bitmap.createBitmap(width, height, Bitmap.Config.ARGB_8888).also {
-            it.setPixels(cleaned, 0, width, 0, 0, width, height)
-        }
-    }
-
-    private data class AlphaComponent(
-        val area: Int,
-        val minX: Int,
-        val maxX: Int
-    )
-
-    /**
-     * Each animation cel has a transparent border.  Anchor the lowest visible
-     * pixel, rather than the edge of that border, to the grass so a paw never
-     * appears to hover when a cel has slightly different padding.
-     */
-    private fun walkFrameBottom(kind: PetKind, frame: Int): Int {
-        synchronized(frameCacheLock) {
-            val index = frame.mod(WALK_FRAME_COUNT)
-            val cacheKey = "${kind.name}_$index"
-            return walkFrameBottomCache.getOrPut(cacheKey) {
-                visibleBitmapBottom(walkFrameArtwork(kind, index))
-            }
-        }
     }
 
     private fun petArtworkBottom(kind: PetKind): Int = petArtworkBottomCache.getOrPut(kind) {
@@ -403,32 +312,15 @@ private class PetGameView(context: Context, private val updateManager: AppUpdate
         return bitmap.height
     }
 
-    private fun preloadWalkFrames(kind: PetKind) {
-        framePreloader.execute {
-            for (frame in 0 until WALK_FRAME_COUNT) {
-                walkFrameArtwork(kind, frame)
-                walkFrameBottom(kind, frame)
-            }
-            post { invalidate() }
-        }
-    }
-
     init {
         isFocusable = true
-        setLayerType(View.LAYER_TYPE_SOFTWARE, null)
         pet.updateFromClock()
         motionModeUntil = motionLastAt + 1800L
-        preloadWalkFrames(pet.kind)
     }
 
     override fun onSizeChanged(width: Int, height: Int, oldWidth: Int, oldHeight: Int) {
         super.onSizeChanged(width, height, oldWidth, oldHeight)
         playgroundCache = null
-    }
-
-    override fun onDetachedFromWindow() {
-        framePreloader.shutdownNow()
-        super.onDetachedFromWindow()
     }
 
     override fun onDraw(canvas: Canvas) {
@@ -675,6 +567,190 @@ private class PetGameView(context: Context, private val updateManager: AppUpdate
         canvas.drawRoundRect(RectF(x - dp(5f) * scale, y, x + dp(60f) * scale, y + dp(18f) * scale), dp(10f), dp(10f), paint)
     }
 
+    /**
+     * Draw the walking pet as a tiny 2-D rig instead of selecting another
+     * complete bitmap. The body is one continuously rendered shape, while
+     * each leg follows a sinusoidal stride with a planted foot at either end
+     * of its cycle. This keeps the silhouette coherent at every display
+     * refresh and gives the pet real weight without a pose jump.
+     */
+    private fun drawProceduralPet(
+        canvas: Canvas,
+        kind: PetKind,
+        centerX: Float,
+        groundY: Float,
+        artWidth: Float,
+        direction: Float,
+        phase: Float,
+        playful: Boolean
+    ) {
+        val scale = artWidth / 220f
+        val bodyBob = if (playful) -abs(sin(phase * 2f)) * 3f else sin(phase * 2f) * 1.5f
+        canvas.save()
+        canvas.translate(centerX, groundY)
+        canvas.scale(if (direction > 0f) -scale else scale, scale)
+        canvas.translate(0f, bodyBob)
+
+        val base = kind.primary
+        val light = kind.light
+        val dark = kind.dark
+
+        // Tail and wings sit behind the torso.
+        petLinePaint.color = base
+        petLinePaint.strokeWidth = if (kind == PetKind.DRAGON) 15f else 18f
+        val tail = Path().apply {
+            moveTo(50f, -66f)
+            when (kind) {
+                PetKind.CAT -> cubicTo(105f, -132f, 118f, -8f, 72f, -40f)
+                PetKind.DOG -> cubicTo(107f, -106f, 119f, -14f, 74f, -38f)
+                PetKind.DRAGON -> cubicTo(110f, -90f, 126f, -4f, 68f, -27f)
+                else -> cubicTo(94f, -100f, 113f, -30f, 73f, -38f)
+            }
+        }
+        canvas.drawPath(tail, petLinePaint)
+        if (kind == PetKind.BUNNY || kind == PetKind.HAMSTER) {
+            petShapePaint.color = light
+            canvas.drawOval(RectF(57f, -93f, 105f, -38f), petShapePaint)
+        }
+        if (kind == PetKind.DRAGON) {
+            petShapePaint.color = Color.rgb(25, 118, 157)
+            val wing = Path().apply {
+                moveTo(18f, -89f)
+                cubicTo(34f, -151f, 76f, -157f, 91f, -113f)
+                lineTo(67f, -99f)
+                lineTo(43f, -75f)
+                close()
+            }
+            canvas.drawPath(wing, petShapePaint)
+        }
+
+        // The rear pair is drawn first so the near legs overlap the torso.
+        drawRigLeg(canvas, 42f, phase + Math.PI.toFloat(), dark, 1f)
+        drawRigLeg(canvas, 57f, phase + Math.PI.toFloat() + 0.45f, base, 1f)
+
+        petShapePaint.color = base
+        canvas.drawOval(RectF(-69f, -105f, 69f, -27f), petShapePaint)
+        petShapePaint.color = Color.argb(72, Color.red(light), Color.green(light), Color.blue(light))
+        canvas.drawOval(RectF(-42f, -82f, 45f, -20f), petShapePaint)
+
+        // Species-specific ears and horns move with the torso.
+        when (kind) {
+            PetKind.BUNNY -> {
+                petShapePaint.color = base
+                canvas.save()
+                canvas.rotate(-18f, -72f, -158f)
+                canvas.drawOval(RectF(-92f, -220f, -57f, -126f), petShapePaint)
+                canvas.restore()
+                canvas.save()
+                canvas.rotate(13f, -42f, -165f)
+                canvas.drawOval(RectF(-61f, -222f, -23f, -126f), petShapePaint)
+                canvas.restore()
+                petShapePaint.color = Color.rgb(250, 153, 143)
+                canvas.drawOval(RectF(-83f, -204f, -65f, -142f), petShapePaint)
+                canvas.drawOval(RectF(-52f, -207f, -32f, -143f), petShapePaint)
+            }
+            PetKind.CAT -> {
+                petShapePaint.color = base
+                val ear = Path().apply {
+                    moveTo(-91f, -145f)
+                    lineTo(-80f, -207f)
+                    lineTo(-46f, -157f)
+                    close()
+                }
+                canvas.drawPath(ear, petShapePaint)
+                val ear2 = Path().apply {
+                    moveTo(-54f, -154f)
+                    lineTo(-22f, -202f)
+                    lineTo(-15f, -139f)
+                    close()
+                }
+                canvas.drawPath(ear2, petShapePaint)
+                petShapePaint.color = Color.rgb(241, 153, 166)
+                canvas.drawOval(RectF(-78f, -190f, -62f, -159f), petShapePaint)
+                canvas.drawOval(RectF(-45f, -184f, -28f, -155f), petShapePaint)
+            }
+            PetKind.DOG -> {
+                petShapePaint.color = dark
+                canvas.save()
+                canvas.rotate(-17f, -92f, -150f)
+                canvas.drawOval(RectF(-119f, -190f, -78f, -112f), petShapePaint)
+                canvas.restore()
+                canvas.save()
+                canvas.rotate(18f, -33f, -148f)
+                canvas.drawOval(RectF(-52f, -193f, -15f, -111f), petShapePaint)
+                canvas.restore()
+            }
+            PetKind.HAMSTER -> {
+                petShapePaint.color = Color.rgb(239, 157, 113)
+                canvas.drawCircle(-82f, -162f, 25f, petShapePaint)
+                canvas.drawCircle(-32f, -165f, 24f, petShapePaint)
+                petShapePaint.color = Color.rgb(255, 183, 159)
+                canvas.drawCircle(-82f, -162f, 14f, petShapePaint)
+                canvas.drawCircle(-32f, -165f, 13f, petShapePaint)
+            }
+            PetKind.DRAGON -> {
+                petShapePaint.color = light
+                val horn = Path().apply {
+                    moveTo(-79f, -172f)
+                    lineTo(-69f, -219f)
+                    lineTo(-49f, -174f)
+                    close()
+                }
+                canvas.drawPath(horn, petShapePaint)
+                val horn2 = Path().apply {
+                    moveTo(-42f, -176f)
+                    lineTo(-24f, -217f)
+                    lineTo(-13f, -165f)
+                    close()
+                }
+                canvas.drawPath(horn2, petShapePaint)
+            }
+        }
+
+        // Head and muzzle.
+        petShapePaint.color = base
+        canvas.drawOval(RectF(-105f, -181f, -24f, -87f), petShapePaint)
+        petShapePaint.color = light
+        canvas.drawOval(RectF(-111f, -143f, -54f, -96f), petShapePaint)
+
+        // Near legs are on top of the body and are the main readable motion.
+        drawRigLeg(canvas, -50f, phase, base, 1f)
+        drawRigLeg(canvas, -27f, phase + 0.45f, light, 1f)
+
+        // Face stays crisp while the rig moves continuously.
+        petShapePaint.color = Color.WHITE
+        canvas.drawOval(RectF(-88f, -162f, -58f, -121f), petShapePaint)
+        petShapePaint.color = dark
+        canvas.drawOval(RectF(-79f, -157f, -65f, -130f), petShapePaint)
+        petShapePaint.color = Color.WHITE
+        canvas.drawCircle(-73f, -151f, 4f, petShapePaint)
+        petShapePaint.color = dark
+        canvas.drawOval(RectF(-111f, -130f, -98f, -120f), petShapePaint)
+        petLinePaint.color = dark
+        petLinePaint.strokeWidth = 3.5f
+        val smile = Path().apply {
+            moveTo(-98f, -117f)
+            cubicTo(-90f, -106f, -78f, -105f, -70f, -116f)
+        }
+        canvas.drawPath(smile, petLinePaint)
+        canvas.restore()
+    }
+
+    private fun drawRigLeg(canvas: Canvas, hipX: Float, phase: Float, color: Int, widthScale: Float) {
+        val stride = sin(phase)
+        val lift = max(0f, sin(phase))
+        val kneeX = hipX + stride * 9f + 4f
+        val kneeY = -43f - lift * 7f
+        val ankleX = hipX + stride * 20f
+        val ankleY = -4f - lift * 12f
+        petLinePaint.color = color
+        petLinePaint.strokeWidth = 18f * widthScale
+        canvas.drawLine(hipX, -58f, kneeX, kneeY, petLinePaint)
+        canvas.drawLine(kneeX, kneeY, ankleX, ankleY, petLinePaint)
+        petShapePaint.color = color
+        canvas.drawOval(RectF(ankleX - 13f, ankleY - 9f, ankleX + 13f, ankleY + 3f), petShapePaint)
+    }
+
     private fun drawPet(canvas: Canvas, now: Long) {
         val top = dp(77f)
         val bottom = statsTop() - dp(10f)
@@ -698,10 +774,9 @@ private class PetGameView(context: Context, private val updateManager: AppUpdate
             }
             motionModeStartedAt = now
             if (motionMode == MotionMode.WALK) {
-                // Always enter the gait on a planted, readable pose. Using
-                // uptime as the frame clock made a new walk start mid-stride.
-                walkFrameIndex = 0
-                walkFrameElapsedMs = 0f
+                // Always enter the gait on a planted pose. The phase advances
+                // continuously below; it is not an image-frame clock.
+                walkPhase = 0f
             }
             if (motionMode == MotionMode.WALK && motionX <= .08f) motionDirection = 1f
             if (motionMode == MotionMode.WALK && motionX >= .92f) motionDirection = -1f
@@ -710,13 +785,9 @@ private class PetGameView(context: Context, private val updateManager: AppUpdate
             val walkProgress = ((motionModeUntil - now) / 500f).coerceIn(0f, 1f)
             val startBlend = min(1f, (now - motionModeStartedAt).coerceAtLeast(0L) / 500f)
             gaitBlend = min(startBlend, walkProgress.coerceIn(0f, 1f))
-            // One complete gait should move only a small step.  Faster travel
-            // makes the feet visibly slide across the grass.
-            // Match the distance covered by a gait to the visible paw cycle.
-            // The old value advanced only a few dp per cycle, which looked
-            // like the pet was running in place.
-            val speed = .50f * gaitBlend
+            val speed = .30f * gaitBlend
             motionX += motionDirection * dt * speed
+            walkPhase = (walkPhase + dt * 5.2f * gaitBlend) % (Math.PI.toFloat() * 2f)
             if (motionX <= .06f) { motionX = .06f; motionDirection = 1f }
             if (motionX >= .94f) { motionX = .94f; motionDirection = -1f }
         }
@@ -739,7 +810,7 @@ private class PetGameView(context: Context, private val updateManager: AppUpdate
         // Keep the feet planted while resting.  A whole-body vertical bob reads
         // as hovering, especially against the simple ground in this scene.
         val idleBob = 0f
-        val playBounce = if (activeAction == Action.PLAY) -abs(sin(seconds * 12f)) * dp(9f) else 0f
+        val playBounce = if (activeAction == Action.PLAY) -abs(sin(seconds * 5.5f)) * dp(5f) else 0f
         val rootY = groundY + idleBob + playBounce
 
         // Two soft contact shapes read as weight on the grass without using a
@@ -756,38 +827,27 @@ private class PetGameView(context: Context, private val updateManager: AppUpdate
         )
         paint.isAntiAlias = true
         paint.isFilterBitmap = true
-        paint.color = Color.WHITE
-        // Keep the cels near 14 fps while the canvas itself follows display
-        // vsync. This removes the old 33 ms timer jitter without making the
-        // whole-body artwork look like a frantic run.
-        val frame = when {
-            walking -> {
-                // Slow the cel clock with the body at walk start/stop, so the
-                // paws do not keep running while the pet is still accelerating
-                // or has already arrived at its stopping point.
-                walkFrameElapsedMs += dt * 1000f * gaitBlend
-                while (walkFrameElapsedMs >= WALK_FRAME_DURATION_MS) {
-                    walkFrameElapsedMs -= WALK_FRAME_DURATION_MS
-                    walkFrameIndex = (walkFrameIndex + 1) % WALK_FRAME_COUNT
-                }
-                walkFrameIndex
-            }
-            activeAction == Action.PLAY -> ((now / 120L) % WALK_FRAME_COUNT).toInt()
-            motionMode == MotionMode.CURIOUS -> if (((now - motionModeStartedAt) / 360L) % 2L == 0L) 2 else 0
-            else -> 0
+        if (walking || activeAction == Action.PLAY) {
+            val phase = if (walking) walkPhase else seconds * 5.2f
+            drawProceduralPet(
+                canvas = canvas,
+                kind = pet.kind,
+                centerX = centerX,
+                groundY = rootY,
+                artWidth = artWidth,
+                direction = motionDirection,
+                phase = phase,
+                playful = activeAction == Action.PLAY
+            )
+        } else {
+            val bitmap = petArtwork(pet.kind)
+            val artScale = artWidth / bitmap.width
+            val visibleBottom = petArtworkBottom(pet.kind)
+            val artTop = rootY - visibleBottom * artScale
+            val artBottom = artTop + bitmap.height * artScale
+            val artRect = RectF(centerX - artWidth / 2f, artTop, centerX + artWidth / 2f, artBottom)
+            canvas.drawBitmap(bitmap, null, artRect, paint)
         }
-        val bitmap = if (resting) petArtwork(pet.kind) else walkFrameArtwork(pet.kind, frame)
-        val artScale = artWidth / bitmap.width
-        val visibleBottom = if (resting) petArtworkBottom(pet.kind) else walkFrameBottom(pet.kind, frame)
-        val artTop = rootY - visibleBottom * artScale
-        val artBottom = artTop + bitmap.height * artScale
-        val artRect = RectF(centerX - artWidth / 2f, artTop, centerX + artWidth / 2f, artBottom)
-        canvas.save()
-        // The artwork faces left by default.  Mirror it only while travelling
-        // right; the old condition reversed that relationship.
-        if (motionDirection > 0f && walking) canvas.scale(-1f, 1f, centerX, rootY)
-        canvas.drawBitmap(bitmap, null, artRect, paint)
-        canvas.restore()
 
         textPaint.textAlign = Paint.Align.CENTER
         textPaint.typeface = PaintTypeface.bold()
@@ -988,7 +1048,6 @@ private class PetGameView(context: Context, private val updateManager: AppUpdate
         if (hatch.contains(event.x, event.y)) {
             pet.hatch(setupName, setupKind)
             setupMode = false
-            preloadWalkFrames(setupKind)
             message = "Welcome, ${pet.name}! Let's grow together."
             messageUntil = SystemClock.uptimeMillis() + 5000L
             savePet()
@@ -1060,11 +1119,6 @@ private class PetGameView(context: Context, private val updateManager: AppUpdate
     private data class ActionButton(val action: Action, val rect: RectF)
 
     private enum class Action { FEED, PLAY, BATH, SLEEP }
-
-    companion object {
-        private const val WALK_FRAME_COUNT = 8
-        private const val WALK_FRAME_DURATION_MS = 78f
-    }
 
     private enum class MotionMode { REST, WALK, CURIOUS, STAND }
 
