@@ -176,6 +176,7 @@ private class PetGameView(context: Context) : View(context) {
     private val pet = PetState(prefs)
     private val petArtCache = HashMap<PetKind, Bitmap>()
     private val walkFrameCache = HashMap<String, Bitmap>()
+    private val walkFrameBottomCache = HashMap<String, Int>()
     private val petArtResources = mapOf(
         PetKind.CAT to R.drawable.companion_cat,
         PetKind.DOG to R.drawable.companion_dog,
@@ -219,6 +220,25 @@ private class PetGameView(context: Context) : View(context) {
             check(resourceId != 0) { "Missing walk frame: $cacheKey" }
             BitmapFactory.decodeResource(resources, resourceId)
                 ?: error("Unable to decode walk frame: $cacheKey")
+        }
+    }
+
+    /**
+     * Each animation cel has a transparent border.  Anchor the lowest visible
+     * pixel, rather than the edge of that border, to the grass so a paw never
+     * appears to hover when a cel has slightly different padding.
+     */
+    private fun walkFrameBottom(kind: PetKind, frame: Int): Int {
+        val index = frame.mod(WALK_FRAME_COUNT)
+        val cacheKey = "${kind.name}_$index"
+        return walkFrameBottomCache.getOrPut(cacheKey) {
+            val bitmap = walkFrameArtwork(kind, index)
+            for (y in bitmap.height - 1 downTo 0) {
+                for (x in 0 until bitmap.width) {
+                    if (Color.alpha(bitmap.getPixel(x, y)) != 0) return@getOrPut y + 1
+                }
+            }
+            bitmap.height
         }
     }
 
@@ -458,7 +478,9 @@ private class PetGameView(context: Context) : View(context) {
         if (motionMode == MotionMode.WALK && activeAction == null) {
             val walkProgress = ((motionModeUntil - now) / 500f).coerceIn(0f, 1f)
             val startBlend = min(1f, (now - motionModeStartedAt).coerceAtLeast(0L) / 500f)
-            val speed = .22f * min(startBlend, walkProgress.coerceIn(0f, 1f))
+            // One complete gait should move only a small step.  Faster travel
+            // makes the feet visibly slide across the grass.
+            val speed = .070f * min(startBlend, walkProgress.coerceIn(0f, 1f))
             motionX += motionDirection * dt * speed
             if (motionX <= .06f) { motionX = .06f; motionDirection = 1f }
             if (motionX >= .94f) { motionX = .94f; motionDirection = -1f }
@@ -478,7 +500,9 @@ private class PetGameView(context: Context) : View(context) {
         val centerX = minCenterX + motionX * (maxCenterX - minCenterX)
         val seconds = (now - animationStart) / 1000f
         val walking = motionMode == MotionMode.WALK && activeAction == null
-        val idleBob = if (!walking) sin(now / 430f) * dp(2.2f) else 0f
+        // Keep the feet planted while resting.  A whole-body vertical bob reads
+        // as hovering, especially against the simple ground in this scene.
+        val idleBob = 0f
         val playBounce = if (activeAction == Action.PLAY) -abs(sin(seconds * 12f)) * dp(9f) else 0f
         val rootY = groundY + idleBob + playBounce
 
@@ -491,13 +515,19 @@ private class PetGameView(context: Context) : View(context) {
         paint.isAntiAlias = true
         paint.isFilterBitmap = true
         paint.color = Color.WHITE
-        val frame = if (walking || activeAction == Action.PLAY) ((now / 70L) % WALK_FRAME_COUNT).toInt() else 0
+        // 10 fps gives the drawn cels time to read as a deliberate gait rather
+        // than a frantic, glitchy run.
+        val frame = if (walking || activeAction == Action.PLAY) ((now / 105L) % WALK_FRAME_COUNT).toInt() else 0
         val bitmap = walkFrameArtwork(pet.kind, frame)
-        val artTop = rootY - artWidth * (460f / 512f)
-        val artBottom = rootY + artWidth * (52f / 512f)
+        val artScale = artWidth / bitmap.width
+        val visibleBottom = walkFrameBottom(pet.kind, frame)
+        val artTop = rootY - visibleBottom * artScale
+        val artBottom = artTop + bitmap.height * artScale
         val artRect = RectF(centerX - artWidth / 2f, artTop, centerX + artWidth / 2f, artBottom)
         canvas.save()
-        if (motionDirection < 0f && walking) canvas.scale(-1f, 1f, centerX, rootY)
+        // The artwork faces left by default.  Mirror it only while travelling
+        // right; the old condition reversed that relationship.
+        if (motionDirection > 0f && walking) canvas.scale(-1f, 1f, centerX, rootY)
         canvas.drawBitmap(bitmap, null, artRect, paint)
         canvas.restore()
 
