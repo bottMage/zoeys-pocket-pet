@@ -261,7 +261,6 @@ private class PetGameView(context: Context, private val updateManager: AppUpdate
     private val textPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply { typeface = PaintTypeface.rounded() }
     private val pet = PetState(prefs)
     private val petArtCache = HashMap<PetKind, Bitmap>()
-    private val petArtworkBottomCache = HashMap<PetKind, Int>()
     private val petArtResources = mapOf(
         PetKind.CAT to R.drawable.companion_cat,
         PetKind.DOG to R.drawable.companion_dog,
@@ -297,19 +296,6 @@ private class PetGameView(context: Context, private val updateManager: AppUpdate
         }
         BitmapFactory.decodeResource(resources, petArtResources.getValue(kind), options)
             ?: error("Unable to load artwork for ${kind.label}")
-    }
-
-    private fun petArtworkBottom(kind: PetKind): Int = petArtworkBottomCache.getOrPut(kind) {
-        visibleBitmapBottom(petArtwork(kind))
-    }
-
-    private fun visibleBitmapBottom(bitmap: Bitmap): Int {
-        for (y in bitmap.height - 1 downTo 0) {
-            for (x in 0 until bitmap.width) {
-                if (Color.alpha(bitmap.getPixel(x, y)) != 0) return y + 1
-            }
-        }
-        return bitmap.height
     }
 
     init {
@@ -613,15 +599,28 @@ private class PetGameView(context: Context, private val updateManager: AppUpdate
             canvas.drawOval(RectF(57f, -93f, 105f, -38f), petShapePaint)
         }
         if (kind == PetKind.DRAGON) {
-            petShapePaint.color = Color.rgb(25, 118, 157)
+            petShapePaint.color = Color.rgb(20, 116, 154)
             val wing = Path().apply {
-                moveTo(18f, -89f)
-                cubicTo(34f, -151f, 76f, -157f, 91f, -113f)
-                lineTo(67f, -99f)
-                lineTo(43f, -75f)
+                moveTo(15f, -78f)
+                cubicTo(31f, -154f, 70f, -190f, 112f, -147f)
+                lineTo(92f, -115f)
+                lineTo(65f, -119f)
+                lineTo(43f, -67f)
                 close()
             }
             canvas.drawPath(wing, petShapePaint)
+            petLinePaint.color = Color.rgb(11, 79, 117)
+            petLinePaint.strokeWidth = 2.5f
+            canvas.drawLine(27f, -91f, 83f, -149f, petLinePaint)
+            canvas.drawLine(43f, -83f, 96f, -139f, petLinePaint)
+            val wingTip = Path().apply {
+                moveTo(82f, -119f)
+                lineTo(110f, -104f)
+                lineTo(101f, -138f)
+                close()
+            }
+            petShapePaint.color = Color.rgb(20, 116, 154)
+            canvas.drawPath(wingTip, petShapePaint)
         }
 
         // The rear pair is drawn first so the near legs overlap the torso.
@@ -704,6 +703,16 @@ private class PetGameView(context: Context, private val updateManager: AppUpdate
                     close()
                 }
                 canvas.drawPath(horn2, petShapePaint)
+                petShapePaint.color = dark
+                val crest = Path().apply {
+                    moveTo(-11f, -104f)
+                    lineTo(2f, -124f)
+                    lineTo(10f, -103f)
+                    lineTo(23f, -119f)
+                    lineTo(30f, -94f)
+                    close()
+                }
+                canvas.drawPath(crest, petShapePaint)
             }
         }
 
@@ -806,12 +815,10 @@ private class PetGameView(context: Context, private val updateManager: AppUpdate
         val centerX = minCenterX + motionX * (maxCenterX - minCenterX)
         val seconds = (now - animationStart) / 1000f
         val walking = motionMode == MotionMode.WALK && activeAction == null
-        val resting = motionMode == MotionMode.REST && activeAction == null
         // Keep the feet planted while resting.  A whole-body vertical bob reads
         // as hovering, especially against the simple ground in this scene.
         val idleBob = 0f
-        val playBounce = if (activeAction == Action.PLAY) -abs(sin(seconds * 5.5f)) * dp(5f) else 0f
-        val rootY = groundY + idleBob + playBounce
+        val rootY = groundY + idleBob
 
         // Two soft contact shapes read as weight on the grass without using a
         // per-frame shadow shader, which would make the animation less smooth.
@@ -827,27 +834,22 @@ private class PetGameView(context: Context, private val updateManager: AppUpdate
         )
         paint.isAntiAlias = true
         paint.isFilterBitmap = true
-        if (walking || activeAction == Action.PLAY) {
-            val phase = if (walking) walkPhase else seconds * 5.2f
-            drawProceduralPet(
-                canvas = canvas,
-                kind = pet.kind,
-                centerX = centerX,
-                groundY = rootY,
-                artWidth = artWidth,
-                direction = motionDirection,
-                phase = phase,
-                playful = activeAction == Action.PLAY
-            )
-        } else {
-            val bitmap = petArtwork(pet.kind)
-            val artScale = artWidth / bitmap.width
-            val visibleBottom = petArtworkBottom(pet.kind)
-            val artTop = rootY - visibleBottom * artScale
-            val artBottom = artTop + bitmap.height * artScale
-            val artRect = RectF(centerX - artWidth / 2f, artTop, centerX + artWidth / 2f, artBottom)
-            canvas.drawBitmap(bitmap, null, artRect, paint)
+        val phase = when {
+            walking -> walkPhase
+            activeAction == Action.PLAY -> seconds * 5.2f
+            motionMode == MotionMode.CURIOUS -> sin(seconds * 1.8f) * .16f
+            else -> 0f
         }
+        drawProceduralPet(
+            canvas = canvas,
+            kind = pet.kind,
+            centerX = centerX,
+            groundY = rootY,
+            artWidth = artWidth,
+            direction = motionDirection,
+            phase = phase,
+            playful = activeAction == Action.PLAY
+        )
 
         textPaint.textAlign = Paint.Align.CENTER
         textPaint.typeface = PaintTypeface.bold()
@@ -1127,7 +1129,7 @@ private class PetGameView(context: Context, private val updateManager: AppUpdate
         DOG("DOG", Color.rgb(255, 239, 205), Color.rgb(214, 174, 123), Color.rgb(113, 78, 65)),
         BUNNY("BUNNY", Color.rgb(255, 207, 214), Color.rgb(245, 166, 186), Color.rgb(157, 83, 116)),
         HAMSTER("HAMSTER", Color.rgb(255, 222, 164), Color.rgb(227, 168, 91), Color.rgb(142, 92, 53)),
-        DRAGON("DRAGON", Color.rgb(194, 235, 177), Color.rgb(106, 184, 126), Color.rgb(47, 104, 82))
+        DRAGON("DRAGON", Color.rgb(255, 236, 201), Color.rgb(45, 190, 205), Color.rgb(21, 91, 120))
     }
 
     private class PetState(private val prefs: android.content.SharedPreferences) {
