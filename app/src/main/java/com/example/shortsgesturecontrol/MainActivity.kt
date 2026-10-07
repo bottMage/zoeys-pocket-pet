@@ -36,6 +36,7 @@ import java.io.File
 import java.net.HttpURLConnection
 import java.net.URL
 import java.util.ArrayList
+import java.util.concurrent.Executors
 import kotlin.math.abs
 import kotlin.math.cos
 import kotlin.math.max
@@ -45,18 +46,26 @@ import kotlin.math.roundToInt
 
 class MainActivity : Activity() {
     private lateinit var gameView: PetGameView
+    private lateinit var updateManager: AppUpdateManager
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         window.statusBarColor = Color.rgb(65, 44, 112)
         window.navigationBarColor = Color.rgb(35, 24, 63)
         window.decorView.systemUiVisibility = View.SYSTEM_UI_FLAG_LIGHT_STATUS_BAR.inv()
-        gameView = PetGameView(this)
+        updateManager = AppUpdateManager(this)
+        gameView = PetGameView(this, updateManager)
         setContentView(gameView)
         gameView.postDelayed({ gameView.checkForUpdates(showNoUpdate = false) }, 650L)
     }
 
+    override fun onResume() {
+        super.onResume()
+        updateManager.onHostResume()
+    }
+
     override fun onPause() {
+        updateManager.onHostPause()
         gameView.savePet()
         super.onPause()
     }
@@ -69,6 +78,19 @@ class MainActivity : Activity() {
  */
 private class AppUpdateManager(private val context: Context) {
     private val mainHandler = Handler(Looper.getMainLooper())
+    private val activity = context as? Activity
+    private val updatePrefs = context.getSharedPreferences("zoey_pet_updates", Context.MODE_PRIVATE)
+    private var hostResumed = false
+    private var unknownSourceSettingsOpened = false
+
+    fun onHostResume() {
+        hostResumed = true
+        resumePendingInstall()
+    }
+
+    fun onHostPause() {
+        hostResumed = false
+    }
 
     fun check(showNoUpdate: Boolean) {
         Thread {
@@ -134,6 +156,7 @@ private class AppUpdateManager(private val context: Context) {
             .setNotificationVisibility(DownloadManager.Request.VISIBILITY_VISIBLE_NOTIFY_COMPLETED)
             .setDestinationInExternalFilesDir(context, Environment.DIRECTORY_DOWNLOADS, UPDATE_FILE_NAME)
         val downloadId = manager.enqueue(request)
+        updatePrefs.edit().putString(PENDING_UPDATE_PATH, updateFile.absolutePath).apply()
         Toast.makeText(context, "Downloading update…", Toast.LENGTH_SHORT).show()
         val receiver = object : BroadcastReceiver() {
             override fun onReceive(receiverContext: Context, intent: Intent) {
@@ -146,38 +169,64 @@ private class AppUpdateManager(private val context: Context) {
                         return
                     }
                 }
-                // A DownloadManager broadcast is not allowed to launch UI on
-                // recent Android versions.  Returning to the active Activity
-                // makes the system package installer a permitted user-visible
-                // handoff instead of leaving a file in Downloads.
-                mainHandler.post { install(updateFile) }
+                // The broadcast may arrive while the Activity is paused. Keep
+                // the file path persisted and let onResume launch the prompt
+                // from the foreground Activity.
+                mainHandler.post { tryInstall(updateFile) }
             }
         }
         val filter = IntentFilter(DownloadManager.ACTION_DOWNLOAD_COMPLETE)
         ContextCompat.registerReceiver(context, receiver, filter, ContextCompat.RECEIVER_NOT_EXPORTED)
     }
 
-    private fun install(file: File) {
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O && !context.packageManager.canRequestPackageInstalls()) {
-            context.startActivity(Intent(android.provider.Settings.ACTION_MANAGE_UNKNOWN_APP_SOURCES, Uri.parse("package:${context.packageName}"))
-                .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK))
-            Toast.makeText(context, "Allow installs from Zoey's Pocket Pet, then check for updates again.", Toast.LENGTH_LONG).show()
+    private fun resumePendingInstall() {
+        val pendingPath = updatePrefs.getString(PENDING_UPDATE_PATH, null) ?: return
+        val file = File(pendingPath)
+        if (!file.exists()) {
+            updatePrefs.edit().remove(PENDING_UPDATE_PATH).apply()
             return
         }
+        tryInstall(file)
+    }
+
+    private fun tryInstall(file: File) {
+        val host = activity ?: return
+        if (!hostResumed || host.isFinishing || (Build.VERSION.SDK_INT >= Build.VERSION_CODES.JELLY_BEAN_MR1 && host.isDestroyed)) return
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O && !context.packageManager.canRequestPackageInstalls()) {
+            if (unknownSourceSettingsOpened) {
+                Toast.makeText(context, "Allow installs from Zoey's Pocket Pet, then return here.", Toast.LENGTH_LONG).show()
+                return
+            }
+            unknownSourceSettingsOpened = true
+            host.startActivity(Intent(android.provider.Settings.ACTION_MANAGE_UNKNOWN_APP_SOURCES, Uri.parse("package:${context.packageName}"))
+                .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK))
+            Toast.makeText(context, "Allow installs from Zoey's Pocket Pet, then return here.", Toast.LENGTH_LONG).show()
+            return
+        }
+        unknownSourceSettingsOpened = false
         val apkUri = FileProvider.getUriForFile(context, "${context.packageName}.files", file)
-        context.startActivity(Intent(Intent.ACTION_VIEW)
-            .setDataAndType(apkUri, "application/vnd.android.package-archive")
-            .addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION or Intent.FLAG_ACTIVITY_NEW_TASK))
+        val installIntent = Intent(Intent.ACTION_VIEW).apply {
+            setDataAndType(apkUri, APK_MIME_TYPE)
+            addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION or Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TOP)
+            clipData = android.content.ClipData.newRawUri("APK", apkUri)
+        }
+        try {
+            host.startActivity(installIntent)
+            updatePrefs.edit().remove(PENDING_UPDATE_PATH).apply()
+        } catch (_: Exception) {
+            Toast.makeText(context, "Couldn't open the installer. Try the update again.", Toast.LENGTH_LONG).show()
+        }
     }
 
     private companion object {
         const val LATEST_RELEASE_URL = "https://api.github.com/repos/bottMage/zoeys-pocket-pet/releases/latest"
         const val UPDATE_FILE_NAME = "zoeys-pocket-pet-update.apk"
         const val APK_MIME_TYPE = "application/vnd.android.package-archive"
+        const val PENDING_UPDATE_PATH = "pending_update_path"
     }
 }
 
-private class PetGameView(context: Context) : View(context) {
+private class PetGameView(context: Context, private val updateManager: AppUpdateManager) : View(context) {
     private val appContext = context
     private val prefs = context.getSharedPreferences("zoey_pet", Context.MODE_PRIVATE)
     private val paint = Paint(Paint.ANTI_ALIAS_FLAG)
@@ -187,6 +236,8 @@ private class PetGameView(context: Context) : View(context) {
     private val petArtworkBottomCache = HashMap<PetKind, Int>()
     private val walkFrameCache = HashMap<String, Bitmap>()
     private val walkFrameBottomCache = HashMap<String, Int>()
+    private val frameCacheLock = Any()
+    private val framePreloader = Executors.newSingleThreadExecutor()
     private val petArtResources = mapOf(
         PetKind.CAT to R.drawable.companion_cat,
         PetKind.DOG to R.drawable.companion_dog,
@@ -211,6 +262,7 @@ private class PetGameView(context: Context) : View(context) {
     private var motionModeStartedAt = motionLastAt
     private var walkFrameIndex = 0
     private var walkFrameElapsedMs = 0f
+    private var playgroundCache: Bitmap? = null
     private var setupMode = !pet.created
     private var setupKind = pet.kind
     private var setupName = pet.name
@@ -225,14 +277,16 @@ private class PetGameView(context: Context) : View(context) {
     }
 
     private fun walkFrameArtwork(kind: PetKind, frame: Int): Bitmap {
-        val index = frame.mod(WALK_FRAME_COUNT)
-        val cacheKey = "${kind.name}_$index"
-        return walkFrameCache.getOrPut(cacheKey) {
-            val resourceId = resources.getIdentifier("walk_${kind.name.lowercase()}_$index", "drawable", context.packageName)
-            check(resourceId != 0) { "Missing walk frame: $cacheKey" }
-            val bitmap = BitmapFactory.decodeResource(resources, resourceId)
-                ?: error("Unable to decode walk frame: $cacheKey")
-            removeDetachedLeftArtifacts(bitmap)
+        synchronized(frameCacheLock) {
+            val index = frame.mod(WALK_FRAME_COUNT)
+            val cacheKey = "${kind.name}_$index"
+            return walkFrameCache.getOrPut(cacheKey) {
+                val resourceId = resources.getIdentifier("walk_${kind.name.lowercase()}_$index", "drawable", context.packageName)
+                check(resourceId != 0) { "Missing walk frame: $cacheKey" }
+                val bitmap = BitmapFactory.decodeResource(resources, resourceId)
+                    ?: error("Unable to decode walk frame: $cacheKey")
+                removeDetachedLeftArtifacts(bitmap)
+            }
         }
     }
 
@@ -327,10 +381,12 @@ private class PetGameView(context: Context) : View(context) {
      * appears to hover when a cel has slightly different padding.
      */
     private fun walkFrameBottom(kind: PetKind, frame: Int): Int {
-        val index = frame.mod(WALK_FRAME_COUNT)
-        val cacheKey = "${kind.name}_$index"
-        return walkFrameBottomCache.getOrPut(cacheKey) {
-            visibleBitmapBottom(walkFrameArtwork(kind, index))
+        synchronized(frameCacheLock) {
+            val index = frame.mod(WALK_FRAME_COUNT)
+            val cacheKey = "${kind.name}_$index"
+            return walkFrameBottomCache.getOrPut(cacheKey) {
+                visibleBitmapBottom(walkFrameArtwork(kind, index))
+            }
         }
     }
 
@@ -347,11 +403,32 @@ private class PetGameView(context: Context) : View(context) {
         return bitmap.height
     }
 
+    private fun preloadWalkFrames(kind: PetKind) {
+        framePreloader.execute {
+            for (frame in 0 until WALK_FRAME_COUNT) {
+                walkFrameArtwork(kind, frame)
+                walkFrameBottom(kind, frame)
+            }
+            post { invalidate() }
+        }
+    }
+
     init {
         isFocusable = true
         setLayerType(View.LAYER_TYPE_SOFTWARE, null)
         pet.updateFromClock()
         motionModeUntil = motionLastAt + 1800L
+        preloadWalkFrames(pet.kind)
+    }
+
+    override fun onSizeChanged(width: Int, height: Int, oldWidth: Int, oldHeight: Int) {
+        super.onSizeChanged(width, height, oldWidth, oldHeight)
+        playgroundCache = null
+    }
+
+    override fun onDetachedFromWindow() {
+        framePreloader.shutdownNow()
+        super.onDetachedFromWindow()
     }
 
     override fun onDraw(canvas: Canvas) {
@@ -369,18 +446,18 @@ private class PetGameView(context: Context) : View(context) {
         drawBackground(canvas)
         if (setupMode) {
             drawSetup(canvas, now)
-            postInvalidateDelayed(100L)
+            postInvalidateOnAnimation()
             return
         }
         drawHeader(canvas)
-        drawPlayground(canvas, now)
+        drawPlayground(canvas)
         drawPet(canvas, now)
         drawActionEffects(canvas, now)
         drawMessage(canvas, now)
         drawStats(canvas)
         drawActions(canvas)
         if (now - lastSaved > 30_000L) savePet()
-        postInvalidateDelayed(33L)
+        postInvalidateOnAnimation()
     }
 
     private fun drawBackground(canvas: Canvas) {
@@ -513,7 +590,17 @@ private class PetGameView(context: Context) : View(context) {
         canvas.drawText("?", cx, cy + dp(13f), textPaint)
     }
 
-    private fun drawPlayground(canvas: Canvas, now: Long) {
+    private fun drawPlayground(canvas: Canvas) {
+        val cached = playgroundCache ?: Bitmap.createBitmap(width, height, Bitmap.Config.ARGB_8888).also { bitmap ->
+            drawPlaygroundScene(Canvas(bitmap))
+            playgroundCache = bitmap
+        }
+        paint.shader = null
+        paint.alpha = 255
+        canvas.drawBitmap(cached, 0f, 0f, paint)
+    }
+
+    private fun drawPlaygroundScene(canvas: Canvas) {
         val top = dp(77f)
         val bottom = statsTop()
         val scene = RectF(dp(18f), top, width - dp(18f), bottom - dp(10f))
@@ -553,6 +640,27 @@ private class PetGameView(context: Context) : View(context) {
         }
         paint.color = Color.rgb(184, 225, 194)
         canvas.drawPath(nearHill, paint)
+
+        // Give the feet a readable plane: a shallow grassy foreground with a
+        // soft horizon and irregular blades makes contact easier to perceive
+        // than the previous uninterrupted pastel hill.
+        val ground = Path().apply {
+            moveTo(scene.left, scene.bottom - dp(62f))
+            cubicTo(scene.left + dp(78f), scene.bottom - dp(72f), scene.right - dp(120f), scene.bottom - dp(53f), scene.right, scene.bottom - dp(64f))
+            lineTo(scene.right, scene.bottom)
+            lineTo(scene.left, scene.bottom)
+            close()
+        }
+        paint.color = Color.rgb(145, 201, 154)
+        canvas.drawPath(ground, paint)
+        paint.color = Color.rgb(125, 181, 135)
+        paint.strokeWidth = dp(1.2f)
+        for (i in 0 until 25) {
+            val x = scene.left + dp(9f) + i * dp(18f)
+            val base = scene.bottom - dp(9f) - (i % 3) * dp(3f)
+            canvas.drawLine(x, base, x + dp(if (i % 2 == 0) -2f else 2f), base - dp(7f + (i % 4)), paint)
+        }
+        paint.strokeWidth = dp(1f)
         canvas.restore()
     }
 
@@ -568,7 +676,7 @@ private class PetGameView(context: Context) : View(context) {
         val bottom = statsTop() - dp(10f)
         val sceneLeft = dp(18f)
         val sceneRight = width - dp(18f)
-        val dt = ((now - motionLastAt).coerceAtLeast(0L)).coerceAtMost(120L) / 1000f
+        val dt = ((now - motionLastAt).coerceAtLeast(0L)).coerceAtMost(50L) / 1000f
         motionLastAt = now
         if (now >= motionModeUntil && activeAction == null) {
             motionMode = when (motionMode) {
@@ -598,7 +706,7 @@ private class PetGameView(context: Context) : View(context) {
             val startBlend = min(1f, (now - motionModeStartedAt).coerceAtLeast(0L) / 500f)
             // One complete gait should move only a small step.  Faster travel
             // makes the feet visibly slide across the grass.
-            val speed = .070f * min(startBlend, walkProgress.coerceIn(0f, 1f))
+            val speed = .12f * min(startBlend, walkProgress.coerceIn(0f, 1f))
             motionX += motionDirection * dt * speed
             if (motionX <= .06f) { motionX = .06f; motionDirection = 1f }
             if (motionX >= .94f) { motionX = .94f; motionDirection = -1f }
@@ -611,8 +719,8 @@ private class PetGameView(context: Context) : View(context) {
             "EVOLVED" -> 1.08f
             else -> 1f
         }
-        val artWidth = min(width - dp(42f), dp(296f)) * stageScale
-        val groundY = bottom - dp(42f)
+        val artWidth = min(width - dp(72f), dp(244f)) * stageScale
+        val groundY = bottom - dp(48f)
         val minCenterX = max(sceneLeft + artWidth / 2f, artWidth / 2f + dp(4f))
         val maxCenterX = min(sceneRight - artWidth / 2f, width - artWidth / 2f - dp(4f))
         val centerX = minCenterX + motionX * (maxCenterX - minCenterX)
@@ -625,17 +733,24 @@ private class PetGameView(context: Context) : View(context) {
         val playBounce = if (activeAction == Action.PLAY) -abs(sin(seconds * 12f)) * dp(9f) else 0f
         val rootY = groundY + idleBob + playBounce
 
-        // A tight, dark contact shadow anchors every paw to the grass.
-        paint.color = Color.argb(58, 67, 57, 82)
+        // Two soft contact shapes read as weight on the grass without using a
+        // per-frame shadow shader, which would make the animation less smooth.
+        paint.color = Color.argb(34, 67, 57, 82)
         canvas.drawOval(
-            RectF(centerX - artWidth * .25f, groundY - dp(3f), centerX + artWidth * .25f, groundY + dp(7f)),
+            RectF(centerX - artWidth * .32f, groundY + dp(1f), centerX + artWidth * .32f, groundY + dp(14f)),
+            paint
+        )
+        paint.color = Color.argb(62, 67, 57, 82)
+        canvas.drawOval(
+            RectF(centerX - artWidth * .22f, groundY - dp(1f), centerX + artWidth * .22f, groundY + dp(7f)),
             paint
         )
         paint.isAntiAlias = true
         paint.isFilterBitmap = true
         paint.color = Color.WHITE
-        // 10 fps gives the drawn cels time to read as a deliberate gait rather
-        // than a frantic, glitchy run.
+        // Keep the cels near 12 fps while the canvas itself follows display
+        // vsync. This removes the old 33 ms timer jitter without making the
+        // whole-body artwork look like a frantic run.
         val frame = when {
             walking -> {
                 walkFrameElapsedMs += dt * 1000f
@@ -861,6 +976,7 @@ private class PetGameView(context: Context) : View(context) {
         if (hatch.contains(event.x, event.y)) {
             pet.hatch(setupName, setupKind)
             setupMode = false
+            preloadWalkFrames(setupKind)
             message = "Welcome, ${pet.name}! Let's grow together."
             messageUntil = SystemClock.uptimeMillis() + 5000L
             savePet()
@@ -924,7 +1040,7 @@ private class PetGameView(context: Context) : View(context) {
     }
 
     fun checkForUpdates(showNoUpdate: Boolean) {
-        AppUpdateManager(appContext).check(showNoUpdate)
+        updateManager.check(showNoUpdate)
     }
 
     private fun dp(value: Float): Float = value * resources.displayMetrics.density
@@ -935,7 +1051,7 @@ private class PetGameView(context: Context) : View(context) {
 
     companion object {
         private const val WALK_FRAME_COUNT = 12
-        private const val WALK_FRAME_DURATION_MS = 120f
+        private const val WALK_FRAME_DURATION_MS = 84f
     }
 
     private enum class MotionMode { REST, WALK, CURIOUS, STAND }
