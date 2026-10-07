@@ -1,0 +1,27 @@
+# Android / Gradle build output
+.gradle/
+**/build/
+.kotlin/
+
+# Android Studio / IntelliJ
+.idea/
+*.iml
+
+# Local machine configuration
+local.properties
+
+# Signing keys and certificates
+*.jks
+*.keystore
+*.p12
+*.pem
+
+# Local environment files
+.env
+.env.*
+
+# OS/editor clutter
+.DS_Store
+Thumbs.db
+*.swp
+

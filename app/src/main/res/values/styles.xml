@@ -1,0 +1,9 @@
+<resources>
+    <style name="Theme.ZoeyPocketPet" parent="Theme.AppCompat.Light.NoActionBar">
+        <item name="android:fontFamily">sans</item>
+        <item name="android:colorAccent">#EC6D9A</item>
+        <item name="android:navigationBarColor">#23183F</item>
+        <item name="android:statusBarColor">#412C70</item>
+        <item name="android:windowLightStatusBar">false</item>
+    </style>
+</resources>
