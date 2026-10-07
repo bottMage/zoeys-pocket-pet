@@ -319,6 +319,13 @@ private class PetGameView(context: Context) : View(context) {
         textPaint.typeface = PaintTypeface.bold()
         textPaint.color = Color.WHITE
         canvas.drawText("RESET", pill.centerX(), dp(41f), textPaint)
+
+        // Keep the installed build visible without taking space from the pet.
+        textPaint.textAlign = Paint.Align.RIGHT
+        textPaint.textSize = dp(9f)
+        textPaint.typeface = PaintTypeface.bold()
+        textPaint.color = Color.argb(190, 255, 255, 255)
+        canvas.drawText("v${BuildConfig.VERSION_NAME}", width - dp(22f), dp(74f), textPaint)
     }
 
     private fun drawSetup(canvas: Canvas, now: Long) {
