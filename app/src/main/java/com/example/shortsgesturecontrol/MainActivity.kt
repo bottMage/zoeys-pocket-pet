@@ -126,7 +126,10 @@ private class AppUpdateManager(private val context: Context) {
         val manager = context.getSystemService(Context.DOWNLOAD_SERVICE) as DownloadManager
         val request = DownloadManager.Request(Uri.parse(url))
             .setTitle("Zoey's Pocket Pet update")
-            .setDescription("Downloading the latest pet update")
+            .setDescription("Downloading, then opening the installer")
+            // Without an APK MIME type Android treats the completed download as
+            // a generic file and sends the user to the Downloads app.
+            .setMimeType(APK_MIME_TYPE)
             .setNotificationVisibility(DownloadManager.Request.VISIBILITY_VISIBLE_NOTIFY_COMPLETED)
             .setDestinationInExternalFilesDir(context, Environment.DIRECTORY_DOWNLOADS, UPDATE_FILE_NAME)
         val downloadId = manager.enqueue(request)
@@ -142,7 +145,11 @@ private class AppUpdateManager(private val context: Context) {
                         return
                     }
                 }
-                install(updateFile)
+                // A DownloadManager broadcast is not allowed to launch UI on
+                // recent Android versions.  Returning to the active Activity
+                // makes the system package installer a permitted user-visible
+                // handoff instead of leaving a file in Downloads.
+                mainHandler.post { install(updateFile) }
             }
         }
         val filter = IntentFilter(DownloadManager.ACTION_DOWNLOAD_COMPLETE)
@@ -165,6 +172,7 @@ private class AppUpdateManager(private val context: Context) {
     private companion object {
         const val LATEST_RELEASE_URL = "https://api.github.com/repos/bottMage/zoeys-pocket-pet/releases/latest"
         const val UPDATE_FILE_NAME = "zoeys-pocket-pet-update.apk"
+        const val APK_MIME_TYPE = "application/vnd.android.package-archive"
     }
 }
 
