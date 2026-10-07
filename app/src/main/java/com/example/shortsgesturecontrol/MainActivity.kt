@@ -245,6 +245,7 @@ private class PetGameView(context: Context, private val updateManager: AppUpdate
         PetKind.HAMSTER to R.drawable.companion_hamster,
         PetKind.DRAGON to R.drawable.companion_dragon
     )
+    private val walkSequenceCache = HashMap<PetKind, IntArray>()
     private val buttons = ArrayList<ActionButton>()
     private var message = "Hi Zoey! I'm so happy to see you!"
     private var messageUntil = 0L
@@ -401,6 +402,17 @@ private class PetGameView(context: Context, private val updateManager: AppUpdate
             }
         }
         return bitmap.height
+    }
+
+    private fun walkSequence(kind: PetKind): IntArray = walkSequenceCache.getOrPut(kind) {
+        when (kind) {
+            // These cels contain several airborne crouches. Skip those poses
+            // for ground walking; otherwise the paws cycle without useful
+            // forward travel and the pet reads as hopping in place.
+            PetKind.BUNNY -> intArrayOf(11, 0, 1, 2, 8, 9, 10)
+            PetKind.DRAGON -> intArrayOf(0, 1, 2, 3, 7, 8, 9, 10, 11)
+            else -> IntArray(WALK_FRAME_COUNT) { it }
+        }
     }
 
     private fun preloadWalkFrames(kind: PetKind) {
@@ -653,6 +665,10 @@ private class PetGameView(context: Context, private val updateManager: AppUpdate
         }
         paint.color = Color.rgb(145, 201, 154)
         canvas.drawPath(ground, paint)
+        paint.color = Color.argb(48, 82, 139, 91)
+        paint.strokeWidth = dp(3f)
+        val contactPlaneY = scene.bottom - dp(48f)
+        canvas.drawLine(scene.left + dp(12f), contactPlaneY, scene.right - dp(12f), contactPlaneY, paint)
         paint.color = Color.rgb(125, 181, 135)
         paint.strokeWidth = dp(1.2f)
         for (i in 0 until 25) {
@@ -678,6 +694,8 @@ private class PetGameView(context: Context, private val updateManager: AppUpdate
         val sceneRight = width - dp(18f)
         val dt = ((now - motionLastAt).coerceAtLeast(0L)).coerceAtMost(50L) / 1000f
         motionLastAt = now
+        val sequence = walkSequence(pet.kind)
+        var gaitBlend = 1f
         if (now >= motionModeUntil && activeAction == null) {
             motionMode = when (motionMode) {
                 MotionMode.REST -> if ((now / 1000L) % 3L == 0L) MotionMode.STAND else MotionMode.WALK
@@ -704,9 +722,13 @@ private class PetGameView(context: Context, private val updateManager: AppUpdate
         if (motionMode == MotionMode.WALK && activeAction == null) {
             val walkProgress = ((motionModeUntil - now) / 500f).coerceIn(0f, 1f)
             val startBlend = min(1f, (now - motionModeStartedAt).coerceAtLeast(0L) / 500f)
+            gaitBlend = min(startBlend, walkProgress.coerceIn(0f, 1f))
             // One complete gait should move only a small step.  Faster travel
             // makes the feet visibly slide across the grass.
-            val speed = .12f * min(startBlend, walkProgress.coerceIn(0f, 1f))
+            // Match the distance covered by a gait to the visible paw cycle.
+            // The old value advanced only a few dp per cycle, which looked
+            // like the pet was running in place.
+            val speed = .50f * gaitBlend
             motionX += motionDirection * dt * speed
             if (motionX <= .06f) { motionX = .06f; motionDirection = 1f }
             if (motionX >= .94f) { motionX = .94f; motionDirection = -1f }
@@ -719,7 +741,7 @@ private class PetGameView(context: Context, private val updateManager: AppUpdate
             "EVOLVED" -> 1.08f
             else -> 1f
         }
-        val artWidth = min(width - dp(72f), dp(244f)) * stageScale
+        val artWidth = min(width - dp(82f), dp(214f)) * stageScale
         val groundY = bottom - dp(48f)
         val minCenterX = max(sceneLeft + artWidth / 2f, artWidth / 2f + dp(4f))
         val maxCenterX = min(sceneRight - artWidth / 2f, width - artWidth / 2f - dp(4f))
@@ -748,17 +770,20 @@ private class PetGameView(context: Context, private val updateManager: AppUpdate
         paint.isAntiAlias = true
         paint.isFilterBitmap = true
         paint.color = Color.WHITE
-        // Keep the cels near 12 fps while the canvas itself follows display
+        // Keep the cels near 14 fps while the canvas itself follows display
         // vsync. This removes the old 33 ms timer jitter without making the
         // whole-body artwork look like a frantic run.
         val frame = when {
             walking -> {
-                walkFrameElapsedMs += dt * 1000f
+                // Slow the cel clock with the body at walk start/stop, so the
+                // paws do not keep running while the pet is still accelerating
+                // or has already arrived at its stopping point.
+                walkFrameElapsedMs += dt * 1000f * gaitBlend
                 while (walkFrameElapsedMs >= WALK_FRAME_DURATION_MS) {
                     walkFrameElapsedMs -= WALK_FRAME_DURATION_MS
-                    walkFrameIndex = (walkFrameIndex + 1) % WALK_FRAME_COUNT
+                    walkFrameIndex = (walkFrameIndex + 1) % sequence.size
                 }
-                walkFrameIndex
+                sequence[walkFrameIndex]
             }
             activeAction == Action.PLAY -> ((now / 120L) % WALK_FRAME_COUNT).toInt()
             motionMode == MotionMode.CURIOUS -> if (((now - motionModeStartedAt) / 360L) % 2L == 0L) 2 else 0
@@ -1051,7 +1076,7 @@ private class PetGameView(context: Context, private val updateManager: AppUpdate
 
     companion object {
         private const val WALK_FRAME_COUNT = 12
-        private const val WALK_FRAME_DURATION_MS = 84f
+        private const val WALK_FRAME_DURATION_MS = 72f
     }
 
     private enum class MotionMode { REST, WALK, CURIOUS, STAND }
