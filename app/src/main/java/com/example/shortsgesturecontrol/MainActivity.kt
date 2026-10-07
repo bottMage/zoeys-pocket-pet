@@ -3,6 +3,12 @@ package com.example.shortsgesturecontrol
 import android.app.Activity
 import android.app.AlertDialog
 import android.content.Context
+import android.content.BroadcastReceiver
+import android.content.Intent
+import android.content.IntentFilter
+import android.app.DownloadManager
+import android.graphics.Bitmap
+import android.graphics.BitmapFactory
 import android.graphics.Canvas
 import android.graphics.Color
 import android.graphics.LinearGradient
@@ -12,11 +18,24 @@ import android.graphics.RadialGradient
 import android.graphics.RectF
 import android.graphics.Shader
 import android.os.Bundle
+import android.os.Build
+import android.os.Environment
+import android.os.Handler
+import android.os.Looper
 import android.os.SystemClock
+import android.net.Uri
 import android.view.MotionEvent
 import android.view.View
 import android.text.InputType
 import android.widget.EditText
+import android.widget.Toast
+import androidx.core.content.FileProvider
+import androidx.core.content.ContextCompat
+import org.json.JSONObject
+import java.io.File
+import java.net.HttpURLConnection
+import java.net.URL
+import kotlin.math.abs
 import kotlin.math.cos
 import kotlin.math.max
 import kotlin.math.min
@@ -33,11 +52,119 @@ class MainActivity : Activity() {
         window.decorView.systemUiVisibility = View.SYSTEM_UI_FLAG_LIGHT_STATUS_BAR.inv()
         gameView = PetGameView(this)
         setContentView(gameView)
+        gameView.postDelayed({ gameView.checkForUpdates(showNoUpdate = false) }, 650L)
     }
 
     override fun onPause() {
         gameView.savePet()
         super.onPause()
+    }
+}
+
+/**
+ * Optional self-updates from the repository's GitHub Releases page.  A release
+ * tag must be v<versionCode> and include an APK asset signed with this app's
+ * existing signing key.
+ */
+private class AppUpdateManager(private val context: Context) {
+    private val mainHandler = Handler(Looper.getMainLooper())
+
+    fun check(showNoUpdate: Boolean) {
+        Thread {
+            try {
+                val connection = (URL(LATEST_RELEASE_URL).openConnection() as HttpURLConnection).apply {
+                    connectTimeout = 12_000
+                    readTimeout = 12_000
+                    setRequestProperty("Accept", "application/vnd.github+json")
+                    setRequestProperty("User-Agent", "ZoeysPocketPet-Updater")
+                }
+                val response = connection.inputStream.bufferedReader().use { it.readText() }
+                connection.disconnect()
+                val release = JSONObject(response)
+                val versionCode = release.optString("tag_name").removePrefix("v").toIntOrNull()
+                val assets = release.optJSONArray("assets")
+                var downloadUrl: String? = null
+                if (assets != null) {
+                    for (index in 0 until assets.length()) {
+                        val asset = assets.getJSONObject(index)
+                        if (asset.optString("name").endsWith(".apk", ignoreCase = true)) {
+                            downloadUrl = asset.optString("browser_download_url")
+                            break
+                        }
+                    }
+                }
+                val packageInfo = context.packageManager.getPackageInfo(context.packageName, 0)
+                val installedVersion = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.P) packageInfo.longVersionCode else packageInfo.versionCode.toLong()
+                mainHandler.post {
+                    when {
+                        versionCode != null && versionCode > installedVersion && !downloadUrl.isNullOrBlank() -> showUpdate(versionCode, downloadUrl)
+                        showNoUpdate -> Toast.makeText(context, "You're all up to date.", Toast.LENGTH_SHORT).show()
+                    }
+                }
+            } catch (_: Exception) {
+                if (showNoUpdate) mainHandler.post {
+                    Toast.makeText(context, "Couldn't check for updates right now.", Toast.LENGTH_SHORT).show()
+                }
+            }
+        }.start()
+    }
+
+    private fun showUpdate(versionCode: Int, url: String) {
+        val activity = context as? Activity ?: return
+        if (activity.isFinishing) return
+        AlertDialog.Builder(activity)
+            .setTitle("An update is ready")
+            .setMessage("Version $versionCode is available. Would you like to download it now?")
+            .setNegativeButton("NOT NOW", null)
+            .setPositiveButton("DOWNLOAD") { _, _ -> download(url) }
+            .show()
+    }
+
+    private fun download(url: String) {
+        val updateFile = File(context.getExternalFilesDir(Environment.DIRECTORY_DOWNLOADS), UPDATE_FILE_NAME)
+        if (updateFile.exists()) updateFile.delete()
+        val manager = context.getSystemService(Context.DOWNLOAD_SERVICE) as DownloadManager
+        val request = DownloadManager.Request(Uri.parse(url))
+            .setTitle("Zoey's Pocket Pet update")
+            .setDescription("Downloading the latest pet update")
+            .setNotificationVisibility(DownloadManager.Request.VISIBILITY_VISIBLE_NOTIFY_COMPLETED)
+            .setDestinationInExternalFilesDir(context, Environment.DIRECTORY_DOWNLOADS, UPDATE_FILE_NAME)
+        val downloadId = manager.enqueue(request)
+        Toast.makeText(context, "Downloading update…", Toast.LENGTH_SHORT).show()
+        val receiver = object : BroadcastReceiver() {
+            override fun onReceive(receiverContext: Context, intent: Intent) {
+                if (intent.getLongExtra(DownloadManager.EXTRA_DOWNLOAD_ID, -1L) != downloadId) return
+                receiverContext.unregisterReceiver(this)
+                val query = DownloadManager.Query().setFilterById(downloadId)
+                manager.query(query).use { cursor ->
+                    if (!cursor.moveToFirst() || cursor.getInt(cursor.getColumnIndexOrThrow(DownloadManager.COLUMN_STATUS)) != DownloadManager.STATUS_SUCCESSFUL) {
+                        Toast.makeText(context, "The update download didn't finish.", Toast.LENGTH_SHORT).show()
+                        return
+                    }
+                }
+                install(updateFile)
+            }
+        }
+        val filter = IntentFilter(DownloadManager.ACTION_DOWNLOAD_COMPLETE)
+        ContextCompat.registerReceiver(context, receiver, filter, ContextCompat.RECEIVER_NOT_EXPORTED)
+    }
+
+    private fun install(file: File) {
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O && !context.packageManager.canRequestPackageInstalls()) {
+            context.startActivity(Intent(android.provider.Settings.ACTION_MANAGE_UNKNOWN_APP_SOURCES, Uri.parse("package:${context.packageName}"))
+                .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK))
+            Toast.makeText(context, "Allow installs from Zoey's Pocket Pet, then check for updates again.", Toast.LENGTH_LONG).show()
+            return
+        }
+        val apkUri = FileProvider.getUriForFile(context, "${context.packageName}.files", file)
+        context.startActivity(Intent(Intent.ACTION_VIEW)
+            .setDataAndType(apkUri, "application/vnd.android.package-archive")
+            .addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION or Intent.FLAG_ACTIVITY_NEW_TASK))
+    }
+
+    private companion object {
+        const val LATEST_RELEASE_URL = "https://api.github.com/repos/bottMage/zoeys-pocket-pet/releases/latest"
+        const val UPDATE_FILE_NAME = "zoeys-pocket-pet-update.apk"
     }
 }
 
@@ -47,6 +174,15 @@ private class PetGameView(context: Context) : View(context) {
     private val paint = Paint(Paint.ANTI_ALIAS_FLAG)
     private val textPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply { typeface = PaintTypeface.rounded() }
     private val pet = PetState(prefs)
+    private val petArtCache = HashMap<PetKind, Bitmap>()
+    private val walkFrameCache = HashMap<String, Bitmap>()
+    private val petArtResources = mapOf(
+        PetKind.CAT to R.drawable.companion_cat,
+        PetKind.DOG to R.drawable.companion_dog,
+        PetKind.BUNNY to R.drawable.companion_bunny,
+        PetKind.HAMSTER to R.drawable.companion_hamster,
+        PetKind.DRAGON to R.drawable.companion_dragon
+    )
     private val buttons = ArrayList<ActionButton>()
     private var message = "Hi Zoey! I'm so happy to see you!"
     private var messageUntil = 0L
@@ -58,18 +194,39 @@ private class PetGameView(context: Context) : View(context) {
     private var actionUntil = 0L
     private var motionX = .5f
     private var motionDirection = 1f
-    private var motionMode = MotionMode.IDLE
+    private var motionMode = MotionMode.REST
     private var motionModeUntil = 0L
     private var motionLastAt = SystemClock.uptimeMillis()
+    private var motionModeStartedAt = motionLastAt
     private var setupMode = !pet.created
     private var setupKind = pet.kind
     private var setupName = pet.name
+
+    private fun petArtwork(kind: PetKind): Bitmap = petArtCache.getOrPut(kind) {
+        val options = BitmapFactory.Options().apply {
+            inSampleSize = 2
+            inScaled = false
+        }
+        BitmapFactory.decodeResource(resources, petArtResources.getValue(kind), options)
+            ?: error("Unable to load artwork for ${kind.label}")
+    }
+
+    private fun walkFrameArtwork(kind: PetKind, frame: Int): Bitmap {
+        val index = frame.mod(WALK_FRAME_COUNT)
+        val cacheKey = "${kind.name}_$index"
+        return walkFrameCache.getOrPut(cacheKey) {
+            val resourceId = resources.getIdentifier("walk_${kind.name.lowercase()}_$index", "drawable", context.packageName)
+            check(resourceId != 0) { "Missing walk frame: $cacheKey" }
+            BitmapFactory.decodeResource(resources, resourceId)
+                ?: error("Unable to decode walk frame: $cacheKey")
+        }
+    }
 
     init {
         isFocusable = true
         setLayerType(View.LAYER_TYPE_SOFTWARE, null)
         pet.updateFromClock()
-        motionModeUntil = motionLastAt + 2200L
+        motionModeUntil = motionLastAt + 1800L
     }
 
     override fun onDraw(canvas: Canvas) {
@@ -98,7 +255,7 @@ private class PetGameView(context: Context) : View(context) {
         drawStats(canvas)
         drawActions(canvas)
         if (now - lastSaved > 30_000L) savePet()
-        postInvalidateDelayed(50L)
+        postInvalidateDelayed(33L)
     }
 
     private fun drawBackground(canvas: Canvas) {
@@ -124,6 +281,15 @@ private class PetGameView(context: Context) : View(context) {
         textPaint.typeface = PaintTypeface.rounded()
         textPaint.color = Color.argb(220, 255, 255, 255)
         canvas.drawText("A tiny friend made just for you", dp(23f), dp(59f), textPaint)
+
+        val updates = headerUpdateRect()
+        paint.color = Color.argb(54, 48, 27, 89)
+        canvas.drawRoundRect(updates, dp(16f), dp(16f), paint)
+        textPaint.textAlign = Paint.Align.CENTER
+        textPaint.textSize = dp(10f)
+        textPaint.typeface = PaintTypeface.bold()
+        textPaint.color = Color.WHITE
+        canvas.drawText("UPDATES", updates.centerX(), updates.centerY() + dp(3f), textPaint)
 
         val pill = RectF(width - dp(114f), dp(18f), width - dp(20f), dp(57f))
         paint.color = Color.argb(70, 48, 27, 89)
@@ -179,9 +345,16 @@ private class PetGameView(context: Context) : View(context) {
             val rect = RectF(left, rowTop, left + optionWidth, rowTop + dp(49f))
             paint.color = if (setupKind == kinds[i]) Color.WHITE else Color.argb(62, 54, 30, 92)
             canvas.drawRoundRect(rect, dp(16f), dp(16f), paint)
-            textPaint.textSize = dp(12f)
+            val artSize = dp(38f)
+            val artRect = RectF(left + dp(4f), rect.centerY() - artSize / 2f, left + dp(4f) + artSize, rect.centerY() + artSize / 2f)
+            paint.color = Color.WHITE
+            paint.isFilterBitmap = true
+            canvas.drawBitmap(petArtwork(kinds[i]), null, artRect, paint)
+            textPaint.textAlign = Paint.Align.LEFT
+            textPaint.textSize = dp(10f)
+            textPaint.typeface = PaintTypeface.bold()
             textPaint.color = if (setupKind == kinds[i]) kinds[i].dark else Color.WHITE
-            canvas.drawText(kinds[i].label, rect.centerX(), rect.centerY() + dp(4f), textPaint)
+            canvas.drawText(kinds[i].label, artRect.right + dp(2f), rect.centerY() + dp(4f), textPaint)
         }
 
         val hatch = RectF(dp(34f), height - dp(86f), width - dp(34f), height - dp(25f))
@@ -211,22 +384,44 @@ private class PetGameView(context: Context) : View(context) {
     private fun drawPlayground(canvas: Canvas, now: Long) {
         val top = dp(77f)
         val bottom = statsTop()
-        val screen = RectF(dp(18f), top, width - dp(18f), bottom - dp(10f))
-        paint.color = Color.rgb(79, 73, 92)
-        canvas.drawRoundRect(RectF(screen.left - dp(4f), screen.top - dp(4f), screen.right + dp(4f), screen.bottom + dp(4f)), dp(15f), dp(15f), paint)
-        paint.color = Color.rgb(211, 220, 195)
-        canvas.drawRoundRect(screen, dp(11f), dp(11f), paint)
+        val scene = RectF(dp(18f), top, width - dp(18f), bottom - dp(10f))
+        paint.color = Color.argb(35, 56, 44, 82)
+        canvas.drawRoundRect(RectF(scene.left, scene.top + dp(5f), scene.right, scene.bottom + dp(5f)), dp(26f), dp(26f), paint)
+        paint.color = Color.WHITE
+        canvas.drawRoundRect(scene, dp(26f), dp(26f), paint)
 
-        // Quiet LCD-style background marks; the creature is the focus.
-        paint.color = Color.argb(55, 93, 113, 83)
-        for (i in 0 until 8) {
-            val x = screen.left + dp(22f) + i * dp(39f)
-            val y = screen.top + dp(26f) + (i % 2) * dp(20f)
-            canvas.drawRect(x, y, x + dp(3f), y + dp(3f), paint)
+        canvas.save()
+        canvas.clipPath(Path().apply { addRoundRect(scene, dp(26f), dp(26f), Path.Direction.CW) })
+        paint.shader = LinearGradient(
+            0f, scene.top, 0f, scene.bottom,
+            Color.rgb(225, 241, 255), Color.rgb(250, 239, 249), Shader.TileMode.CLAMP
+        )
+        canvas.drawRect(scene, paint)
+        paint.shader = null
+
+        paint.color = Color.argb(195, 255, 255, 255)
+        drawCloud(canvas, scene.left + dp(18f), scene.top + dp(76f), .38f)
+        drawCloud(canvas, scene.right - dp(82f), scene.top + dp(126f), .32f)
+
+        val farHill = Path().apply {
+            moveTo(scene.left, scene.bottom - dp(67f))
+            cubicTo(scene.left + dp(85f), scene.bottom - dp(100f), scene.right - dp(110f), scene.bottom - dp(20f), scene.right, scene.bottom - dp(73f))
+            lineTo(scene.right, scene.bottom)
+            lineTo(scene.left, scene.bottom)
+            close()
         }
-        paint.color = Color.rgb(126, 143, 105)
-        canvas.drawRect(screen.left + dp(18f), screen.bottom - dp(43f), screen.right - dp(18f), screen.bottom - dp(40f), paint)
-        canvas.drawRect(screen.left + dp(34f), screen.bottom - dp(39f), screen.right - dp(34f), screen.bottom - dp(36f), paint)
+        paint.color = Color.rgb(205, 236, 215)
+        canvas.drawPath(farHill, paint)
+        val nearHill = Path().apply {
+            moveTo(scene.left, scene.bottom - dp(38f))
+            cubicTo(scene.left + dp(110f), scene.bottom - dp(73f), scene.right - dp(112f), scene.bottom - dp(19f), scene.right, scene.bottom - dp(49f))
+            lineTo(scene.right, scene.bottom)
+            lineTo(scene.left, scene.bottom)
+            close()
+        }
+        paint.color = Color.rgb(184, 225, 194)
+        canvas.drawPath(nearHill, paint)
+        canvas.restore()
     }
 
     private fun drawCloud(canvas: Canvas, x: Float, y: Float, scale: Float) {
@@ -236,601 +431,89 @@ private class PetGameView(context: Context) : View(context) {
         canvas.drawRoundRect(RectF(x - dp(5f) * scale, y, x + dp(60f) * scale, y + dp(18f) * scale), dp(10f), dp(10f), paint)
     }
 
-    private fun drawAnimatedPixelPet(canvas: Canvas, now: Long) {
+    private fun drawPet(canvas: Canvas, now: Long) {
         val top = dp(77f)
-        val bottom = statsTop()
-        val sceneLeft = dp(32f)
-        val sceneRight = width - dp(32f)
+        val bottom = statsTop() - dp(10f)
+        val sceneLeft = dp(18f)
+        val sceneRight = width - dp(18f)
         val dt = ((now - motionLastAt).coerceAtLeast(0L)).coerceAtMost(120L) / 1000f
         motionLastAt = now
         if (now >= motionModeUntil && activeAction == null) {
-            motionMode = if (motionMode == MotionMode.IDLE) MotionMode.WALK else MotionMode.IDLE
-            motionModeUntil = now + if (motionMode == MotionMode.WALK) 1800L else 2400L
+            motionMode = when (motionMode) {
+                MotionMode.REST -> if ((now / 1000L) % 3L == 0L) MotionMode.STAND else MotionMode.WALK
+                MotionMode.WALK -> if ((now / 1000L) % 2L == 0L) MotionMode.CURIOUS else MotionMode.REST
+                MotionMode.CURIOUS -> MotionMode.REST
+                MotionMode.STAND -> MotionMode.WALK
+            }
+            motionModeUntil = now + when (motionMode) {
+                MotionMode.WALK -> 2600L + (now % 1800L)
+                MotionMode.REST -> 1900L + (now % 1700L)
+                MotionMode.CURIOUS -> 900L + (now % 700L)
+                MotionMode.STAND -> 1100L + (now % 800L)
+            }
+            motionModeStartedAt = now
             if (motionMode == MotionMode.WALK && motionX <= .08f) motionDirection = 1f
             if (motionMode == MotionMode.WALK && motionX >= .92f) motionDirection = -1f
         }
         if (motionMode == MotionMode.WALK && activeAction == null) {
-            motionX += motionDirection * dt * .16f
+            val walkProgress = ((motionModeUntil - now) / 500f).coerceIn(0f, 1f)
+            val startBlend = min(1f, (now - motionModeStartedAt).coerceAtLeast(0L) / 500f)
+            val speed = .22f * min(startBlend, walkProgress.coerceIn(0f, 1f))
+            motionX += motionDirection * dt * speed
             if (motionX <= .06f) { motionX = .06f; motionDirection = 1f }
             if (motionX >= .94f) { motionX = .94f; motionDirection = -1f }
         }
 
         val stageScale = when (pet.stage) {
-            "BABY" -> .82f
-            "YOUNG" -> .92f
+            "BABY" -> .90f
+            "YOUNG" -> .96f
             "TEEN" -> 1f
             "EVOLVED" -> 1.08f
             else -> 1f
         }
-        val pixel = dp(7f) * stageScale
-        val sprite = when (pet.kind) {
-            PetKind.CAT -> arrayOf(
-                "     ##++++##       ",
-                "    ###++++###      ",
-                "   ############     ",
-                "  ##+##++++##+##    ",
-                "  ##+##++++##+##    ",
-                "  ##++++####++##    ",
-                "   ##++++++++##     ",
-                "   ############     ",
-                "  ##############    ",
-                " ################   ",
-                "##############  ##  ",
-                "  ##  ##  ##  ###   ",
-                " ##   ##   ##       ",
-                "##    ##    ##      "
-            )
-            PetKind.DOG -> arrayOf(
-                " ##++++++++++++##   ",
-                "###++++++++++++###  ",
-                "##++##########++##  ",
-                "##+##++++++##+###  ",
-                "##+##++++++##+###  ",
-                "##++##########++##  ",
-                " ###++++++++++###   ",
-                "  ##############    ",
-                " ######++++######   ",
-                "######++++++######  ",
-                "  ##  ##  ##  ##    ",
-                " ##   ##  ##   ##   "
-            )
-            PetKind.BUNNY -> arrayOf(
-                "    ##      ##      ",
-                "    ##      ##      ",
-                "   ###      ###     ",
-                "   ###      ###     ",
-                "  ##  ######  ##    ",
-                " ##  ##++++##  ##   ",
-                " ##  ##++++##  ##   ",
-                " ##++++++++++++##   ",
-                "  ##############    ",
-                "   ####++++####     ",
-                "   ##  ####  ##     ",
-                "  ##   ####   ##    ",
-                " ##    ## ##   ##   "
-            )
-            PetKind.HAMSTER -> arrayOf(
-                "   ####++++####     ",
-                "  ######++######    ",
-                " ##+##############  ",
-                "##++##++##++##++##  ",
-                "##++##############  ",
-                "##++####++####++##  ",
-                " ##+##############  ",
-                "  ######++######    ",
-                "   #### #######     ",
-                "  ##  ##  ##  ##    ",
-                " ##   ##  ##   ##   "
-            )
-            PetKind.DRAGON -> arrayOf(
-                "        ##          ",
-                "       ###          ",
-                "  ##   ####   ##    ",
-                " ###   ####  ###    ",
-                "###   ######  ###   ",
-                "    ##++++##        ",
-                "   ##++++++##       ",
-                "   ##########   ##  ",
-                "    ########  ######",
-                "      ###           ",
-                "     ####  ####     ",
-                "    ##  ## ##  ##   ",
-                "   ##   ## ##   ##  ",
-                "  ##            ##  "
-            )
-        }
-        val pixelInk = Color.rgb(47, 57, 45)
-        val pixelShade = Color.rgb(82, 94, 73)
-        val spriteWidth = sprite.maxOf { it.length }
-        val centerX = sceneLeft + motionX * (sceneRight - sceneLeft)
-        val centerY = (top + bottom) * .53f + if (motionMode == MotionMode.IDLE) sin(now / 430f) * dp(2f) else 0f
-        val left = centerX - spriteWidth * pixel / 2f
-        val spriteTop = centerY - sprite.size * pixel / 2f
-        paint.isAntiAlias = false
-        for (row in sprite.indices) {
-            for (column in sprite[row].indices) {
-                val cell = sprite[row][column]
-                if (cell == '#' || cell == '+') {
-                    paint.color = if (cell == '#') pixelInk else pixelShade
-                    val stepOffset = if (motionMode == MotionMode.WALK && row >= sprite.size - 3) {
-                        if ((column + (now / 180L).toInt()) % 2 == 0) dp(1f) else -dp(1f)
-                    } else 0f
-                    canvas.drawRect(left + column * pixel, spriteTop + row * pixel + stepOffset, left + (column + 1) * pixel - dp(.6f), spriteTop + (row + 1) * pixel - dp(.6f) + stepOffset, paint)
-                }
-            }
-        }
-        paint.isAntiAlias = true
-        textPaint.textAlign = Paint.Align.CENTER
-        textPaint.typeface = PaintTypeface.bold()
-        textPaint.textSize = dp(13f)
-        textPaint.color = Color.rgb(78, 75, 88)
-        canvas.drawText(pet.name.uppercase(), centerX, centerY + dp(112f), textPaint)
-    }
-
-    private fun drawPixelPet(canvas: Canvas, now: Long) {
-        drawAnimatedPixelPet(canvas, now)
-        return
-
-        // Earlier block renderer retained below only as a reference while the
-        // hand-authored animated bitmap sprites are refined.
-        val top = dp(77f)
-        val bottom = statsTop()
+        val artWidth = min(width - dp(42f), dp(296f)) * stageScale
+        val groundY = bottom - dp(42f)
+        val minCenterX = max(sceneLeft + artWidth / 2f, artWidth / 2f + dp(4f))
+        val maxCenterX = min(sceneRight - artWidth / 2f, width - artWidth / 2f - dp(4f))
+        val centerX = minCenterX + motionX * (maxCenterX - minCenterX)
         val seconds = (now - animationStart) / 1000f
-        val jump = if (activeAction == Action.PLAY) sin(seconds * 12f) * dp(4f) else 0f
-        val cx = dp(32f) + motionX * (width - dp(64f))
-        val cy = (top + bottom) * .53f + jump
-        val pixel = dp(8f) * when (pet.stage) {
-            "BABY" -> .82f
-            "YOUNG" -> .92f
-            "TEEN" -> 1f
-            "EVOLVED" -> 1.06f
-            else -> 1f
-        }
+        val walking = motionMode == MotionMode.WALK && activeAction == null
+        val idleBob = if (!walking) sin(now / 430f) * dp(2.2f) else 0f
+        val playBounce = if (activeAction == Action.PLAY) -abs(sin(seconds * 12f)) * dp(9f) else 0f
+        val rootY = groundY + idleBob + playBounce
 
-        paint.isAntiAlias = false
-        val sprite = when (pet.kind) {
-            PetKind.CAT -> arrayOf(
-                "   ##        ##   ",
-                "  ###        ###  ",
-                "  ###        ###  ",
-                "  ##############  ",
-                " ##  ##    ##  ## ",
-                " ##  ##    ##  ## ",
-                " ################  ",
-                " ##     ##     ## ",
-                " ##    ####    ## ",
-                "  ##############  ",
-                "    ##  ##  ##    ",
-                "   ##   ##   ##   "
-            )
-            PetKind.DOG -> arrayOf(
-                " ##            ## ",
-                "###            ###",
-                "###  ########  ###",
-                "##  ##########  ##",
-                "##  ##  ##  ##  ##",
-                "##  ##########  ##",
-                "##   ########   ##",
-                " ###############  ",
-                "  ####### ######  ",
-                "   ####   ####    ",
-                "  ## ##   ## ##   ",
-                " ##  ##   ##  ##  "
-            )
-            PetKind.BUNNY -> arrayOf(
-                "   ###      ###   ",
-                "   ###      ###   ",
-                "   ###      ###   ",
-                "   ###      ###   ",
-                "   ###########    ",
-                "  #############   ",
-                "  ##  ## ##  ##   ",
-                "  ##   ###   ##   ",
-                "  ##  #####  ##   ",
-                "   ###########    ",
-                "    ## ### ##     ",
-                "   ##  ###  ##    "
-            )
-            PetKind.HAMSTER -> arrayOf(
-                "    ####  ####    ",
-                "   ###### ######  ",
-                "  ##############  ",
-                " ##  ##    ##  ## ",
-                " ##  ########  ## ",
-                " ##   ######   ## ",
-                "  ##############  ",
-                "   #### ######    ",
-                "  ###  ###  ###   ",
-                " ##   ###  ### ## "
-            )
-            PetKind.DRAGON -> arrayOf(
-                "        ##          ",
-                "       ###          ",
-                "  ##   ####   ##    ",
-                " ###   ####  ###    ",
-                "###   ######  ###   ",
-                "     #########      ",
-                "    ###########     ",
-                "    ##########      ",
-                "     #######        ",
-                "      ###   ######  ",
-                "     ###            ",
-                "    ##   ##         ",
-                "   ##   ###         "
-            )
-        }
-        val spriteWidth = sprite.maxOf { it.length }
-        val left = cx - spriteWidth * pixel / 2f
-        val spriteTop = cy - sprite.size * pixel / 2f
-        val ink = Color.rgb(47, 57, 45)
-        for (row in sprite.indices) {
-            for (column in sprite[row].indices) {
-                if (sprite[row][column] == '#') {
-                    paint.color = ink
-                    canvas.drawRect(
-                        left + column * pixel,
-                        spriteTop + row * pixel,
-                        left + (column + 1) * pixel - dp(.7f),
-                        spriteTop + (row + 1) * pixel - dp(.7f),
-                        paint
-                    )
-                }
-            }
-        }
+        // A tight, dark contact shadow anchors every paw to the grass.
+        paint.color = Color.argb(58, 67, 57, 82)
+        canvas.drawOval(
+            RectF(centerX - artWidth * .25f, groundY - dp(3f), centerX + artWidth * .25f, groundY + dp(7f)),
+            paint
+        )
         paint.isAntiAlias = true
+        paint.isFilterBitmap = true
+        paint.color = Color.WHITE
+        val frame = if (walking || activeAction == Action.PLAY) ((now / 70L) % WALK_FRAME_COUNT).toInt() else 0
+        val bitmap = walkFrameArtwork(pet.kind, frame)
+        val artTop = rootY - artWidth * (460f / 512f)
+        val artBottom = rootY + artWidth * (52f / 512f)
+        val artRect = RectF(centerX - artWidth / 2f, artTop, centerX + artWidth / 2f, artBottom)
+        canvas.save()
+        if (motionDirection < 0f && walking) canvas.scale(-1f, 1f, centerX, rootY)
+        canvas.drawBitmap(bitmap, null, artRect, paint)
+        canvas.restore()
 
         textPaint.textAlign = Paint.Align.CENTER
         textPaint.typeface = PaintTypeface.bold()
         textPaint.textSize = dp(13f)
-        textPaint.color = Color.rgb(78, 75, 88)
-        canvas.drawText(pet.name.uppercase(), cx, cy + dp(112f), textPaint)
-    }
-
-    private fun drawPixelCreature(canvas: Canvas, p: Float) {
-        // Classic LCD pet ink: one dark tone made from square pixels.
-        val ink = Color.rgb(47, 57, 45)
-        when (pet.kind) {
-            PetKind.DRAGON -> drawPixelDragon(canvas, p, ink, ink, ink)
-            PetKind.CAT -> drawPixelCat(canvas, p, ink, ink, ink)
-            PetKind.DOG -> drawPixelDog(canvas, p, ink, ink, ink)
-            PetKind.BUNNY -> drawPixelBunny(canvas, p, ink, ink, ink)
-            PetKind.HAMSTER -> drawPixelHamster(canvas, p, ink, ink, ink)
-        }
-    }
-
-    private fun drawPixelDragon(canvas: Canvas, p: Float, outline: Int, body: Int, light: Int) {
-        // A connected side-view dragon: head and snout on the left, four feet,
-        // one large wing, a long tail, and unmistakable horns.
-        pixelPath(canvas, p, floatArrayOf(1f, 0f, 8f, -11f, 8f, 2f, 5f, 5f), outline)
-        pixelPath(canvas, p, floatArrayOf(2f, 0f, 6f, -7f, 6f, 2f, 4f, 3f), body)
-
-        pixelRect(canvas, 0f, 0f, p, 3f, 0f, 7f, 3f, outline)
-        pixelRect(canvas, 0f, 0f, p, 8f, 1f, 7f, 2f, outline)
-        pixelRect(canvas, 0f, 0f, p, 9f, 1f, 5f, 1f, body)
-        pixelRect(canvas, 0f, 0f, p, 13f, -1f, 3f, 3f, outline)
-        pixelRect(canvas, 0f, 0f, p, 14f, 0f, 2f, 1f, Color.rgb(255, 223, 105))
-
-        pixelRect(canvas, 0f, 0f, p, -5f, -1f, 10f, 9f, outline)
-        pixelRect(canvas, 0f, 0f, p, -4f, 0f, 8f, 7f, body)
-        pixelRect(canvas, 0f, 0f, p, -1f, 2f, 4f, 4f, light)
-
-        pixelRect(canvas, 0f, 0f, p, -4f, 6f, 3f, 5f, outline)
-        pixelRect(canvas, 0f, 0f, p, 2f, 6f, 3f, 5f, outline)
-        pixelRect(canvas, 0f, 0f, p, -3f, 7f, 1f, 3f, body)
-        pixelRect(canvas, 0f, 0f, p, 3f, 7f, 1f, 3f, body)
-        pixelRect(canvas, 0f, 0f, p, -5f, 11f, 4f, 1f, Color.rgb(255, 223, 105))
-        pixelRect(canvas, 0f, 0f, p, 2f, 11f, 4f, 1f, Color.rgb(255, 223, 105))
-
-        pixelRect(canvas, 0f, 0f, p, -8f, -6f, 5f, 6f, outline)
-        pixelRect(canvas, 0f, 0f, p, -7f, -5f, 4f, 4f, body)
-        pixelRect(canvas, 0f, 0f, p, -12f, -4f, 5f, 3f, outline)
-        pixelRect(canvas, 0f, 0f, p, -11f, -3f, 4f, 1f, light)
-        pixelRect(canvas, 0f, 0f, p, -6f, -8f, 2f, 3f, Color.rgb(255, 223, 105))
-        pixelRect(canvas, 0f, 0f, p, -3f, -8f, 2f, 3f, Color.rgb(255, 223, 105))
-        pixelRect(canvas, 0f, 0f, p, -6f, -4f, 2f, 2f, Color.rgb(38, 43, 45))
-        pixelRect(canvas, 0f, 0f, p, -12f, -1f, 2f, 1f, Color.rgb(255, 223, 105))
-
-        if (pet.generation >= 1) {
-            pixelRect(canvas, 0f, 0f, p, -1f, -2f, 2f, 2f, Color.rgb(255, 223, 105))
-            pixelRect(canvas, 0f, 0f, p, 1f, -3f, 2f, 2f, Color.rgb(255, 223, 105))
-        }
-    }
-
-    private fun drawPixelCat(canvas: Canvas, p: Float, outline: Int, body: Int, light: Int) {
-        pixelPath(canvas, p, floatArrayOf(-6f, -5f, -8f, -11f, -2f, -8f, 2f, -8f, 8f, -11f, 6f, -5f), outline)
-        pixelRect(canvas, 0f, 0f, p, -5f, -8f, 3f, 3f, light)
-        pixelRect(canvas, 0f, 0f, p, 2f, -8f, 3f, 3f, light)
-        pixelRect(canvas, 0f, 0f, p, -7f, -4f, 14f, 11f, outline)
-        pixelRect(canvas, 0f, 0f, p, -6f, -3f, 12f, 9f, body)
-        pixelRect(canvas, 0f, 0f, p, -6f, 7f, 12f, 4f, outline)
-        pixelRect(canvas, 0f, 0f, p, -4f, 7f, 3f, 4f, body)
-        pixelRect(canvas, 0f, 0f, p, 3f, 7f, 3f, 4f, body)
-        pixelRect(canvas, 0f, 0f, p, -4f, -1f, 2f, 2f, Color.rgb(38, 43, 45))
-        pixelRect(canvas, 0f, 0f, p, 3f, -1f, 2f, 2f, Color.rgb(38, 43, 45))
-        pixelRect(canvas, 0f, 0f, p, -1f, 2f, 2f, 1f, Color.rgb(255, 157, 180))
-        pixelRect(canvas, 0f, 0f, p, 7f, 1f, 5f, 2f, outline)
-        pixelRect(canvas, 0f, 0f, p, 11f, -1f, 4f, 2f, body)
-        pixelRect(canvas, 0f, 0f, p, 14f, -3f, 2f, 5f, outline)
-    }
-
-    private fun drawPixelDog(canvas: Canvas, p: Float, outline: Int, body: Int, light: Int) {
-        pixelRect(canvas, 0f, 0f, p, -9f, -4f, 4f, 9f, outline)
-        pixelRect(canvas, 0f, 0f, p, 5f, -4f, 4f, 9f, outline)
-        pixelRect(canvas, 0f, 0f, p, -8f, -3f, 2f, 7f, body)
-        pixelRect(canvas, 0f, 0f, p, 6f, -3f, 2f, 7f, body)
-        pixelRect(canvas, 0f, 0f, p, -7f, -5f, 14f, 11f, outline)
-        pixelRect(canvas, 0f, 0f, p, -6f, -4f, 12f, 9f, body)
-        pixelRect(canvas, 0f, 0f, p, -4f, 1f, 8f, 4f, light)
-        pixelRect(canvas, 0f, 0f, p, -4f, -1f, 2f, 2f, Color.rgb(38, 43, 45))
-        pixelRect(canvas, 0f, 0f, p, 3f, -1f, 2f, 2f, Color.rgb(38, 43, 45))
-        pixelRect(canvas, 0f, 0f, p, -1f, 3f, 2f, 2f, outline)
-        pixelRect(canvas, 0f, 0f, p, -5f, 7f, 10f, 4f, outline)
-        pixelRect(canvas, 0f, 0f, p, -3f, 7f, 2f, 4f, body)
-        pixelRect(canvas, 0f, 0f, p, 2f, 7f, 2f, 4f, body)
-        pixelRect(canvas, 0f, 0f, p, 8f, 2f, 5f, 2f, outline)
-        pixelRect(canvas, 0f, 0f, p, 12f, 1f, 3f, 3f, body)
-    }
-
-    private fun drawPixelBunny(canvas: Canvas, p: Float, outline: Int, body: Int, light: Int) {
-        pixelRect(canvas, 0f, 0f, p, -8f, -15f, 4f, 12f, outline)
-        pixelRect(canvas, 0f, 0f, p, 4f, -15f, 4f, 12f, outline)
-        pixelRect(canvas, 0f, 0f, p, -7f, -14f, 2f, 9f, light)
-        pixelRect(canvas, 0f, 0f, p, 5f, -14f, 2f, 9f, light)
-        pixelRect(canvas, 0f, 0f, p, -8f, -5f, 16f, 12f, outline)
-        pixelRect(canvas, 0f, 0f, p, -7f, -4f, 14f, 10f, body)
-        pixelRect(canvas, 0f, 0f, p, -4f, -1f, 2f, 2f, Color.rgb(38, 43, 45))
-        pixelRect(canvas, 0f, 0f, p, 2f, -1f, 2f, 2f, Color.rgb(38, 43, 45))
-        pixelRect(canvas, 0f, 0f, p, -1f, 2f, 2f, 1f, Color.rgb(255, 157, 180))
-        pixelRect(canvas, 0f, 0f, p, -5f, 7f, 10f, 4f, outline)
-        pixelRect(canvas, 0f, 0f, p, -3f, 7f, 2f, 4f, body)
-        pixelRect(canvas, 0f, 0f, p, 2f, 7f, 2f, 4f, body)
-        pixelRect(canvas, 0f, 0f, p, 8f, 2f, 4f, 2f, outline)
-        pixelRect(canvas, 0f, 0f, p, 11f, 1f, 3f, 2f, light)
-    }
-
-    private fun drawPixelHamster(canvas: Canvas, p: Float, outline: Int, body: Int, light: Int) {
-        pixelRect(canvas, 0f, 0f, p, -8f, -7f, 4f, 4f, outline)
-        pixelRect(canvas, 0f, 0f, p, 4f, -7f, 4f, 4f, outline)
-        pixelRect(canvas, 0f, 0f, p, -7f, -6f, 2f, 2f, light)
-        pixelRect(canvas, 0f, 0f, p, 5f, -6f, 2f, 2f, light)
-        pixelRect(canvas, 0f, 0f, p, -8f, -4f, 16f, 12f, outline)
-        pixelRect(canvas, 0f, 0f, p, -7f, -3f, 14f, 10f, body)
-        pixelRect(canvas, 0f, 0f, p, -6f, 1f, 4f, 4f, light)
-        pixelRect(canvas, 0f, 0f, p, 3f, 1f, 4f, 4f, light)
-        pixelRect(canvas, 0f, 0f, p, -4f, -1f, 2f, 2f, Color.rgb(38, 43, 45))
-        pixelRect(canvas, 0f, 0f, p, 3f, -1f, 2f, 2f, Color.rgb(38, 43, 45))
-        pixelRect(canvas, 0f, 0f, p, -1f, 3f, 2f, 1f, Color.rgb(255, 157, 180))
-        pixelRect(canvas, 0f, 0f, p, -5f, 7f, 10f, 4f, outline)
-        pixelRect(canvas, 0f, 0f, p, -3f, 7f, 2f, 4f, body)
-        pixelRect(canvas, 0f, 0f, p, 2f, 7f, 2f, 4f, body)
-    }
-
-    private fun pixelRect(canvas: Canvas, cx: Float, cy: Float, p: Float, x: Float, y: Float, w: Float, h: Float, color: Int) {
-        paint.color = Color.rgb(47, 57, 45)
-        canvas.drawRect(cx + x * p, cy + y * p, cx + (x + w) * p, cy + (y + h) * p, paint)
-    }
-
-    private fun pixelPath(canvas: Canvas, p: Float, points: FloatArray, color: Int) {
-        paint.color = Color.rgb(47, 57, 45)
-        val path = Path()
-        path.moveTo(points[0] * p, points[1] * p)
-        var i = 2
-        while (i < points.size) {
-            path.lineTo(points[i] * p, points[i + 1] * p)
-            i += 2
-        }
-        path.close()
-        canvas.drawPath(path, paint)
-    }
-
-    private fun drawPet(canvas: Canvas, now: Long) {
-        drawPixelPet(canvas, now)
-        return
-
-        // The previous soft mascot renderer is intentionally kept below as a
-        // fallback reference while the game moves to its LCD/pixel-pet style.
-        val playTop = dp(77f)
-        val playBottom = statsTop()
-        val seconds = (now - animationStart) / 1000f
-        val bob = sin(seconds * 2.1f) * dp(4f)
-        val cx = width * .5f
-        val reactionBob = when (activeAction) {
-            Action.PLAY -> sin(seconds * 13f) * dp(7f)
-            Action.FEED -> sin(seconds * 9f) * dp(3f)
-            else -> 0f
-        }
-        val cy = (playTop + playBottom) * .54f + bob + reactionBob
-        val stageScale = when (pet.stage) {
-            "BABY" -> .86f
-            "YOUNG" -> .92f
-            "TEEN" -> .98f
-            "EVOLVED" -> 1.04f
-            else -> 1f
-        }
-        val scale = min(width / dp(390f), 1.08f) * stageScale
-
-        paint.color = Color.argb(70, 80, 38, 90)
-        canvas.drawOval(RectF(cx - dp(76f) * scale, cy + dp(87f) * scale, cx + dp(76f) * scale, cy + dp(111f) * scale), paint)
-
-        drawTail(canvas, cx, cy, scale)
-        drawAnimalEars(canvas, cx, cy, scale)
-
-        // A dark outline and one flat body color make this feel more like a classic virtual pet.
-        paint.color = pet.kind.dark
-        canvas.drawOval(RectF(cx - dp(101f) * scale, cy - dp(91f) * scale, cx + dp(101f) * scale, cy + dp(103f) * scale), paint)
-        paint.color = pet.kind.primary
-        canvas.drawOval(RectF(cx - dp(92f) * scale, cy - dp(82f) * scale, cx + dp(92f) * scale, cy + dp(94f) * scale), paint)
-
-        paint.color = pet.kind.light
-        canvas.drawOval(RectF(cx - dp(56f) * scale, cy + dp(18f) * scale, cx + dp(56f) * scale, cy + dp(78f) * scale), paint)
-        drawAnimalFeatures(canvas, cx, cy, scale)
-        drawEvolutionFeatures(canvas, cx, cy, scale)
-
-        val eyeY = cy - dp(25f) * scale
-        paint.color = pet.kind.dark
-        if (activeAction == Action.SLEEP) {
-            paint.style = Paint.Style.STROKE
-            paint.strokeWidth = dp(4f) * scale
-            paint.strokeCap = Paint.Cap.ROUND
-            canvas.drawArc(RectF(cx - dp(55f) * scale, eyeY - dp(4f) * scale, cx - dp(25f) * scale, eyeY + dp(13f) * scale), 15f, 150f, false, paint)
-            canvas.drawArc(RectF(cx + dp(25f) * scale, eyeY - dp(4f) * scale, cx + dp(55f) * scale, eyeY + dp(13f) * scale), 15f, 150f, false, paint)
-            paint.style = Paint.Style.FILL
-        } else {
-            canvas.drawOval(RectF(cx - dp(55f) * scale, eyeY - dp(15f) * scale, cx - dp(25f) * scale, eyeY + dp(17f) * scale), paint)
-            canvas.drawOval(RectF(cx + dp(25f) * scale, eyeY - dp(15f) * scale, cx + dp(55f) * scale, eyeY + dp(17f) * scale), paint)
-            paint.color = Color.WHITE
-            canvas.drawCircle(cx - dp(45f) * scale, eyeY - dp(7f) * scale, dp(5f) * scale, paint)
-            canvas.drawCircle(cx + dp(35f) * scale, eyeY - dp(7f) * scale, dp(5f) * scale, paint)
-        }
-
-        paint.color = Color.argb(120, 255, 255, 255)
-        canvas.drawOval(RectF(cx - dp(62f) * scale, cy - dp(70f) * scale, cx - dp(34f) * scale, cy - dp(51f) * scale), paint)
-
-        textPaint.textAlign = Paint.Align.CENTER
-        textPaint.typeface = PaintTypeface.bold()
-        textPaint.textSize = dp(14f)
-        textPaint.color = Color.WHITE
-        canvas.drawText(pet.name.uppercase(), cx, cy + dp(128f), textPaint)
-    }
-
-    private fun drawAnimalEars(canvas: Canvas, cx: Float, cy: Float, scale: Float) {
-        paint.color = pet.kind.dark
-        when (pet.kind) {
-            PetKind.CAT, PetKind.DRAGON -> {
-                val left = Path().apply { moveTo(cx - dp(54f) * scale, cy - dp(61f) * scale); lineTo(cx - dp(94f) * scale, cy - dp(116f) * scale); lineTo(cx - dp(80f) * scale, cy - dp(34f) * scale); close() }
-                val right = Path().apply { moveTo(cx + dp(54f) * scale, cy - dp(61f) * scale); lineTo(cx + dp(94f) * scale, cy - dp(116f) * scale); lineTo(cx + dp(80f) * scale, cy - dp(34f) * scale); close() }
-                canvas.drawPath(left, paint)
-                canvas.drawPath(right, paint)
-                paint.color = pet.kind.light
-                canvas.drawCircle(cx - dp(72f) * scale, cy - dp(68f) * scale, dp(11f) * scale, paint)
-                canvas.drawCircle(cx + dp(72f) * scale, cy - dp(68f) * scale, dp(11f) * scale, paint)
-            }
-            PetKind.DOG -> {
-                canvas.drawOval(RectF(cx - dp(105f) * scale, cy - dp(48f) * scale, cx - dp(47f) * scale, cy + dp(50f) * scale), paint)
-                canvas.drawOval(RectF(cx + dp(47f) * scale, cy - dp(48f) * scale, cx + dp(105f) * scale, cy + dp(50f) * scale), paint)
-                paint.color = pet.kind.primary
-                canvas.drawOval(RectF(cx - dp(96f) * scale, cy - dp(42f) * scale, cx - dp(54f) * scale, cy + dp(42f) * scale), paint)
-                canvas.drawOval(RectF(cx + dp(54f) * scale, cy - dp(42f) * scale, cx + dp(96f) * scale, cy + dp(42f) * scale), paint)
-            }
-            PetKind.BUNNY -> {
-                canvas.drawOval(RectF(cx - dp(88f) * scale, cy - dp(145f) * scale, cx - dp(43f) * scale, cy - dp(28f) * scale), paint)
-                canvas.drawOval(RectF(cx + dp(43f) * scale, cy - dp(145f) * scale, cx + dp(88f) * scale, cy - dp(28f) * scale), paint)
-                paint.color = pet.kind.light
-                canvas.drawOval(RectF(cx - dp(78f) * scale, cy - dp(133f) * scale, cx - dp(54f) * scale, cy - dp(39f) * scale), paint)
-                canvas.drawOval(RectF(cx + dp(54f) * scale, cy - dp(133f) * scale, cx + dp(78f) * scale, cy - dp(39f) * scale), paint)
-            }
-            PetKind.HAMSTER -> {
-                canvas.drawCircle(cx - dp(70f) * scale, cy - dp(60f) * scale, dp(34f) * scale, paint)
-                canvas.drawCircle(cx + dp(70f) * scale, cy - dp(60f) * scale, dp(34f) * scale, paint)
-                paint.color = pet.kind.light
-                canvas.drawCircle(cx - dp(70f) * scale, cy - dp(60f) * scale, dp(23f) * scale, paint)
-                canvas.drawCircle(cx + dp(70f) * scale, cy - dp(60f) * scale, dp(23f) * scale, paint)
-            }
-        }
-    }
-
-    private fun drawAnimalFeatures(canvas: Canvas, cx: Float, cy: Float, scale: Float) {
-        when (pet.kind) {
-            PetKind.CAT -> {
-                paint.color = pet.kind.light
-                paint.style = Paint.Style.STROKE
-                paint.strokeWidth = dp(2f) * scale
-                canvas.drawLine(cx - dp(43f) * scale, cy + dp(19f) * scale, cx - dp(86f) * scale, cy + dp(12f) * scale, paint)
-                canvas.drawLine(cx + dp(43f) * scale, cy + dp(19f) * scale, cx + dp(86f) * scale, cy + dp(12f) * scale, paint)
-                paint.style = Paint.Style.FILL
-                paint.color = Color.rgb(255, 153, 178)
-                canvas.drawCircle(cx, cy + dp(15f) * scale, dp(6f) * scale, paint)
-            }
-            PetKind.DOG -> {
-                paint.color = Color.rgb(255, 239, 205)
-                canvas.drawCircle(cx - dp(23f) * scale, cy + dp(13f) * scale, dp(25f) * scale, paint)
-                canvas.drawCircle(cx + dp(23f) * scale, cy + dp(13f) * scale, dp(25f) * scale, paint)
-                paint.color = Color.rgb(67, 44, 67)
-                canvas.drawCircle(cx, cy + dp(10f) * scale, dp(8f) * scale, paint)
-            }
-            PetKind.BUNNY -> {
-                paint.color = Color.rgb(255, 150, 180)
-                canvas.drawCircle(cx, cy + dp(18f) * scale, dp(6f) * scale, paint)
-            }
-            PetKind.HAMSTER -> {
-                paint.color = Color.argb(175, 255, 145, 166)
-                canvas.drawCircle(cx - dp(63f) * scale, cy + dp(21f) * scale, dp(17f) * scale, paint)
-                canvas.drawCircle(cx + dp(63f) * scale, cy + dp(21f) * scale, dp(17f) * scale, paint)
-            }
-            PetKind.DRAGON -> {
-                paint.color = Color.rgb(255, 231, 132)
-                canvas.drawCircle(cx - dp(60f) * scale, cy - dp(105f) * scale, dp(8f) * scale, paint)
-                canvas.drawCircle(cx + dp(60f) * scale, cy - dp(105f) * scale, dp(8f) * scale, paint)
-                paint.color = Color.rgb(255, 237, 189)
-                canvas.drawCircle(cx, cy + dp(16f) * scale, dp(6f) * scale, paint)
-            }
-        }
-    }
-
-    private fun drawEvolutionFeatures(canvas: Canvas, cx: Float, cy: Float, scale: Float) {
-        if (pet.generation == 0) return
-        when (pet.kind) {
-            PetKind.CAT -> {
-                paint.color = pet.kind.dark
-                paint.strokeWidth = dp(4f) * scale
-                paint.strokeCap = Paint.Cap.ROUND
-                paint.style = Paint.Style.STROKE
-                canvas.drawLine(cx - dp(18f) * scale, cy - dp(62f) * scale, cx - dp(11f) * scale, cy - dp(74f) * scale, paint)
-                canvas.drawLine(cx, cy - dp(60f) * scale, cx, cy - dp(76f) * scale, paint)
-                canvas.drawLine(cx + dp(18f) * scale, cy - dp(62f) * scale, cx + dp(11f) * scale, cy - dp(74f) * scale, paint)
-                paint.style = Paint.Style.FILL
-            }
-            PetKind.DOG -> {
-                paint.color = Color.rgb(73, 151, 176)
-                canvas.drawRoundRect(RectF(cx - dp(67f) * scale, cy + dp(51f) * scale, cx + dp(67f) * scale, cy + dp(66f) * scale), dp(6f), dp(6f), paint)
-                paint.color = Color.rgb(255, 224, 102)
-                canvas.drawCircle(cx, cy + dp(58f) * scale, dp(7f) * scale, paint)
-            }
-            PetKind.BUNNY -> {
-                paint.color = Color.rgb(255, 219, 92)
-                canvas.drawCircle(cx + dp(68f) * scale, cy - dp(83f) * scale, dp(9f) * scale, paint)
-                textPaint.textAlign = Paint.Align.CENTER
-                textPaint.textSize = dp(13f) * scale
-                textPaint.color = Color.WHITE
-                canvas.drawText("✦", cx + dp(68f) * scale, cy - dp(78f) * scale, textPaint)
-            }
-            PetKind.HAMSTER -> {
-                paint.color = Color.rgb(255, 219, 92)
-                canvas.drawOval(RectF(cx - dp(78f) * scale, cy - dp(5f) * scale, cx - dp(65f) * scale, cy + dp(22f) * scale), paint)
-                canvas.drawOval(RectF(cx + dp(65f) * scale, cy - dp(5f) * scale, cx + dp(78f) * scale, cy + dp(22f) * scale), paint)
-            }
-            PetKind.DRAGON -> {
-                paint.color = pet.kind.dark
-                val leftWing = Path().apply { moveTo(cx - dp(72f) * scale, cy + dp(45f) * scale); lineTo(cx - dp(132f) * scale, cy - dp(12f) * scale); lineTo(cx - dp(120f) * scale, cy + dp(69f) * scale); close() }
-                val rightWing = Path().apply { moveTo(cx + dp(72f) * scale, cy + dp(45f) * scale); lineTo(cx + dp(132f) * scale, cy - dp(12f) * scale); lineTo(cx + dp(120f) * scale, cy + dp(69f) * scale); close() }
-                canvas.drawPath(leftWing, paint)
-                canvas.drawPath(rightWing, paint)
-                paint.color = pet.kind.primary
-                canvas.drawCircle(cx - dp(112f) * scale, cy + dp(21f) * scale, dp(7f) * scale, paint)
-                canvas.drawCircle(cx + dp(112f) * scale, cy + dp(21f) * scale, dp(7f) * scale, paint)
-            }
-        }
-    }
-
-    private fun drawTail(canvas: Canvas, cx: Float, cy: Float, scale: Float) {
-        if (pet.kind == PetKind.BUNNY || pet.kind == PetKind.HAMSTER) {
-            paint.color = Color.WHITE
-            canvas.drawCircle(cx + dp(94f) * scale, cy + dp(57f) * scale, dp(24f) * scale, paint)
-            return
-        }
-        val tail = Path().apply {
-            moveTo(cx + dp(72f) * scale, cy + dp(42f) * scale)
-            cubicTo(cx + dp(135f) * scale, cy + dp(88f) * scale, cx + dp(135f) * scale, cy - dp(15f) * scale, cx + dp(103f) * scale, cy - dp(2f) * scale)
-        }
-        paint.style = Paint.Style.STROKE
-        paint.strokeCap = Paint.Cap.ROUND
-        paint.strokeWidth = dp(24f) * scale
-        paint.color = pet.kind.dark
-        canvas.drawPath(tail, paint)
-        paint.strokeWidth = dp(14f) * scale
-        paint.color = pet.kind.primary
-        canvas.drawPath(tail, paint)
-        paint.style = Paint.Style.FILL
+        val name = pet.name.uppercase()
+        val nameWidth = textPaint.measureText(name) + dp(26f)
+        val nameBaseline = min(bottom - dp(14f), groundY + dp(34f))
+        paint.color = Color.argb(225, 255, 255, 255)
+        canvas.drawRoundRect(
+            RectF(centerX - nameWidth / 2f, nameBaseline - dp(21f), centerX + nameWidth / 2f, nameBaseline + dp(7f)),
+            dp(14f), dp(14f), paint
+        )
+        textPaint.color = pet.kind.dark
+        canvas.drawText(name, centerX, nameBaseline, textPaint)
     }
 
     private fun drawActionEffects(canvas: Canvas, now: Long) {
@@ -971,7 +654,7 @@ private class PetGameView(context: Context) : View(context) {
         when (event.actionMasked) {
             MotionEvent.ACTION_DOWN -> {
                 pressedAction = buttons.firstOrNull { it.rect.contains(event.x, event.y) }?.action
-                if (newPetRect().contains(event.x, event.y) || headerResetRect().contains(event.x, event.y)) pressedAction = null
+                if (newPetRect().contains(event.x, event.y) || headerResetRect().contains(event.x, event.y) || headerUpdateRect().contains(event.x, event.y)) pressedAction = null
                 invalidate()
                 return true
             }
@@ -979,6 +662,7 @@ private class PetGameView(context: Context) : View(context) {
                 val action = buttons.firstOrNull { it.rect.contains(event.x, event.y) }?.action
                 if (action != null && action == pressedAction) perform(action)
                 if (newPetRect().contains(event.x, event.y) || headerResetRect().contains(event.x, event.y)) confirmNewPet()
+                if (headerUpdateRect().contains(event.x, event.y)) checkForUpdates(showNoUpdate = true)
                 pressedAction = null
                 invalidate()
                 return true
@@ -1028,6 +712,8 @@ private class PetGameView(context: Context) : View(context) {
 
     private fun headerResetRect(): RectF = RectF(width - dp(114f), dp(18f), width - dp(20f), dp(57f))
 
+    private fun headerUpdateRect(): RectF = RectF(width - dp(214f), dp(21f), width - dp(121f), dp(54f))
+
     private fun editName() {
         val input = EditText(appContext).apply {
             setText(setupName)
@@ -1076,13 +762,21 @@ private class PetGameView(context: Context) : View(context) {
         lastSaved = SystemClock.uptimeMillis()
     }
 
+    fun checkForUpdates(showNoUpdate: Boolean) {
+        AppUpdateManager(appContext).check(showNoUpdate)
+    }
+
     private fun dp(value: Float): Float = value * resources.displayMetrics.density
 
     private data class ActionButton(val action: Action, val rect: RectF)
 
     private enum class Action { FEED, PLAY, BATH, SLEEP }
 
-    private enum class MotionMode { IDLE, WALK }
+    companion object {
+        private const val WALK_FRAME_COUNT = 12
+    }
+
+    private enum class MotionMode { REST, WALK, CURIOUS, STAND }
 
     private enum class PetKind(val label: String, val light: Int, val primary: Int, val dark: Int) {
         CAT("CAT", Color.rgb(239, 220, 190), Color.rgb(189, 139, 105), Color.rgb(108, 74, 75)),

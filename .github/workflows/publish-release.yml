@@ -1,0 +1,20 @@
+name: Publish signed APK release
+
+on:
+  push:
+    tags:
+      - "v*"
+
+permissions:
+  contents: write
+
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Publish the cloud-signed APK attached to this version
+        uses: softprops/action-gh-release@v2
+        with:
+          files: updates/zoeys-pocket-pet-${{ github.ref_name }}.apk
+          fail_on_unmatched_files: true
