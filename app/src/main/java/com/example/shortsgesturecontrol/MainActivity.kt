@@ -245,7 +245,6 @@ private class PetGameView(context: Context, private val updateManager: AppUpdate
         PetKind.HAMSTER to R.drawable.companion_hamster,
         PetKind.DRAGON to R.drawable.companion_dragon
     )
-    private val walkSequenceCache = HashMap<PetKind, IntArray>()
     private val buttons = ArrayList<ActionButton>()
     private var message = "Hi Zoey! I'm so happy to see you!"
     private var messageUntil = 0L
@@ -402,17 +401,6 @@ private class PetGameView(context: Context, private val updateManager: AppUpdate
             }
         }
         return bitmap.height
-    }
-
-    private fun walkSequence(kind: PetKind): IntArray = walkSequenceCache.getOrPut(kind) {
-        when (kind) {
-            // These cels contain several airborne crouches. Skip those poses
-            // for ground walking; otherwise the paws cycle without useful
-            // forward travel and the pet reads as hopping in place.
-            PetKind.BUNNY -> intArrayOf(11, 0, 1, 2, 8, 9, 10)
-            PetKind.DRAGON -> intArrayOf(0, 1, 2, 3, 7, 8, 9, 10, 11)
-            else -> IntArray(WALK_FRAME_COUNT) { it }
-        }
     }
 
     private fun preloadWalkFrames(kind: PetKind) {
@@ -694,7 +682,6 @@ private class PetGameView(context: Context, private val updateManager: AppUpdate
         val sceneRight = width - dp(18f)
         val dt = ((now - motionLastAt).coerceAtLeast(0L)).coerceAtMost(50L) / 1000f
         motionLastAt = now
-        val sequence = walkSequence(pet.kind)
         var gaitBlend = 1f
         if (now >= motionModeUntil && activeAction == null) {
             motionMode = when (motionMode) {
@@ -781,9 +768,9 @@ private class PetGameView(context: Context, private val updateManager: AppUpdate
                 walkFrameElapsedMs += dt * 1000f * gaitBlend
                 while (walkFrameElapsedMs >= WALK_FRAME_DURATION_MS) {
                     walkFrameElapsedMs -= WALK_FRAME_DURATION_MS
-                    walkFrameIndex = (walkFrameIndex + 1) % sequence.size
+                    walkFrameIndex = (walkFrameIndex + 1) % WALK_FRAME_COUNT
                 }
-                sequence[walkFrameIndex]
+                walkFrameIndex
             }
             activeAction == Action.PLAY -> ((now / 120L) % WALK_FRAME_COUNT).toInt()
             motionMode == MotionMode.CURIOUS -> if (((now - motionModeStartedAt) / 360L) % 2L == 0L) 2 else 0
@@ -1075,8 +1062,8 @@ private class PetGameView(context: Context, private val updateManager: AppUpdate
     private enum class Action { FEED, PLAY, BATH, SLEEP }
 
     companion object {
-        private const val WALK_FRAME_COUNT = 12
-        private const val WALK_FRAME_DURATION_MS = 72f
+        private const val WALK_FRAME_COUNT = 8
+        private const val WALK_FRAME_DURATION_MS = 78f
     }
 
     private enum class MotionMode { REST, WALK, CURIOUS, STAND }
