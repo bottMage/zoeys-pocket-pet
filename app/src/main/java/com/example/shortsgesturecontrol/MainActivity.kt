@@ -35,6 +35,7 @@ import org.json.JSONObject
 import java.io.File
 import java.net.HttpURLConnection
 import java.net.URL
+import java.util.ArrayList
 import kotlin.math.abs
 import kotlin.math.cos
 import kotlin.math.max
@@ -183,6 +184,7 @@ private class PetGameView(context: Context) : View(context) {
     private val textPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply { typeface = PaintTypeface.rounded() }
     private val pet = PetState(prefs)
     private val petArtCache = HashMap<PetKind, Bitmap>()
+    private val petArtworkBottomCache = HashMap<PetKind, Int>()
     private val walkFrameCache = HashMap<String, Bitmap>()
     private val walkFrameBottomCache = HashMap<String, Int>()
     private val petArtResources = mapOf(
@@ -207,6 +209,8 @@ private class PetGameView(context: Context) : View(context) {
     private var motionModeUntil = 0L
     private var motionLastAt = SystemClock.uptimeMillis()
     private var motionModeStartedAt = motionLastAt
+    private var walkFrameIndex = 0
+    private var walkFrameElapsedMs = 0f
     private var setupMode = !pet.created
     private var setupKind = pet.kind
     private var setupName = pet.name
@@ -226,10 +230,96 @@ private class PetGameView(context: Context) : View(context) {
         return walkFrameCache.getOrPut(cacheKey) {
             val resourceId = resources.getIdentifier("walk_${kind.name.lowercase()}_$index", "drawable", context.packageName)
             check(resourceId != 0) { "Missing walk frame: $cacheKey" }
-            BitmapFactory.decodeResource(resources, resourceId)
+            val bitmap = BitmapFactory.decodeResource(resources, resourceId)
                 ?: error("Unable to decode walk frame: $cacheKey")
+            removeDetachedLeftArtifacts(bitmap)
         }
     }
+
+    /**
+     * A few generated cels contain a disconnected sliver at the far left of
+     * the image. It reads as a second paw/ear flashing beside the pet. Keep
+     * the complete cel, but remove only a sizeable component that sits just
+     * outside the primary silhouette; small disconnected antialiasing marks
+     * and internal details remain untouched.
+     */
+    private fun removeDetachedLeftArtifacts(bitmap: Bitmap): Bitmap {
+        val width = bitmap.width
+        val height = bitmap.height
+        val pixels = IntArray(width * height)
+        bitmap.getPixels(pixels, 0, width, 0, 0, width, height)
+        val labels = IntArray(pixels.size)
+        val components = ArrayList<AlphaComponent>()
+        val stack = IntArray(pixels.size)
+        var componentId = 0
+        var largestId = -1
+        var largestArea = 0
+
+        for (start in pixels.indices) {
+            if (Color.alpha(pixels[start]) == 0 || labels[start] != 0) continue
+            componentId += 1
+            var stackSize = 0
+            stack[stackSize++] = start
+            labels[start] = componentId
+            var area = 0
+            var minX = width
+            var maxX = -1
+
+            while (stackSize > 0) {
+                val index = stack[--stackSize]
+                val x = index % width
+                val y = index / width
+                area += 1
+                minX = min(minX, x)
+                maxX = max(maxX, x)
+
+                for (dy in -1..1) {
+                    for (dx in -1..1) {
+                        if (dx == 0 && dy == 0) continue
+                        val nx = x + dx
+                        val ny = y + dy
+                        if (nx !in 0 until width || ny !in 0 until height) continue
+                        val neighbor = ny * width + nx
+                        if (Color.alpha(pixels[neighbor]) == 0 || labels[neighbor] != 0) continue
+                        labels[neighbor] = componentId
+                        stack[stackSize++] = neighbor
+                    }
+                }
+            }
+
+            components.add(AlphaComponent(area, minX, maxX))
+            if (area > largestArea) {
+                largestArea = area
+                largestId = componentId
+            }
+        }
+
+        if (largestId < 0) return bitmap
+        val primary = components[largestId - 1]
+        val removeIds = components.mapIndexedNotNull { index, component ->
+            val id = index + 1
+            val isDetachedLeftPiece = id != largestId &&
+                component.area >= 80 &&
+                component.minX < primary.minX &&
+                component.maxX <= primary.minX + 24
+            if (isDetachedLeftPiece) id else null
+        }
+        if (removeIds.isEmpty()) return bitmap
+
+        val cleaned = pixels.copyOf()
+        for (index in cleaned.indices) {
+            if (labels[index] in removeIds) cleaned[index] = Color.TRANSPARENT
+        }
+        return Bitmap.createBitmap(width, height, Bitmap.Config.ARGB_8888).also {
+            it.setPixels(cleaned, 0, width, 0, 0, width, height)
+        }
+    }
+
+    private data class AlphaComponent(
+        val area: Int,
+        val minX: Int,
+        val maxX: Int
+    )
 
     /**
      * Each animation cel has a transparent border.  Anchor the lowest visible
@@ -240,14 +330,21 @@ private class PetGameView(context: Context) : View(context) {
         val index = frame.mod(WALK_FRAME_COUNT)
         val cacheKey = "${kind.name}_$index"
         return walkFrameBottomCache.getOrPut(cacheKey) {
-            val bitmap = walkFrameArtwork(kind, index)
-            for (y in bitmap.height - 1 downTo 0) {
-                for (x in 0 until bitmap.width) {
-                    if (Color.alpha(bitmap.getPixel(x, y)) != 0) return@getOrPut y + 1
-                }
-            }
-            bitmap.height
+            visibleBitmapBottom(walkFrameArtwork(kind, index))
         }
+    }
+
+    private fun petArtworkBottom(kind: PetKind): Int = petArtworkBottomCache.getOrPut(kind) {
+        visibleBitmapBottom(petArtwork(kind))
+    }
+
+    private fun visibleBitmapBottom(bitmap: Bitmap): Int {
+        for (y in bitmap.height - 1 downTo 0) {
+            for (x in 0 until bitmap.width) {
+                if (Color.alpha(bitmap.getPixel(x, y)) != 0) return y + 1
+            }
+        }
+        return bitmap.height
     }
 
     init {
@@ -487,6 +584,12 @@ private class PetGameView(context: Context) : View(context) {
                 MotionMode.STAND -> 1100L + (now % 800L)
             }
             motionModeStartedAt = now
+            if (motionMode == MotionMode.WALK) {
+                // Always enter the gait on a planted, readable pose. Using
+                // uptime as the frame clock made a new walk start mid-stride.
+                walkFrameIndex = 0
+                walkFrameElapsedMs = 0f
+            }
             if (motionMode == MotionMode.WALK && motionX <= .08f) motionDirection = 1f
             if (motionMode == MotionMode.WALK && motionX >= .92f) motionDirection = -1f
         }
@@ -515,6 +618,7 @@ private class PetGameView(context: Context) : View(context) {
         val centerX = minCenterX + motionX * (maxCenterX - minCenterX)
         val seconds = (now - animationStart) / 1000f
         val walking = motionMode == MotionMode.WALK && activeAction == null
+        val resting = motionMode == MotionMode.REST && activeAction == null
         // Keep the feet planted while resting.  A whole-body vertical bob reads
         // as hovering, especially against the simple ground in this scene.
         val idleBob = 0f
@@ -532,10 +636,22 @@ private class PetGameView(context: Context) : View(context) {
         paint.color = Color.WHITE
         // 10 fps gives the drawn cels time to read as a deliberate gait rather
         // than a frantic, glitchy run.
-        val frame = if (walking || activeAction == Action.PLAY) ((now / 105L) % WALK_FRAME_COUNT).toInt() else 0
-        val bitmap = walkFrameArtwork(pet.kind, frame)
+        val frame = when {
+            walking -> {
+                walkFrameElapsedMs += dt * 1000f
+                while (walkFrameElapsedMs >= WALK_FRAME_DURATION_MS) {
+                    walkFrameElapsedMs -= WALK_FRAME_DURATION_MS
+                    walkFrameIndex = (walkFrameIndex + 1) % WALK_FRAME_COUNT
+                }
+                walkFrameIndex
+            }
+            activeAction == Action.PLAY -> ((now / 120L) % WALK_FRAME_COUNT).toInt()
+            motionMode == MotionMode.CURIOUS -> if (((now - motionModeStartedAt) / 360L) % 2L == 0L) 2 else 0
+            else -> 0
+        }
+        val bitmap = if (resting) petArtwork(pet.kind) else walkFrameArtwork(pet.kind, frame)
         val artScale = artWidth / bitmap.width
-        val visibleBottom = walkFrameBottom(pet.kind, frame)
+        val visibleBottom = if (resting) petArtworkBottom(pet.kind) else walkFrameBottom(pet.kind, frame)
         val artTop = rootY - visibleBottom * artScale
         val artBottom = artTop + bitmap.height * artScale
         val artRect = RectF(centerX - artWidth / 2f, artTop, centerX + artWidth / 2f, artBottom)
@@ -819,6 +935,7 @@ private class PetGameView(context: Context) : View(context) {
 
     companion object {
         private const val WALK_FRAME_COUNT = 12
+        private const val WALK_FRAME_DURATION_MS = 120f
     }
 
     private enum class MotionMode { REST, WALK, CURIOUS, STAND }
