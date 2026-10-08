@@ -94,6 +94,11 @@ class MainActivity : Activity() {
         super.onPause()
     }
 
+    override fun onResume() {
+        super.onResume()
+        if (::gameView.isInitialized) gameView.resumePendingInstall()
+    }
+
     override fun onDestroy() {
         if (::connectivityManager.isInitialized) connectivityManager.unregisterNetworkCallback(networkCallback)
         super.onDestroy()
@@ -168,6 +173,12 @@ class MainActivity : Activity() {
  */
 private class AppUpdateManager(private val context: Context) {
     private val mainHandler = Handler(Looper.getMainLooper())
+    private val updatePrefs = context.getSharedPreferences("zoey_update", Context.MODE_PRIVATE)
+
+    private fun updateFile(): File = File(
+        context.getExternalFilesDir(Environment.DIRECTORY_DOWNLOADS),
+        UPDATE_FILE_NAME
+    )
 
     fun check(showNoUpdate: Boolean) {
         Thread {
@@ -234,7 +245,7 @@ private class AppUpdateManager(private val context: Context) {
     }
 
     private fun download(url: String) {
-        val updateFile = File(context.getExternalFilesDir(Environment.DIRECTORY_DOWNLOADS), UPDATE_FILE_NAME)
+        val updateFile = updateFile()
         if (updateFile.exists()) updateFile.delete()
         val manager = context.getSystemService(Context.DOWNLOAD_SERVICE) as DownloadManager
         val request = DownloadManager.Request(Uri.parse(url))
@@ -245,37 +256,71 @@ private class AppUpdateManager(private val context: Context) {
             .setMimeType(APK_MIME_TYPE)
             .setNotificationVisibility(DownloadManager.Request.VISIBILITY_VISIBLE_NOTIFY_COMPLETED)
             .setDestinationInExternalFilesDir(context, Environment.DIRECTORY_DOWNLOADS, UPDATE_FILE_NAME)
-        val downloadId = manager.enqueue(request)
-        Toast.makeText(context, "Downloading update…", Toast.LENGTH_SHORT).show()
+        var downloadId = -1L
         val receiver = object : BroadcastReceiver() {
             override fun onReceive(receiverContext: Context, intent: Intent) {
                 if (intent.getLongExtra(DownloadManager.EXTRA_DOWNLOAD_ID, -1L) != downloadId) return
-                receiverContext.unregisterReceiver(this)
-                val query = DownloadManager.Query().setFilterById(downloadId)
-                manager.query(query).use { cursor ->
-                    if (!cursor.moveToFirst() || cursor.getInt(cursor.getColumnIndexOrThrow(DownloadManager.COLUMN_STATUS)) != DownloadManager.STATUS_SUCCESSFUL) {
-                        Toast.makeText(context, "The update download didn't finish.", Toast.LENGTH_SHORT).show()
-                        return
-                    }
-                }
-                // A DownloadManager broadcast is not allowed to launch UI on
-                // recent Android versions.  Returning to the active Activity
-                // makes the system package installer a permitted user-visible
-                // handoff instead of leaving a file in Downloads.
-                mainHandler.post { install(updateFile) }
+                try { receiverContext.unregisterReceiver(this) } catch (_: Exception) { }
+                mainHandler.post { finishDownload(manager, downloadId) }
             }
         }
         val filter = IntentFilter(DownloadManager.ACTION_DOWNLOAD_COMPLETE)
-        ContextCompat.registerReceiver(context, receiver, filter, ContextCompat.RECEIVER_NOT_EXPORTED)
+        // DownloadManager is a system sender. NOT_EXPORTED can silently miss
+        // this broadcast on newer Android versions.
+        ContextCompat.registerReceiver(context, receiver, filter, ContextCompat.RECEIVER_EXPORTED)
+        try {
+            downloadId = manager.enqueue(request)
+            updatePrefs.edit().putLong(PENDING_DOWNLOAD_ID, downloadId).apply()
+            Toast.makeText(context, "Downloading update…", Toast.LENGTH_SHORT).show()
+        } catch (error: Exception) {
+            try { context.unregisterReceiver(receiver) } catch (_: Exception) { }
+            Toast.makeText(context, "The update download could not start.", Toast.LENGTH_LONG).show()
+        }
+    }
+
+    fun resumePendingInstall() {
+        val pendingPermission = updatePrefs.getBoolean(PENDING_PERMISSION, false)
+        if (pendingPermission) {
+            updatePrefs.edit().remove(PENDING_PERMISSION).apply()
+            if (Build.VERSION.SDK_INT < Build.VERSION_CODES.O || context.packageManager.canRequestPackageInstalls()) {
+                install(updateFile())
+            }
+            return
+        }
+
+        val downloadId = updatePrefs.getLong(PENDING_DOWNLOAD_ID, -1L)
+        if (downloadId == -1L) return
+        val manager = context.getSystemService(Context.DOWNLOAD_SERVICE) as DownloadManager
+        finishDownload(manager, downloadId)
+    }
+
+    private fun finishDownload(manager: DownloadManager, downloadId: Long) {
+        val updateFile = updateFile()
+        manager.query(DownloadManager.Query().setFilterById(downloadId)).use { cursor ->
+            if (!cursor.moveToFirst()) return
+            when (cursor.getInt(cursor.getColumnIndexOrThrow(DownloadManager.COLUMN_STATUS))) {
+                DownloadManager.STATUS_SUCCESSFUL -> {
+                    updatePrefs.edit().remove(PENDING_DOWNLOAD_ID).apply()
+                    install(updateFile)
+                }
+                DownloadManager.STATUS_FAILED -> {
+                    updatePrefs.edit().remove(PENDING_DOWNLOAD_ID).apply()
+                    Toast.makeText(context, "The update download didn't finish.", Toast.LENGTH_SHORT).show()
+                }
+            }
+        }
     }
 
     private fun install(file: File) {
+        if (!file.exists()) return
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O && !context.packageManager.canRequestPackageInstalls()) {
+            updatePrefs.edit().putBoolean(PENDING_PERMISSION, true).apply()
             context.startActivity(Intent(android.provider.Settings.ACTION_MANAGE_UNKNOWN_APP_SOURCES, Uri.parse("package:${context.packageName}"))
                 .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK))
-            Toast.makeText(context, "Allow installs from Zoey's Pocket Pet, then check for updates again.", Toast.LENGTH_LONG).show()
+            Toast.makeText(context, "Allow installs, then the installer will open automatically.", Toast.LENGTH_LONG).show()
             return
         }
+        updatePrefs.edit().remove(PENDING_PERMISSION).apply()
         val apkUri = FileProvider.getUriForFile(context, "${context.packageName}.files", file)
         context.startActivity(Intent(Intent.ACTION_VIEW)
             .setDataAndType(apkUri, "application/vnd.android.package-archive")
@@ -287,11 +332,14 @@ private class AppUpdateManager(private val context: Context) {
         const val LATEST_RELEASE_URL = "https://api.github.com/repos/bottMage/zoeys-pocket-pet/releases/latest"
         const val UPDATE_FILE_NAME = "zoeys-pocket-pet-update.apk"
         const val APK_MIME_TYPE = "application/vnd.android.package-archive"
+        const val PENDING_DOWNLOAD_ID = "pending_download_id"
+        const val PENDING_PERMISSION = "pending_install_permission"
     }
 }
 
 private class PetGameView(context: Context, private val onPetCreated: () -> Unit) : View(context) {
     private val appContext = context
+    private val updateManager = AppUpdateManager(appContext)
     private val prefs = context.getSharedPreferences("zoey_pet", Context.MODE_PRIVATE)
     private val paint = Paint(Paint.ANTI_ALIAS_FLAG)
     private val textPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply { typeface = PaintTypeface.rounded() }
@@ -1195,7 +1243,11 @@ private class PetGameView(context: Context, private val onPetCreated: () -> Unit
     fun petName(): String = pet.name
 
     fun checkForUpdates(showNoUpdate: Boolean) {
-        AppUpdateManager(appContext).check(showNoUpdate)
+        updateManager.check(showNoUpdate)
+    }
+
+    fun resumePendingInstall() {
+        updateManager.resumePendingInstall()
     }
 
     private fun dp(value: Float): Float = value * resources.displayMetrics.density
