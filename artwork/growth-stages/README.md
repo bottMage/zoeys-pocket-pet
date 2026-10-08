@@ -10,7 +10,8 @@ should take about a week; adult life is therefore one week too.
 actual whole-body cel 0, production bounds, growth sizes and colour matrices.
 They are not Android screenshots or separate runtime animation assets. Growth
 retains the existing silhouette/animation: the changes are size and modest
-coat colour, not newly drawn adult anatomy. Baby colour is unchanged. Size is
+coat colour, not newly drawn adult anatomy. Baby colour is unchanged; young and
+adult colour shifts are deliberately visible in the UI. Size is
 55%, 77% and 100% of the safely fitted adult width, so phone scenery fitting
 cannot collapse all stages to the same size. Original PNG artwork is untouched.
 

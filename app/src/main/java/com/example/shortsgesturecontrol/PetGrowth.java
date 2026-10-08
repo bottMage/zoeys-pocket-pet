@@ -35,16 +35,19 @@ public final class PetGrowth {
         return -1.4*Math.pow(Math.max(0,Math.sin(seconds*.7)),8);
     }
     public static float[] colorMatrix(String kind,Stage stage) {
-        double amount=stage==Stage.ADULT?1:stage==Stage.YOUNG?.45:0;
+        // Baby keeps the original palette.  The later stages need a clear
+        // visual identity on a phone screen, so the colour change is staged
+        // rather than being a barely perceptible filter.
+        double amount=stage==Stage.ADULT?1.8:stage==Stage.YOUNG?.9:0;
         double hue;
-        switch(kind){case "cat":hue=-7;break;case "dog":hue=-4;break;
-            case "bunny":hue=9;break;case "hamster":hue=-3;break;default:hue=7;}
+        switch(kind){case "cat":hue=-10;break;case "dog":hue=8;break;
+            case "bunny":hue=15;break;case "hamster":hue=-8;break;default:hue=-10;}
         double angle=Math.toRadians(hue*amount),c=Math.cos(angle),s=Math.sin(angle);
         double[][] rotation={
             {.213+.787*c-.213*s,.715-.715*c-.715*s,.072-.072*c+.928*s},
             {.213-.213*c+.143*s,.715+.285*c+.140*s,.072-.072*c-.283*s},
             {.213-.213*c-.787*s,.715-.715*c+.715*s,.072+.928*c+.072*s}};
-        double saturation=1+.10*amount,contrast=1+.09*amount;
+        double saturation=1+.17*amount,contrast=1+.11*amount;
         double[] luminance={.213,.715,.072};float[] matrix=new float[20];
         for(int row=0;row<3;row++) {
             for(int col=0;col<3;col++) {

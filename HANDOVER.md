@@ -10,7 +10,7 @@ lengthens evolution, and care actions must not affect other needs.
 
 `PetGrowth.java`/`PetLife.java` own the testable timeline, care speed, palette and
 size rules. Main uses the v41 whole-pet renderer, not the rejected limb/3D rigs.
-Artwork pixels are unchanged; young/adult differences are size and modest colour,
+Artwork pixels are unchanged; young/adult differences are size and clearly staged coat colour,
 not separate new anatomical drawings. Adult size is fitted first, then baby
 55% and young 77%, retaining the complete silhouette clipping protections.
 Egg paths/gradients and coat filters are cached. All five stages/species reviews
