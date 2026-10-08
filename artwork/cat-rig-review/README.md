@@ -5,6 +5,28 @@ prototypes. This candidate keeps every PNG unchanged. It is still a 2D layered
 rig, not a professionally authored 3D character or replacement cel animation.
 Do not claim the animation quality has been approved.
 
+## Front-pair standing pose trial
+
+Latest review: `front-pair-standing.png`, a neutral standing render, not another
+walk clip. Near paw moves rearward 24px relative to its bind pose and its shoulder
+rises 6px; far paw moves forward 4px. Front paws are under their shoulders with
+29px separation instead of 57px. Bind bone lengths, art, phase and rear standing
+geometry are unchanged. Front recoveries guard their narrower standing reach,
+including interrupted movement; contacts stay planted until a recovery step.
+Rear recovery settings, travel speed, torso/head/tail, UI, progress and updater
+are unchanged. `CatLayersCheck` additionally tests neutral paw/shoulder spacing
+and unchanged rear meshes. Await standing-pose approval before a new walk clip.
+
+Render just the still using the compiled classes below:
+
+```bash
+/workspace/.toolchains/jdk-21/bin/java -Djava.awt.headless=true \
+  -cp /workspace/artifacts/cat-rig-review/classes CatRigPreview \
+  app/src/main/res/drawable-nodpi /workspace/artifacts/cat-standing-review/still 1 roam
+cp /workspace/artifacts/cat-standing-review/still/frame-000.png \
+  artwork/cat-rig-review/front-pair-standing.png
+```
+
 ## Near foreleg placement trial
 
 Latest review: `foreleg-placement-preview.mp4`. The complete near foreleg is

@@ -47,8 +47,8 @@ public final class CatMotion {
     private double urgency(int index) {
         CatRig.Leg l=CatRig.LEGS[index];
         double length=Math.hypot(l.kx-l.hx,l.ky-l.hy)+Math.hypot(l.fx-l.kx,l.fy-l.ky);
-        double height=l.fy-l.hy-3;
-        double reach=Math.sqrt(Math.max(0,length*length-height*height))-(l.fx-l.hx)-3;
+        double height=l.fy-l.shoulderY()-3;
+        double reach=Math.sqrt(Math.max(0,length*length-height*height))-(l.restFootX()-l.hx)-3;
         return feet[index].x-reach;
     }
 
@@ -75,17 +75,30 @@ public final class CatMotion {
         if(valid && walking && edge-moved<.04) { walking=false;remaining=.9; }
         if(!valid) speed=0;
         // A recovery finishes even when an action or a stop pauses travel.
-        for(Foot f:feet) {
-            if(f.grounded && walking && !action && moved>0 && distance>=f.nextLift) {
+        for(int index=0;index<feet.length;index++) {
+            Foot f=feet[index];CatRig.Leg l=CatRig.LEGS[index];
+            double local=f.contact+distance;
+            // The more upright front stance has less horizontal reach. Finish
+            // with a real recovery step, not a stretched joint or a dragged paw,
+            // if braking/an action would leave it outside its standing reach.
+            boolean front=l==CatRig.FRONT_NEAR || l==CatRig.FRONT_FAR;
+            boolean frontLimit=front && Math.abs(l.restFootX()+local-l.hx)>=l.standingReach;
+            boolean normalStep=walking && !action && moved>0 && distance>=f.nextLift;
+            if(f.grounded && (normalStep || frontLimit)) {
                 f.grounded=false;f.age=0;f.from=f.contact;
                 f.duration=Math.max(.24,Math.min(.42,CatRig.STRIDE*(1-CatRig.STANCE)/Math.max(30,speed)));
-                double local=f.contact+distance;
-                f.duration=Math.max(f.duration,Math.min(.65,1.875*Math.max(0,local+CatRig.STRIDE*CatRig.STANCE*.5)/(260-1.875*speed)));
+                double recoverySpeed=front?240:260;
+                f.duration=Math.max(f.duration,Math.min(.65,1.875*Math.max(0,local+CatRig.STRIDE*CatRig.STANCE*.5)/(recoverySpeed-1.875*speed)));
                 double accelerating=Math.min(f.duration,Math.max(0,(SPEED-speed)/ACCELERATION));
                 double forecast=speed*f.duration+ACCELERATION*(f.duration*accelerating-.5*accelerating*accelerating);
+                boolean settling=target==0;
+                if(settling) {
+                    double braking=Math.min(f.duration,speed/ACCELERATION);
+                    forecast=speed*braking-.5*ACCELERATION*braking*braking;
+                }
                 double predicted=distance+Math.min(edge-moved,forecast);
-                f.to=-CatRig.STRIDE*CatRig.STANCE*.5-predicted;
-                f.nextLift+=CatRig.STRIDE;
+                f.to=(settling?0:-CatRig.STRIDE*CatRig.STANCE*.5)-predicted;
+                f.nextLift=settling?predicted+CatRig.STRIDE/2:f.nextLift+CatRig.STRIDE;
             }
             if(!f.grounded) {
                 f.age+=dt;

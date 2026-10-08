@@ -59,10 +59,10 @@ public class CatRigPreview {
     static void verify() {
         double maxSlip=0;
         for(CatRig.Leg l:CatRig.LEGS) {
-            double world=l.fx+CatRig.footX(.1);
+            double world=l.restFootX()+CatRig.footX(.1);
             for(int i=1;i<=500;i++) {
                 double p=.1+i*.001;
-                maxSlip=Math.max(maxSlip,Math.abs(l.fx+CatRig.footX(p)-(p-.1)*CatRig.STRIDE-world));
+                maxSlip=Math.max(maxSlip,Math.abs(l.restFootX()+CatRig.footX(p)-(p-.1)*CatRig.STRIDE-world));
             }
             double meshAnchor=Double.NaN;
             for(int i=0;i<=500;i++) {

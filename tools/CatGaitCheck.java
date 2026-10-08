@@ -4,7 +4,7 @@ import com.example.shortsgesturecontrol.CatRig;
 /** Production pose/contact regression, including starts, braking and actions. */
 public class CatGaitCheck {
     static double world(CatMotion m,int i,double lane,double scale) {
-        double x=CatRig.LEGS[i].fx+m.feet[i].x-256;
+        double x=CatRig.LEGS[i].restFootX()+m.feet[i].x-256;
         return m.position*lane/scale+(m.facingRight?-x:x);
     }
     static void checkRun(int fps,double lane) {
@@ -29,7 +29,7 @@ public class CatGaitCheck {
                 if(foot.grounded&&foot.lift!=0) throw new AssertionError("Floating planted foot");
                 double jump=Math.hypot(foot.x-previousX[i],foot.lift-previousLift[i]);
                 if(jump>maxJump) {maxJump=jump;jumpAt=String.format("t=%.3f leg=%s x=%.2f->%.2f lift=%.2f->%.2f",t,l.name,previousX[i],foot.x,previousLift[i],foot.lift);}
-                double reach=Math.hypot(l.fx+foot.x-m.pose.x(l.hx,l.hy),l.fy-foot.lift-m.pose.y(l.hx,l.hy));
+                double reach=Math.hypot(l.restFootX()+foot.x-m.pose.x(l.hx,l.shoulderY()),l.fy-foot.lift-m.pose.y(l.hx,l.shoulderY()));
                 double length=Math.hypot(l.kx-l.hx,l.ky-l.hy)+Math.hypot(l.fx-l.kx,l.fy-l.ky);
                 if(reach-length>maxReach) {maxReach=reach-length;reachAt=String.format("t=%.3f leg=%s x=%.2f",t,l.name,foot.x);}
                 CatRig.skin(l,m.pose,foot.x,foot.lift);

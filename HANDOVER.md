@@ -2,6 +2,32 @@
 
 ## Existing-artwork cat polish candidate — not published (2026-10-08)
 
+### Front-pair standing pose trial — still review first
+
+After the relocation preview, the user still found the front pair wrong and
+approved correcting their resting posture before another animation clip. Keep
+the PNGs and bind geometry; repose the near paw 24px rearward (146->170), raise
+its shoulder 6px, and bring the far paw 4px forward (203->199). Both resting
+paws are now within 3px of their shoulders; front-paw spacing is 29px versus
+28px shoulder spacing, rather than the earlier 57px paw gap. Original bone
+lengths, bend direction and gait phases are retained. Rear standing meshes,
+head, torso, tail, layer order, UI, saves and updates are untouched.
+
+The upright front stance needs a reach guard: a front paw takes a timed recovery
+step before exceeding its standing reach, including during braking/actions.
+It does not slide into place or stretch a bone. Front recovery speed reserves
+more headroom for vertical movement; rear recovery parameters are unchanged.
+Contact, reach, speed, attachment and long-running roaming checks pass at
+30/60/120 fps. `assembleDebug` and `lintDebug` pass with the original signing
+certificate verified; these are not visual approval or a phone performance
+measurement.
+
+Latest review is `artwork/cat-rig-review/front-pair-standing.png`, rendered from
+the same production pose/mesh math. Preserve all earlier preview videos. Show
+this standing still to the user before making another walk clip. This is an
+unpublished source trial: public APK/version/manifest stay v39. Do not tag or
+publish a release without approval of the visual candidate.
+
 ### Near foreleg placement trial
 
 The user liked the depth correction but found the foremost leg too far forward,

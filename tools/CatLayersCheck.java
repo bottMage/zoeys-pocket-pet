@@ -10,6 +10,27 @@ public class CatLayersCheck {
         if(fore.hx-fore.x!=68||fore.kx-fore.hx!=7||fore.fx-fore.hx!=-26
             ||fore.width!=120||fore.height!=153||fore.hy!=331||fore.ky!=396||fore.fy!=453||fore.offset!=0)
             throw new AssertionError("Foreleg relocation changed proportions or gait phase");
+        for(CatRig.Leg l:new CatRig.Leg[]{CatRig.FRONT_NEAR,CatRig.FRONT_FAR}) {
+            if(Math.abs(l.restFootX()-l.hx)>3) throw new AssertionError("Resting front paw is not below shoulder");
+            if(l.shoulderRise<0||l.shoulderRise>6) throw new AssertionError("Front shoulder left chest attachment");
+            CatRig.skin(l,new CatRig.Pose(),0,0);
+            int bottom=CatRig.ROWS*(CatRig.COLS+1)*2;
+            if(Math.abs(l.vertices[bottom]-(l.x+l.restFootShift))>.0001||l.vertices[bottom+1]!=CatRig.GROUND)
+                throw new AssertionError("Neutral front paw placement changed");
+        }
+        double pawGap=CatRig.FRONT_FAR.restFootX()-fore.restFootX();
+        if(Math.abs(pawGap-(CatRig.FRONT_FAR.hx-fore.hx))>3)
+            throw new AssertionError("Front paws spread beyond shoulder spacing");
+        for(CatRig.Leg l:new CatRig.Leg[]{CatRig.REAR_NEAR,CatRig.REAR_FAR}) {
+            if(l.restFootShift!=0||l.shoulderRise!=0) throw new AssertionError("Rear resting pose changed");
+            CatRig.skin(l,new CatRig.Pose(),0,0);
+            for(int row=0;row<=CatRig.ROWS;row++) for(int col=0;col<=CatRig.COLS;col++) {
+                int v=(row*(CatRig.COLS+1)+col)*2;
+                if(Math.abs(l.vertices[v]-(l.x+l.width*col/CatRig.COLS))>.0001
+                    ||Math.abs(l.vertices[v+1]-(l.y+l.height*row/CatRig.ROWS))>.0001)
+                    throw new AssertionError("Rear standing mesh changed");
+            }
+        }
         if(CatLayers.FAR_LEGS.length!=2||CatLayers.NEAR_LEGS.length!=2) throw new AssertionError("Depth groups");
         boolean[] seen=new boolean[4];
         for(int i:CatLayers.FAR_LEGS) {
@@ -47,7 +68,7 @@ public class CatLayersCheck {
                     for(int col=0;col<=CatRig.COLS;col++) {
                         double x=l.x+l.width*col/CatRig.COLS;
                         int v=(row*(CatRig.COLS+1)+col)*2;
-                        maxRootError=Math.max(maxRootError,Math.hypot(l.vertices[v]-m.pose.x(x,y),l.vertices[v+1]-m.pose.y(x,y)));
+                        maxRootError=Math.max(maxRootError,Math.hypot(l.vertices[v]-m.pose.x(x,y-l.shoulderRise),l.vertices[v+1]-m.pose.y(x,y-l.shoulderRise)));
                     }
                 }
                 for(int v=0;v<l.vertices.length;v+=2) maxEnvelope=Math.max(maxEnvelope,Math.abs(l.vertices[v]-256));

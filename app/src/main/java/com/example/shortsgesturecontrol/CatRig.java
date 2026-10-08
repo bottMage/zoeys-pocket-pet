@@ -5,10 +5,10 @@ public final class CatRig {
     public static final int COLS = 8, ROWS = 20;
     public static final double STRIDE = 48, STANCE = .68;
     public static final double GROUND = 468;
-    // Move the complete near foreleg 34px rearward under the chest, not the throat.
-    // Translate the artwork, shoulder, elbow and paw together to retain its shape.
-    public static final Leg FRONT_NEAR = new Leg("front_near",104,315,120,153,172,331,179,396,146,453,0);
-    public static final Leg FRONT_FAR = new Leg("front_far",165,315,90,153,200,331,220,394,203,453,.5);
+    // Keep the artwork's bind joints, but repose the front pair so both paws
+    // stand under their shoulders instead of leaving the near paw reaching ahead.
+    public static final Leg FRONT_NEAR = new Leg("front_near",104,315,120,153,172,331,179,396,146,453,0,24,6);
+    public static final Leg FRONT_FAR = new Leg("front_far",165,315,90,153,200,331,220,394,203,453,.5,-4,0);
     // Seat the upper thigh inside the painted haunch instead of exposing its
     // closed attachment cap to the right of the torso silhouette.
     public static final Leg REAR_NEAR = new Leg("rear_near",312,300,116,168,342,317,378,388,376,453,.25);
@@ -36,15 +36,27 @@ public final class CatRig {
     public static final class Leg {
         public final String name;
         public final double x,y,width,height,hx,hy,kx,ky,fx,fy,offset;
+        /** Neutral-pose offsets, separate from the source artwork's bind joints. */
+        public final double restFootShift,shoulderRise,standingReach;
         public final float[] vertices = new float[(COLS+1)*(ROWS+1)*2];
         private final double upper,lower,bend;
         Leg(String name,double x,double y,double width,double height,
             double hx,double hy,double kx,double ky,double fx,double fy,double offset) {
+            this(name,x,y,width,height,hx,hy,kx,ky,fx,fy,offset,0,0);
+        }
+        Leg(String name,double x,double y,double width,double height,
+            double hx,double hy,double kx,double ky,double fx,double fy,double offset,
+            double restFootShift,double shoulderRise) {
             this.name=name; this.x=x; this.y=y; this.width=width; this.height=height;
             this.hx=hx; this.hy=hy; this.kx=kx; this.ky=ky; this.fx=fx; this.fy=fy; this.offset=offset;
+            this.restFootShift=restFootShift;this.shoulderRise=shoulderRise;
             upper=Math.hypot(kx-hx,ky-hy); lower=Math.hypot(fx-kx,fy-ky);
             bend=Math.signum((fx-hx)*(ky-hy)-(fy-hy)*(kx-hx));
+            double standingHeight=fy-shoulderY(),length=upper+lower;
+            standingReach=Math.sqrt(Math.max(0,length*length-standingHeight*standingHeight))-3;
         }
+        public double restFootX() { return fx+restFootShift; }
+        public double shoulderY() { return hy-shoulderRise; }
     }
 
     /** Left-facing local foot offset. During stance dx/dcycle == STRIDE:
@@ -73,8 +85,8 @@ public final class CatRig {
         skin(l,pose,footX(cycle+l.offset)*blend,footLift(cycle+l.offset)*blend);
     }
     public static void skin(Leg l,Pose pose,double footX,double lift) {
-        double fx=l.fx+footX,fy=l.fy-lift;
-        double hx=pose.x(l.hx,l.hy),hy=pose.y(l.hx,l.hy);
+        double fx=l.restFootX()+footX,fy=l.fy-lift;
+        double hx=pose.x(l.hx,l.shoulderY()),hy=pose.y(l.hx,l.shoulderY());
         double dx=fx-hx,dy=fy-hy,dist=Math.hypot(dx,dy);
         double d=Math.max(Math.abs(l.upper-l.lower)+.001,Math.min(dist,l.upper+l.lower-.001));
         double along=(l.upper*l.upper-l.lower*l.lower+d*d)/(2*d);
@@ -99,8 +111,8 @@ public final class CatRig {
                 // The attachment patch belongs to the torso, not to a rotating
                 // closed limb cap. Only the exposed limb articulates below it.
                 double rootWeight=1-smooth((y-l.hy-3)/25);
-                vx+=(pose.x(x,y)-vx)*rootWeight;
-                vy+=(pose.y(x,y)-vy)*rootWeight;
+                vx+=(pose.x(x,y-l.shoulderRise)-vx)*rootWeight;
+                vy+=(pose.y(x,y-l.shoulderRise)-vy)*rootWeight;
                 // Third bone keeps the paw level through contact and recovery.
                 vx+=(fx+x-l.fx-vx)*pawWeight;
                 vy+=(fy+y-l.fy-vy)*pawWeight;
