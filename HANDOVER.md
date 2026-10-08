@@ -2,6 +2,18 @@
 
 ## Existing-artwork cat polish candidate — not published (2026-10-08)
 
+### Near foreleg placement trial
+
+The user liked the depth correction but found the foremost leg too far forward,
+then authorized moving it back a little. `FRONT_NEAR` moves 34 authoring pixels
+rearward: artwork x 70->104, shoulder 138->172, elbow 145->179, paw 112->146.
+All y coordinates, dimensions, bone lengths, bend, gait phase and controller
+parameters are unchanged. Other limbs, tail, head, artwork, layering, saves and
+updates are unchanged. `CatLayersCheck` checks chest placement and retained
+relative joint/art coordinates. Latest review is
+`artwork/cat-rig-review/foreleg-placement-preview.mp4`; keep prior previews.
+This remains an unpublished trial awaiting visual approval, not a new release.
+
 ### Depth/attachment correction after first preview
 
 The user found the improved timing better but correctly identified that every

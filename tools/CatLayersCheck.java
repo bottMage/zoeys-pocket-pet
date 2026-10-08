@@ -5,6 +5,11 @@ import com.example.shortsgesturecontrol.CatMotion;
 /** Structural depth/attachment checks, not an assertion of visual approval. */
 public class CatLayersCheck {
     public static void main(String[] args) {
+        CatRig.Leg fore=CatRig.FRONT_NEAR;
+        if(fore.hx<170||fore.hx>190) throw new AssertionError("Near foreleg shoulder is outside chest placement");
+        if(fore.hx-fore.x!=68||fore.kx-fore.hx!=7||fore.fx-fore.hx!=-26
+            ||fore.width!=120||fore.height!=153||fore.hy!=331||fore.ky!=396||fore.fy!=453||fore.offset!=0)
+            throw new AssertionError("Foreleg relocation changed proportions or gait phase");
         if(CatLayers.FAR_LEGS.length!=2||CatLayers.NEAR_LEGS.length!=2) throw new AssertionError("Depth groups");
         boolean[] seen=new boolean[4];
         for(int i:CatLayers.FAR_LEGS) {

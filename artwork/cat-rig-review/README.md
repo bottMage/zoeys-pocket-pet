@@ -5,6 +5,15 @@ prototypes. This candidate keeps every PNG unchanged. It is still a 2D layered
 rig, not a professionally authored 3D character or replacement cel animation.
 Do not claim the animation quality has been approved.
 
+## Near foreleg placement trial
+
+Latest review: `foreleg-placement-preview.mp4`. The complete near foreleg is
+translated 34 authoring pixels rearward under the chest. Shoulder, elbow, paw
+and art canvas move together; proportions, height, phase and motion controller
+stay unchanged. All other parts and the depth/attachment correction stay as
+before. Keep `depth-connected-preview.mp4` as the previous placement comparison.
+`CatLayersCheck` also guards the chest placement and preserved relative geometry.
+
 ## Depth/attachment revision
 
 Latest review: `depth-connected-preview.mp4`. Keep the first
@@ -59,7 +68,7 @@ mkdir -p /workspace/artifacts/cat-rig-review/classes
 ffmpeg -hide_banner -loglevel error -framerate 60 \
   -i /workspace/artifacts/cat-rig-review/final/frame-%03d.png \
   -c:v libx264 -crf 18 -pix_fmt yuv420p -movflags +faststart \
-  artwork/cat-rig-review/depth-connected-preview.mp4
+  artwork/cat-rig-review/foreleg-placement-preview.mp4
 ```
 
 Tests check rendered paw height, planted contact drift, reach, recovery speeds,
