@@ -315,6 +315,9 @@ private class PetGameView(context: Context, private val onPetCreated: () -> Unit
     // Keep the cloud copy authoritative for that first restore so a new pet
     // cannot overwrite the existing account backup.
     private var preferCloudRestore = !pet.created
+    // Never write to Firestore until the first read for this session succeeds.
+    // This protects an existing backup from onPause(), retries, and setup UI.
+    private var cloudSyncReady = false
     private var menuOpen = false
     private var menuAnimationStart = 0L
     private var menuOpening = true
@@ -1140,6 +1143,7 @@ private class PetGameView(context: Context, private val onPetCreated: () -> Unit
         when (result) {
             CloudRestoreResult.RESTORED -> {
                 preferCloudRestore = false
+                cloudSyncReady = true
                 setupMode = false
                 setupKind = pet.kind
                 setupName = pet.name
@@ -1148,12 +1152,14 @@ private class PetGameView(context: Context, private val onPetCreated: () -> Unit
             }
             CloudRestoreResult.NO_CLOUD_BACKUP -> {
                 preferCloudRestore = false
+                cloudSyncReady = true
                 if (hasCreatedPet()) {
                     Toast.makeText(appContext, "Google backup enabled.", Toast.LENGTH_SHORT).show()
                 }
             }
             CloudRestoreResult.KEPT_LOCAL -> {
                 preferCloudRestore = false
+                cloudSyncReady = true
                 invalidate()
                 Toast.makeText(appContext, "Google backup synced.", Toast.LENGTH_SHORT).show()
             }
@@ -1208,10 +1214,12 @@ private class PetGameView(context: Context, private val onPetCreated: () -> Unit
 
         fun signOut() {
             auth.signOut()
+            cloudSyncReady = false
         }
 
         fun upload() {
             val user = auth.currentUser ?: return
+            if (!cloudSyncReady || !pet.hasCreatedPet()) return
             if (pet.savedAt == 0L) pet.save()
             val data = pet.cloudData().toMutableMap()
             data["updatedAt"] = FieldValue.serverTimestamp()
@@ -1231,6 +1239,7 @@ private class PetGameView(context: Context, private val onPetCreated: () -> Unit
                 .get()
                 .addOnSuccessListener { snapshot ->
                     if (!snapshot.exists()) {
+                        cloudSyncReady = true
                         if (pet.hasCreatedPet()) upload()
                         onComplete(CloudRestoreResult.NO_CLOUD_BACKUP)
                     } else {
@@ -1240,18 +1249,27 @@ private class PetGameView(context: Context, private val onPetCreated: () -> Unit
                             cloudHasPet && (preferCloud || cloudSavedAt > pet.savedAt) -> {
                                 pet.loadCloud(snapshot.data.orEmpty())
                                 pet.save()
+                                cloudSyncReady = true
                                 onComplete(CloudRestoreResult.RESTORED)
                             }
                             pet.hasCreatedPet() && pet.savedAt > cloudSavedAt -> {
+                                cloudSyncReady = true
                                 upload()
                                 onComplete(CloudRestoreResult.KEPT_LOCAL)
                             }
-                            cloudHasPet -> onComplete(CloudRestoreResult.KEPT_LOCAL)
+                            cloudHasPet -> {
+                                cloudSyncReady = true
+                                onComplete(CloudRestoreResult.KEPT_LOCAL)
+                            }
                             pet.hasCreatedPet() -> {
+                                cloudSyncReady = true
                                 upload()
                                 onComplete(CloudRestoreResult.NO_CLOUD_BACKUP)
                             }
-                            else -> onComplete(CloudRestoreResult.NO_CLOUD_BACKUP)
+                            else -> {
+                                cloudSyncReady = true
+                                onComplete(CloudRestoreResult.NO_CLOUD_BACKUP)
+                            }
                         }
                     }
                 }
