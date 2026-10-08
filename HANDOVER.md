@@ -42,10 +42,10 @@ process-restart migration, egg backup, full archives/history and action wiring.
 and `lintDebug` pass (zero errors, 132 existing/general warnings). The real-model
 save/restore and lifecycle checks also pass against the final compiled classes.
 APK package/version 44.0 and unchanged signing certificate are verified after
-SHA-256 will be recorded after the v44 release asset is verified.
+SHA-256 is `508937e15a416fa68bc1a697396ebd193f5e4275be4ef78e8556e288ef58d7e6`.
 Publish the signed asset first
 and only advance `update.json` after its public availability/checksum are checked.
-Release commit and tag `v44` will be pushed to `main`. The public
+Release commit and tag `v44` were pushed to `main`. The public
 APK returns 200, its downloaded checksum matches the signed build, and latest
 release resolves to v42. Root `update.json` now advertises 42 after verification.
 See `artwork/growth-stages/README.md` for behavior, checks and limitations.
