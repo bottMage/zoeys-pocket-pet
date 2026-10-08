@@ -307,7 +307,7 @@ private class PetGameView(context: Context) : View(context) {
         val titleCenter = (titleLeft + titleRight) / 2f
 
         textPaint.textAlign = Paint.Align.LEFT
-        textPaint.color = Color.WHITE
+        textPaint.color = Color.rgb(68, 43, 90)
         textPaint.textSize = dp(22f)
         textPaint.typeface = PaintTypeface.bold()
         textPaint.textSize = min(dp(22f), dp(22f) * titleWidth / textPaint.measureText("ZOEY'S POCKET PET"))
@@ -315,7 +315,7 @@ private class PetGameView(context: Context) : View(context) {
         canvas.drawText("ZOEY'S POCKET PET", titleCenter, dp(38f), textPaint)
         textPaint.textSize = dp(13f)
         textPaint.typeface = PaintTypeface.rounded()
-        textPaint.color = Color.argb(220, 255, 255, 255)
+        textPaint.color = Color.rgb(105, 78, 116)
         textPaint.textSize = min(dp(13f), dp(13f) * titleWidth / textPaint.measureText("A tiny friend made just for you"))
         canvas.drawText("A tiny friend made just for you", titleCenter, dp(59f), textPaint)
 
@@ -338,9 +338,9 @@ private class PetGameView(context: Context) : View(context) {
 
         // Keep the installed build visible without taking space from the pet.
         textPaint.textAlign = Paint.Align.RIGHT
-        textPaint.textSize = dp(9f)
+        textPaint.textSize = dp(10f)
         textPaint.typeface = PaintTypeface.bold()
-        textPaint.color = Color.argb(190, 255, 255, 255)
+        textPaint.color = Color.rgb(105, 78, 116)
         canvas.drawText("v${BuildConfig.VERSION_NAME}", width - dp(22f), dp(74f), textPaint)
     }
 
@@ -626,21 +626,27 @@ private class PetGameView(context: Context) : View(context) {
         val top = statsTop()
         paint.color = Color.argb(245, 255, 249, 246)
         canvas.drawRoundRect(RectF(0f, top, width.toFloat(), height.toFloat()), dp(28f), dp(28f), paint)
+
+        val reset = newPetRect()
+        val title = "${pet.name.uppercase()}'S LITTLE CHECK-IN"
+        val titleLeft = dp(22f)
+        val titleRight = reset.left - dp(14f)
+        val titleWidth = (titleRight - titleLeft).coerceAtLeast(dp(100f))
         textPaint.textAlign = Paint.Align.LEFT
         textPaint.typeface = PaintTypeface.bold()
         textPaint.textSize = dp(17f)
         textPaint.color = Color.rgb(68, 43, 90)
-        canvas.drawText("${pet.name.uppercase()}'S LITTLE CHECK-IN", dp(22f), top + dp(29f), textPaint)
+        textPaint.textSize = min(dp(17f), dp(17f) * titleWidth / textPaint.measureText(title))
+        canvas.drawText(title, titleLeft, top + dp(29f), textPaint)
         textPaint.textSize = dp(12f)
         textPaint.typeface = PaintTypeface.rounded()
-        textPaint.color = Color.rgb(130, 102, 140)
+        textPaint.color = Color.rgb(111, 82, 123)
         canvas.drawText("${pet.stage} • AGE ${pet.ageLabel} • CARE ${pet.carePercent.roundToInt()}%", dp(22f), top + dp(48f), textPaint)
         textPaint.textSize = dp(11f)
         textPaint.typeface = PaintTypeface.bold()
         textPaint.color = Color.rgb(105, 78, 116)
         canvas.drawText("EVOLUTION ${pet.evolutionProgress.roundToInt()}% • ${pet.evolutionHint}", dp(22f), top + dp(61f), textPaint)
 
-        val reset = newPetRect()
         paint.color = Color.rgb(244, 226, 238)
         canvas.drawRoundRect(reset, dp(15f), dp(15f), paint)
         textPaint.textAlign = Paint.Align.CENTER
@@ -681,7 +687,7 @@ private class PetGameView(context: Context) : View(context) {
 
     private fun drawActions(canvas: Canvas) {
         buttons.clear()
-        val top = height - dp(150f)
+        val top = height - dp(160f)
         val gap = dp(10f)
         val left = dp(18f)
         val buttonWidth = (width - left * 2f - gap) / 2f
@@ -695,23 +701,26 @@ private class PetGameView(context: Context) : View(context) {
             val y = top + (i / 2) * (buttonHeight + gap)
             val rect = RectF(x, y, x + buttonWidth, y + buttonHeight)
             buttons.add(ActionButton(actions[i], rect))
+            // Draw a full, offset shadow behind the button instead of the
+            // heavy horizontal strip that made the controls look cluttered.
+            paint.color = Color.argb(24, 67, 39, 95)
+            canvas.drawRoundRect(RectF(rect.left, rect.top + dp(4f), rect.right, rect.bottom + dp(7f)), dp(18f), dp(18f), paint)
             paint.color = if (pressedAction == actions[i]) Color.rgb(255, 255, 255) else fills[i]
             canvas.drawRoundRect(rect, dp(18f), dp(18f), paint)
-            paint.color = Color.argb(32, 67, 39, 95)
-            canvas.drawRoundRect(RectF(rect.left, rect.bottom - dp(5f), rect.right, rect.bottom + dp(2f)), dp(5f), dp(5f), paint)
             textPaint.typeface = PaintTypeface.bold()
             textPaint.textSize = dp(17f)
             textPaint.color = Color.rgb(76, 49, 94)
-            val glyphWidth = textPaint.measureText(glyphs[i])
+            val iconSlot = dp(22f)
             textPaint.textSize = dp(13f)
             val labelWidth = textPaint.measureText(labels[i])
-            val groupWidth = glyphWidth + dp(14f) + labelWidth
+            val groupWidth = iconSlot + dp(12f) + labelWidth
             val groupLeft = rect.centerX() - groupWidth / 2f
-            textPaint.textAlign = Paint.Align.LEFT
             textPaint.textSize = dp(17f)
-            canvas.drawText(glyphs[i], groupLeft, rect.top + dp(35f), textPaint)
+            textPaint.textAlign = Paint.Align.CENTER
+            canvas.drawText(glyphs[i], groupLeft + iconSlot / 2f, rect.top + dp(35f), textPaint)
             textPaint.textSize = dp(13f)
-            canvas.drawText(labels[i], groupLeft + glyphWidth + dp(14f), rect.top + dp(34f), textPaint)
+            textPaint.textAlign = Paint.Align.LEFT
+            canvas.drawText(labels[i], groupLeft + iconSlot + dp(12f), rect.top + dp(35f), textPaint)
         }
     }
 
