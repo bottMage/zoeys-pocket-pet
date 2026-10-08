@@ -349,6 +349,7 @@ private class PetGameView(context: Context, private val onPetCreated: () -> Unit
     private var motionMode = MotionMode.REST
     private var motionModeUntil = 0L
     private var motionLastAt = SystemClock.uptimeMillis()
+    private var catLastFrameNanos = 0L
     private var motionModeStartedAt = motionLastAt
     private var setupMode = !pet.created
     private var setupKind = pet.kind
@@ -408,7 +409,7 @@ private class PetGameView(context: Context, private val onPetCreated: () -> Unit
         check(resourceId != 0) { "Missing cat rig part: $part" }
         BitmapFactory.decodeResource(resources, resourceId, BitmapFactory.Options().apply {
             inScaled = false
-            if (part == "head") inSampleSize = 2
+            if (part == "head") inSampleSize = if (dp(320f) * 195f / CAT_RIG_SIZE <= 275f) 4 else 2
         }) ?: error("Unable to decode cat rig part: $part")
     }
 
@@ -416,6 +417,17 @@ private class PetGameView(context: Context, private val onPetCreated: () -> Unit
         isFocusable = true
         pet.updateFromClock()
         motionModeUntil = motionLastAt + 1800L
+        if (pet.created && pet.kind == PetKind.CAT) {
+            // Decode before the first animated draw, not during the first step.
+            for (part in arrayOf("body", "head", "tail", "front_near", "front_far", "rear_near", "rear_far")) catRigArtwork(part)
+        }
+    }
+
+    override fun onWindowVisibilityChanged(visibility: Int) {
+        super.onWindowVisibilityChanged(visibility)
+        // Background time belongs to progress simulation, not missed walk poses.
+        catLastFrameNanos = 0L
+        motionLastAt = SystemClock.uptimeMillis()
     }
 
     override fun onDraw(canvas: Canvas) {
@@ -722,8 +734,13 @@ private class PetGameView(context: Context, private val onPetCreated: () -> Unit
         val maxCenterX = sceneRight - visibleReach
         val travelRange = (maxCenterX - minCenterX).coerceAtLeast(0f)
         if (pet.kind == PetKind.CAT) {
-            catMotion.advance(dt.toDouble(), travelRange.toDouble(), (artWidth / CAT_RIG_SIZE).toDouble(), activeAction != null)
-            motionX = catMotion.position
+            val frameNanos = System.nanoTime()
+            val catDt = if (catLastFrameNanos == 0L) 0.0 else (frameNanos - catLastFrameNanos) / 1_000_000_000.0
+            catLastFrameNanos = frameNanos
+            catMotion.advance(catDt, travelRange.toDouble(), (artWidth / CAT_RIG_SIZE).toDouble(), activeAction != null)
+            motionX = catMotion.position.toFloat()
+        } else {
+            catLastFrameNanos = 0L
         }
         val centerX = minCenterX + motionX * travelRange
         // Keep the feet planted while resting.  A whole-body vertical bob reads
@@ -742,7 +759,7 @@ private class PetGameView(context: Context, private val onPetCreated: () -> Unit
         paint.isFilterBitmap = true
         paint.color = Color.WHITE
         if (pet.kind == PetKind.CAT) {
-            drawCatRig(canvas, centerX, rootY, artWidth, seconds, catMotion.facingRight)
+            drawCatRig(canvas, centerX, rootY, artWidth, catMotion.facingRight)
         } else {
             val bitmap = walkFrameArtwork(pet.kind, frame)
             val artScale = artWidth / bitmap.width
@@ -773,37 +790,39 @@ private class PetGameView(context: Context, private val onPetCreated: () -> Unit
         canvas.drawText(name, centerX, nameBaseline, textPaint)
     }
 
-    /** Continuous two-bone leg IK with a level paw bone and distance-based gait. */
+    /** Shared torso/neck/tail pose with world-planted paws and smooth recoveries. */
     private fun drawCatRig(
         canvas: Canvas,
         centerX: Float,
         groundY: Float,
         artWidth: Float,
-        seconds: Float,
         facingRight: Boolean
     ) {
         val scale = artWidth / CAT_RIG_SIZE
         val left = centerX - CAT_RIG_SIZE * scale / 2f
         val top = groundY - CAT_RIG_GROUND * scale
-        val phase = (catMotion.cycle * 6.283185307).toFloat()
-        val bodyY = CatRig.bodyY(catMotion.cycle, catMotion.blend.toDouble()).toFloat()
-        val tailWag = sin(seconds * 1.8f) * 1.2f + sin(phase + .45f) * 1.8f * catMotion.blend
-        val headNod = sin(seconds * 1.4f) * .25f + sin(phase * 2f + .4f) * .5f * catMotion.blend
+        val pose = catMotion.pose
 
         canvas.save()
         if (facingRight) canvas.scale(-1f, 1f, centerX, groundY)
 
-        drawCatRigPart(canvas, catRigArtwork("tail"), left, top + bodyY * scale, scale, 320f, 70f, 175f, 203f, 330f, 226f, tailWag)
-        canvas.save()
         canvas.translate(left, top)
         canvas.scale(scale, scale)
-        for (leg in CatRig.LEGS) {
-            CatRig.skin(leg, catMotion.cycle, catMotion.blend.toDouble(), bodyY.toDouble())
+        canvas.save()
+        canvas.translate(0f, pose.y.toFloat())
+        canvas.rotate(Math.toDegrees(pose.angle).toFloat(), 285f, 333f)
+        drawCatRigPart(canvas, catRigArtwork("tail"), 0f, 0f, 1f, 320f, 70f, 175f, 203f, 330f, 226f, Math.toDegrees(pose.tailAngle).toFloat())
+        canvas.restore()
+        for (index in CatRig.LEGS.indices) {
+            val leg = CatRig.LEGS[index]
+            val foot = catMotion.feet[index]
+            CatRig.skin(leg, pose, foot.x, foot.lift)
             canvas.drawBitmapMesh(catRigArtwork(leg.name), CatRig.COLS, CatRig.ROWS, leg.vertices, 0, null, 0, paint)
         }
-        canvas.restore()
-        drawCatRigPart(canvas, catRigArtwork("body"), left, top + bodyY * scale, scale, 170f, 230f, 235f, 139f, 190f, 330f, 0f)
-        drawCatRigPart(canvas, catRigArtwork("head"), left, top + bodyY * scale, scale, 45f, 100f, 195f, 253f, 190f, 330f, headNod)
+        canvas.translate(0f, pose.y.toFloat())
+        canvas.rotate(Math.toDegrees(pose.angle).toFloat(), 285f, 333f)
+        drawCatRigPart(canvas, catRigArtwork("body"), 0f, 0f, 1f, 170f, 230f, 235f, 139f, 190f, 330f, 0f)
+        drawCatRigPart(canvas, catRigArtwork("head"), 0f, 0f, 1f, 45f, 100f, 195f, 253f, 190f, 330f, Math.toDegrees(pose.headAngle).toFloat())
         canvas.restore()
     }
 

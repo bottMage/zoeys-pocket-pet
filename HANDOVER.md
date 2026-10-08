@@ -1,5 +1,38 @@
 # Zoey's Pocket Pet — cloud handover
 
+## Existing-artwork cat polish candidate — not published (2026-10-08)
+
+The user rejected revision 2 of the 3D prototype as limping/unconvincing. Be
+candid: technical skin/contact checks are not evidence of professional animation
+quality. The user now says the original cutout cat was the best visual result
+and authorizes the best possible polish of it. Do not resume the rejected 3D
+procedural tweaks or imply a professional animator/paid asset is required to
+continue; do not guarantee that these changes solve the visual complaint.
+
+This candidate preserves every original PNG and the layered rendering approach.
+`CatMotion` keeps world-space planted contacts through starts/stops instead of
+shrinking the gait amplitude with speed. Recoveries are timed and finish when
+travel pauses; standing feet are not dragged into a neutral pose. Starts select
+the most urgent paw and use lateral-walk order; stopping brakes before an edge.
+`CatRig.Pose` drives a small rigid torso weight transfer and coordinated neck/tail
+counterbalance. The torso is not mesh-warped. Turning still flips facing while
+stationary; it is not a fully authored turn animation.
+
+Android uses high-resolution frame intervals, small integration steps, vsync
+redraws, density-appropriate head decoding and initial existing-cat preloading.
+Background time is not played back as missed walk poses. `CatGaitCheck` checks
+production contacts, paw height, reach and frame-to-frame recovery motion;
+`CatMotionCheck` retains long-running edge/action regressions. All are exercised
+at 30/60/120 fps. `CatRigPreview` now renders the same trunk/head/tail pose and
+controller, including fractional coordinates; roaming preview time is 60 fps,
+not the old mismatched 30-Hz simulation exported as 60-fps video.
+
+`artwork/cat-rig-review/coordinated-walk-preview.mp4` is review-only, not an app
+asset or device performance measurement. Obtain visual approval before tagging
+or publishing an APK. Build remains v39 and the public v39 APK/manifest are
+unchanged. Local/cloud saving, account restore, updater, UI and other pets are
+untouched. See `artwork/cat-rig-review/README.md` for commands and limitations.
+
 ## True-3D cat prototype — review only (2026-10-08)
 
 ### Revision 2 — more lively, still awaiting visual approval

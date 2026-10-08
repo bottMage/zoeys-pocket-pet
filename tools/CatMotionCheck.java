@@ -14,7 +14,7 @@ public class CatMotionCheck {
                     double lane=time>80 && time<82?0:range;
                     double dt=frame%997==0?.12:1.0/fps;
                     motion.advance(dt,lane,.6,action);
-                    if(!Float.isFinite(motion.position)||motion.position<0||motion.position>1)
+                    if(!Double.isFinite(motion.position)||motion.position<0||motion.position>1)
                         throw new AssertionError("Out of scene bounds");
                     if(motion.cycle<previousCycle) throw new AssertionError("Gait ran backwards");
                     if(motion.facingRight!=facing) turns++;

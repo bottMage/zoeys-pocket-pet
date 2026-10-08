@@ -9,11 +9,17 @@ import javax.imageio.ImageIO;
 /** Renders the same skinning vertices as Android; also checks ground contacts. */
 public class CatRigPreview {
     static File assets;
+    static java.util.Map<String,BufferedImage> cache=new java.util.HashMap<>();
     static BufferedImage load(String name) throws Exception {
-        return ImageIO.read(new File(assets,"cat_rig_"+name+".png"));
+        if(!cache.containsKey(name)) cache.put(name,ImageIO.read(new File(assets,"cat_rig_"+name+".png")));
+        return cache.get(name);
     }
-    static void part(Graphics2D g,String name,int x,int y,int w,int h) throws Exception {
-        g.drawImage(load(name),x,y,w,h,null);
+    static void part(Graphics2D g,String name,double x,double y,double w,double h,double px,double py,double angle) throws Exception {
+        BufferedImage image=load(name);
+        Graphics2D t=(Graphics2D)g.create();t.rotate(angle,px,py);
+        AffineTransform transform=AffineTransform.getTranslateInstance(x,y);
+        transform.scale(w/image.getWidth(),h/image.getHeight());
+        t.drawImage(image,transform,null);t.dispose();
     }
     static void triangle(Graphics2D g,BufferedImage image,double[] sx,double[] sy,float[] v,int a,int b,int c) throws Exception {
         double x0=sx[a],y0=sy[a],x1=sx[b],y1=sy[b],x2=sx[c],y2=sy[c];
@@ -27,8 +33,8 @@ public class CatRigPreview {
         Graphics2D t=(Graphics2D)g.create();
         t.clip(clip); t.drawImage(image,target,null);t.dispose();
     }
-    static void leg(Graphics2D g,CatRig.Leg leg,double cycle,double blend,double bodyY) throws Exception {
-        CatRig.skin(leg,cycle,blend,bodyY);
+    static void leg(Graphics2D g,CatRig.Leg leg,CatRig.Pose pose,double footX,double lift) throws Exception {
+        CatRig.skin(leg,pose,footX,lift);
         BufferedImage image=load(leg.name);
         double[] sx=new double[(CatRig.COLS+1)*(CatRig.ROWS+1)],sy=new double[sx.length];
         for(int r=0;r<=CatRig.ROWS;r++) for(int c=0;c<=CatRig.COLS;c++) {
@@ -82,14 +88,15 @@ public class CatRigPreview {
         assets=new File(args[0]); File out=new File(args[1]);out.mkdirs(); verify();
         int frameCount=args.length>2?Integer.parseInt(args[2]):180;
         boolean roaming=args.length>3&&args[3].equals("roam");
-        CatMotion motion=new CatMotion();
+        CatMotion motion=new CatMotion();CatRig.Pose pose=new CatRig.Pose();
         for(int frame=0;frame<frameCount;frame++) {
             double cycle=frame/60.0*42/CatRig.STRIDE,blend=1;
             if(roaming) {
-                motion.advance(1.0/30,224,1,false);
+                motion.advance(1.0/60,224,1,false);
                 cycle=motion.cycle;blend=motion.blend;
             }
-            double body=CatRig.bodyY(cycle,blend);
+            pose.sample(cycle,blend,frame/60.0);
+            if(roaming) pose=motion.pose;
             int sceneWidth=roaming?800:640;
             BufferedImage image=new BufferedImage(sceneWidth,540,BufferedImage.TYPE_INT_RGB);
             Graphics2D g=image.createGraphics();
@@ -97,8 +104,8 @@ public class CatRigPreview {
             g.setRenderingHint(RenderingHints.KEY_ANTIALIASING,RenderingHints.VALUE_ANTIALIAS_OFF);
             g.setColor(new Color(233,234,247));g.fillRect(0,0,sceneWidth,540);
             g.setColor(new Color(185,224,194));g.fillRect(0,488,sceneWidth,52);
-            int rootX=roaming?32+(int)(motion.position*224):64;
-            g.setColor(new Color(147,184,154));g.fillOval(rootX+108,480,240,16);
+            double rootX=roaming?32+motion.position*224:64;
+            g.setColor(new Color(147,184,154));g.fill(new Ellipse2D.Double(rootX+108,480,240,16));
             // Move the scene under the rig to make world-space contacts visible.
             g.setColor(new Color(150,193,161));
             for(int x=-100;x<800;x+=40) {
@@ -107,10 +114,18 @@ public class CatRigPreview {
             }
             g.translate(rootX,20);
             if(roaming&&motion.facingRight) {g.translate(512,0);g.scale(-1,1);}
-            part(g,"tail",320,70+(int)body,175,203);
-            for(CatRig.Leg l:CatRig.LEGS) leg(g,l,cycle,blend,body);
-            part(g,"body",170,230+(int)body,235,139);
-            part(g,"head",45,100+(int)body,195,253);
+            Graphics2D trunk=(Graphics2D)g.create();
+            trunk.translate(0,pose.y);trunk.rotate(pose.angle,285,333);
+            part(trunk,"tail",320,70,175,203,330,226,pose.tailAngle);
+            for(int i=0;i<CatRig.LEGS.length;i++) {
+                CatRig.Leg l=CatRig.LEGS[i];
+                double x=roaming?motion.feet[i].x:CatRig.footX(cycle+l.offset);
+                double lift=roaming?motion.feet[i].lift:CatRig.footLift(cycle+l.offset);
+                leg(g,l,pose,x,lift);
+            }
+            part(trunk,"body",170,230,235,139,190,330,0);
+            part(trunk,"head",45,100,195,253,190,330,pose.headAngle);
+            trunk.dispose();
             g.dispose();ImageIO.write(image,"png",new File(out,String.format("frame-%03d.png",frame)));
         }
     }

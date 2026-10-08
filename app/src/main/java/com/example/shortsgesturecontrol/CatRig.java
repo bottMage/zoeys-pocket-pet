@@ -13,6 +13,24 @@ public final class CatRig {
     public static final Leg REAR_FAR = new Leg("rear_far",245,305,117,163,277,320,306,386,287,453,.75);
     public static final Leg[] LEGS = { REAR_FAR, FRONT_FAR, REAR_NEAR, FRONT_NEAR };
 
+    /** One shared rigid-body pose. Artwork is not stretched to make it breathe. */
+    public static final class Pose {
+        public double y, angle, headAngle, tailAngle;
+        private double ca=1,sa=0;
+        public void sample(double cycle,double activity,double seconds) {
+            double phase=2*Math.PI*cycle;
+            y=activity*(3.0+.9*(1-Math.cos(2*phase)));
+            angle=activity*.016*Math.sin(phase-.35);
+            ca=Math.cos(angle);sa=Math.sin(angle);
+            // Counterbalance the trunk to keep the gaze calm; tail follows it.
+            headAngle=-angle*.7+activity*.004*Math.sin(2*phase-.5);
+            tailAngle=-angle*.5+activity*.025*Math.sin(phase-.8)
+                +(1-activity)*.006*Math.sin(seconds*.9);
+        }
+        public double x(double x,double y) { return 285+(x-285)*ca-(y-333)*sa; }
+        public double y(double x,double y) { return 333+this.y+(x-285)*sa+(y-333)*ca; }
+    }
+
     public static final class Leg {
         public final String name;
         public final double x,y,width,height,hx,hy,kx,ky,fx,fy,offset;
@@ -34,22 +52,27 @@ public final class CatRig {
         if(p<STANCE) return -span/2+STRIDE*p;
         double t=(p-STANCE)/(1-STANCE);
         // Match stance velocity at both ends; no horizontal jerk at touchdown.
-        double h=3*t*t-2*t*t*t;
-        return span/2-span*h+STRIDE*(1-STANCE)*t*(1-t)*(1-2*t);
+        double h=t*t*t*(10+t*(-15+6*t));
+        double v=t-10*t*t*t+15*t*t*t*t-6*t*t*t*t*t;
+        return span/2-span*h+STRIDE*(1-STANCE)*v;
     }
     public static double footLift(double cycle) {
         double p=cycle-Math.floor(cycle);
         if(p<STANCE) return 0;
         double t=(p-STANCE)/(1-STANCE), s=Math.sin(Math.PI*t);
-        return 15*s*s; // zero vertical speed on lift-off and touchdown
+        return 15*s*s*s*s; // also zero acceleration at both contacts
     }
     public static double bodyY(double cycle,double blend) {
         return -1.2*blend*(1-Math.cos(4*Math.PI*cycle));
     }
     public static void skin(Leg l,double cycle,double blend,double bodyY) {
-        double fx=l.fx+footX(cycle+l.offset)*blend;
-        double fy=l.fy-footLift(cycle+l.offset)*blend;
-        double hx=l.hx, hy=l.hy+bodyY;
+        Pose pose=new Pose();
+        pose.y=bodyY;
+        skin(l,pose,footX(cycle+l.offset)*blend,footLift(cycle+l.offset)*blend);
+    }
+    public static void skin(Leg l,Pose pose,double footX,double lift) {
+        double fx=l.fx+footX,fy=l.fy-lift;
+        double hx=pose.x(l.hx,l.hy),hy=pose.y(l.hx,l.hy);
         double dx=fx-hx,dy=fy-hy,dist=Math.hypot(dx,dy);
         double d=Math.max(Math.abs(l.upper-l.lower)+.001,Math.min(dist,l.upper+l.lower-.001));
         double along=(l.upper*l.upper-l.lower*l.lower+d*d)/(2*d);
@@ -80,6 +103,9 @@ public final class CatRig {
     }
     private static double smooth(double t) {
         t=Math.max(0,Math.min(1,t)); return t*t*(3-2*t);
+    }
+    public static double ease(double t) {
+        t=Math.max(0,Math.min(1,t));return t*t*t*(10+t*(-15+6*t));
     }
     private CatRig() {}
 }
