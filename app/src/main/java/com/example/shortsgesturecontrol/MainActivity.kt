@@ -7,6 +7,8 @@ import android.content.BroadcastReceiver
 import android.content.Intent
 import android.content.IntentFilter
 import android.app.DownloadManager
+import android.net.ConnectivityManager
+import android.net.Network
 import android.graphics.Bitmap
 import android.graphics.BitmapFactory
 import android.graphics.Canvas
@@ -55,6 +57,14 @@ class MainActivity : Activity() {
     private lateinit var gameView: PetGameView
     private lateinit var auth: FirebaseAuth
     private var googleSignInClient: GoogleSignInClient? = null
+    private lateinit var connectivityManager: ConnectivityManager
+    private val networkCallback = object : ConnectivityManager.NetworkCallback() {
+        override fun onAvailable(network: Network) {
+            runOnUiThread {
+                if (::gameView.isInitialized && gameView.hasCloudAccount()) gameView.syncCloud()
+            }
+        }
+    }
 
     companion object {
         private const val GOOGLE_SIGN_IN_REQUEST = 7401
@@ -69,6 +79,8 @@ class MainActivity : Activity() {
         googleSignInClient = buildGoogleSignInClient()
         gameView = PetGameView(this) { maybePromptForCloudBackup() }
         setContentView(gameView)
+        connectivityManager = getSystemService(ConnectivityManager::class.java)
+        connectivityManager.registerDefaultNetworkCallback(networkCallback)
         gameView.postDelayed({ gameView.checkForUpdates(showNoUpdate = false) }, 650L)
         gameView.postDelayed({
             if (auth.currentUser != null) gameView.syncCloud() else maybePromptForCloudBackup()
@@ -78,6 +90,11 @@ class MainActivity : Activity() {
     override fun onPause() {
         gameView.savePet()
         super.onPause()
+    }
+
+    override fun onDestroy() {
+        if (::connectivityManager.isInitialized) connectivityManager.unregisterNetworkCallback(networkCallback)
+        super.onDestroy()
     }
 
     private fun buildGoogleSignInClient(): GoogleSignInClient? {
@@ -283,6 +300,9 @@ private class PetGameView(context: Context, private val onPetCreated: () -> Unit
     private var setupMode = !pet.created
     private var setupKind = pet.kind
     private var setupName = pet.name
+    private var menuOpen = false
+    private var menuAnimationStart = 0L
+    private var menuOpening = true
 
     private fun petArtwork(kind: PetKind): Bitmap = petArtCache.getOrPut(kind) {
         val options = BitmapFactory.Options().apply {
@@ -355,6 +375,7 @@ private class PetGameView(context: Context, private val onPetCreated: () -> Unit
         drawMessage(canvas, now)
         drawStats(canvas)
         drawActions(canvas)
+        if (menuOpen || menuAnimationStart != 0L) drawMenu(canvas, now)
         if (now - lastSaved > 30_000L) savePet()
         postInvalidateDelayed(33L)
     }
@@ -374,7 +395,7 @@ private class PetGameView(context: Context, private val onPetCreated: () -> Unit
 
     private fun drawHeader(canvas: Canvas) {
         val updates = headerUpdateRect()
-        val titleLeft = dp(22f)
+        val titleLeft = dp(66f)
         val titleRight = updates.left - dp(16f)
         val titleWidth = (titleRight - titleLeft).coerceAtLeast(dp(100f))
         val titleCenter = (titleLeft + titleRight) / 2f
@@ -415,6 +436,17 @@ private class PetGameView(context: Context, private val onPetCreated: () -> Unit
         textPaint.typeface = PaintTypeface.bold()
         textPaint.color = Color.rgb(105, 78, 116)
         canvas.drawText("v${BuildConfig.VERSION_NAME}", width - dp(22f), dp(74f), textPaint)
+
+        val menu = menuButtonRect()
+        paint.color = Color.argb(70, 48, 27, 89)
+        canvas.drawRoundRect(menu, dp(16f), dp(16f), paint)
+        paint.color = Color.rgb(68, 43, 90)
+        val lineLeft = menu.left + dp(12f)
+        val lineRight = menu.right - dp(12f)
+        for (line in 0..2) {
+            val y = menu.top + dp(13f) + line * dp(6f)
+            canvas.drawRoundRect(RectF(lineLeft, y, lineRight, y + dp(2f)), dp(1f), dp(1f), paint)
+        }
     }
 
     private fun drawSetup(canvas: Canvas, now: Long) {
@@ -802,12 +834,141 @@ private class PetGameView(context: Context, private val onPetCreated: () -> Unit
         }
     }
 
+    private fun drawMenu(canvas: Canvas, now: Long) {
+        val menuWidth = dp(282f)
+        val progress = ((now - menuAnimationStart).coerceAtLeast(0L) / 220f).coerceIn(0f, 1f)
+        val eased = progress * progress * (3f - 2f * progress)
+        val visibleProgress = if (menuOpening) eased else 1f - eased
+        val offset = (visibleProgress - 1f) * menuWidth
+
+        paint.color = Color.argb((150f * visibleProgress).roundToInt(), 25, 19, 42)
+        canvas.drawRect(0f, 0f, width.toFloat(), height.toFloat(), paint)
+        canvas.save()
+        canvas.translate(offset, 0f)
+        paint.color = Color.rgb(255, 249, 246)
+        canvas.drawRoundRect(RectF(0f, 0f, menuWidth + dp(24f), height.toFloat()), 0f, 0f, paint)
+        paint.color = Color.rgb(68, 43, 90)
+        textPaint.textAlign = Paint.Align.LEFT
+        textPaint.typeface = PaintTypeface.bold()
+        textPaint.textSize = dp(21f)
+        textPaint.color = Color.rgb(68, 43, 90)
+        canvas.drawText("MENU", dp(24f), dp(54f), textPaint)
+        textPaint.typeface = PaintTypeface.rounded()
+        textPaint.textSize = dp(12f)
+        textPaint.color = Color.rgb(111, 82, 123)
+        canvas.drawText(
+            if (cloudSave.isSignedIn()) "Cloud backup connected" else "Cloud backup not connected",
+            dp(24f), dp(78f), textPaint
+        )
+
+        val settings = menuSettingsRect()
+        paint.color = Color.rgb(238, 224, 239)
+        canvas.drawRoundRect(settings, dp(17f), dp(17f), paint)
+        textPaint.textAlign = Paint.Align.CENTER
+        textPaint.typeface = PaintTypeface.bold()
+        textPaint.textSize = dp(14f)
+        textPaint.color = Color.rgb(76, 49, 94)
+        canvas.drawText("SETTINGS", settings.centerX(), settings.centerY() + dp(5f), textPaint)
+        canvas.restore()
+
+        if (progress < 1f) postInvalidateOnAnimation()
+        if (!menuOpen && progress >= 1f) menuAnimationStart = 0L
+    }
+
+    private fun setMenuOpen(open: Boolean) {
+        menuOpen = open
+        menuOpening = open
+        menuAnimationStart = SystemClock.uptimeMillis()
+        invalidate()
+    }
+
+    private fun showSettings() {
+        val activity = appContext as? Activity ?: return
+        AlertDialog.Builder(activity)
+            .setTitle("Settings")
+            .setMessage(if (cloudSave.isSignedIn()) "Google backup is connected." else "Google backup is not connected yet.")
+            .setNegativeButton("CLOSE", null)
+            .setPositiveButton("RESET DATA") { _, _ -> showResetChoices() }
+            .show()
+    }
+
+    private fun showResetChoices() {
+        val activity = appContext as? Activity ?: return
+        val choices = arrayOf("Local data only", "Cloud backup only", "Local + cloud data")
+        AlertDialog.Builder(activity)
+            .setTitle("What should be reset?")
+            .setItems(choices) { _, which -> confirmReset(which) }
+            .setNegativeButton("CANCEL", null)
+            .show()
+    }
+
+    private fun confirmReset(which: Int) {
+        val activity = appContext as? Activity ?: return
+        val descriptions = arrayOf(
+            "This clears this phone only. Your cloud backup stays available.",
+            "This deletes the cloud backup. The pet on this phone stays.",
+            "This permanently deletes the phone copy and cloud backup."
+        )
+        AlertDialog.Builder(activity)
+            .setTitle("Reset data?")
+            .setMessage(descriptions[which])
+            .setNegativeButton("CANCEL", null)
+            .setPositiveButton("RESET") { _, _ ->
+                when (which) {
+                    0 -> resetLocalData()
+                    1 -> resetCloudData()
+                    else -> resetBoth()
+                }
+            }
+            .show()
+    }
+
+    private fun resetLocalData(showToast: Boolean = true) {
+        cloudSave.signOut()
+        pet.resetLocal()
+        setupMode = true
+        setupKind = pet.kind
+        setupName = pet.name
+        pressedAction = null
+        activeAction = null
+        if (showToast) Toast.makeText(appContext, "Local pet data reset. Cloud backup was kept.", Toast.LENGTH_LONG).show()
+        invalidate()
+    }
+
+    private fun resetCloudData() {
+        cloudSave.delete { deleted ->
+            if (deleted) cloudSave.signOut()
+            Toast.makeText(
+                appContext,
+                if (deleted) "Cloud backup deleted. This phone's pet was kept." else "Cloud backup could not be deleted.",
+                Toast.LENGTH_LONG
+            ).show()
+        }
+    }
+
+    private fun resetBoth() {
+        cloudSave.delete { deleted ->
+            if (deleted) {
+                cloudSave.signOut()
+                resetLocalData(showToast = false)
+                Toast.makeText(appContext, "Local and cloud data reset.", Toast.LENGTH_LONG).show()
+            } else {
+                Toast.makeText(appContext, "Cloud data was not deleted; nothing was reset.", Toast.LENGTH_LONG).show()
+            }
+        }
+    }
+
     private fun statsTop(): Float = height - dp(330f)
 
     override fun onTouchEvent(event: MotionEvent): Boolean {
+        if (menuOpen || menuAnimationStart != 0L) return handleMenuTouch(event)
         if (setupMode) return handleSetupTouch(event)
         when (event.actionMasked) {
             MotionEvent.ACTION_DOWN -> {
+                if (menuButtonRect().contains(event.x, event.y)) {
+                    setMenuOpen(true)
+                    return true
+                }
                 pressedAction = buttons.firstOrNull { it.rect.contains(event.x, event.y) }?.action
                 if (newPetRect().contains(event.x, event.y) || headerResetRect().contains(event.x, event.y) || headerUpdateRect().contains(event.x, event.y)) pressedAction = null
                 invalidate()
@@ -827,6 +988,17 @@ private class PetGameView(context: Context, private val onPetCreated: () -> Unit
                 invalidate()
                 return true
             }
+        }
+        return true
+    }
+
+    private fun handleMenuTouch(event: MotionEvent): Boolean {
+        if (event.actionMasked != MotionEvent.ACTION_UP) return true
+        if (menuSettingsRect().contains(event.x, event.y)) {
+            setMenuOpen(false)
+            postDelayed({ showSettings() }, 230L)
+        } else if (event.x > dp(282f)) {
+            setMenuOpen(false)
         }
         return true
     }
@@ -865,6 +1037,10 @@ private class PetGameView(context: Context, private val onPetCreated: () -> Unit
     }
 
     private fun newPetRect(): RectF = RectF(width - dp(94f), statsTop() + dp(14f), width - dp(18f), statsTop() + dp(46f))
+
+    private fun menuButtonRect(): RectF = RectF(dp(12f), dp(18f), dp(54f), dp(57f))
+
+    private fun menuSettingsRect(): RectF = RectF(dp(24f), dp(112f), dp(258f), dp(164f))
 
     private fun headerResetRect(): RectF = RectF(width - dp(114f), dp(18f), width - dp(20f), dp(57f))
 
@@ -928,6 +1104,8 @@ private class PetGameView(context: Context, private val onPetCreated: () -> Unit
 
     fun hasCreatedPet(): Boolean = pet.created && pet.hatched
 
+    fun hasCloudAccount(): Boolean = cloudSave.isSignedIn()
+
     fun petName(): String = pet.name
 
     fun checkForUpdates(showNoUpdate: Boolean) {
@@ -957,6 +1135,12 @@ private class PetGameView(context: Context, private val onPetCreated: () -> Unit
     private inner class CloudSaveManager {
         private val auth = FirebaseAuth.getInstance()
         private val firestore = FirebaseFirestore.getInstance()
+
+        fun isSignedIn(): Boolean = auth.currentUser != null
+
+        fun signOut() {
+            auth.signOut()
+        }
 
         fun upload() {
             val user = auth.currentUser ?: return
@@ -993,6 +1177,19 @@ private class PetGameView(context: Context, private val onPetCreated: () -> Unit
                     }
                     onComplete(true)
                 }
+                .addOnFailureListener { onComplete(false) }
+        }
+
+        fun delete(onComplete: (Boolean) -> Unit) {
+            val user = auth.currentUser
+            if (user == null) {
+                onComplete(true)
+                return
+            }
+            firestore.collection("users").document(user.uid)
+                .collection("pets").document("main")
+                .delete()
+                .addOnSuccessListener { onComplete(true) }
                 .addOnFailureListener { onComplete(false) }
         }
     }
@@ -1131,6 +1328,26 @@ private class PetGameView(context: Context, private val onPetCreated: () -> Unit
             goodCareMillis = 0L
             totalCareMillis = 0L
             lastUpdate = System.currentTimeMillis()
+        }
+
+        fun resetLocal() {
+            prefs.edit().clear().apply()
+            hunger = 78f
+            joy = 82f
+            energy = 74f
+            clean = 88f
+            growth = 0f
+            generation = 0
+            ageMillis = 0L
+            goodCareMillis = 0L
+            totalCareMillis = 0L
+            name = "Mochi"
+            kind = PetKind.BUNNY
+            created = false
+            hatched = false
+            lastUpdate = System.currentTimeMillis()
+            lastSavedAt = 0L
+            evolutionEvent = false
         }
 
         private fun advanceIfReady() {
