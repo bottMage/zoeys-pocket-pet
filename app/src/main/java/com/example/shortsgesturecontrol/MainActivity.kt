@@ -44,8 +44,6 @@ import com.google.firebase.firestore.FirebaseFirestore
 import com.google.firebase.firestore.SetOptions
 import org.json.JSONObject
 import java.io.File
-import java.net.HttpURLConnection
-import java.net.URL
 import kotlin.math.abs
 import kotlin.math.cos
 import kotlin.math.max
@@ -174,6 +172,10 @@ class MainActivity : Activity() {
 private class AppUpdateManager(private val context: Context) {
     private val mainHandler = Handler(Looper.getMainLooper())
     private val updatePrefs = context.getSharedPreferences("zoey_update", Context.MODE_PRIVATE)
+    // Accessed only on the UI thread, including completion delivery.
+    private var checking = false
+    private var showCheckResult = false
+    private var updateDialog: AlertDialog? = null
 
     private fun updateFile(): File = File(
         context.getExternalFilesDir(Environment.DIRECTORY_DOWNLOADS),
@@ -181,62 +183,40 @@ private class AppUpdateManager(private val context: Context) {
     )
 
     fun check(showNoUpdate: Boolean) {
+        showCheckResult = showCheckResult || showNoUpdate
+        if (checking) return
+        checking = true
+        if (showNoUpdate) Toast.makeText(context, "Checking for updates…", Toast.LENGTH_SHORT).show()
         Thread {
-            try {
-                val release = try {
-                    JSONObject(readUrl(UPDATE_MANIFEST_URL))
-                } catch (_: Exception) {
-                    JSONObject(readUrl(LATEST_RELEASE_URL))
-                }
-                val versionCode = release.optInt("versionCode", 0).takeIf { it > 0 }
-                    ?: release.optString("tag_name").removePrefix("v").toIntOrNull()
-                var downloadUrl = release.optString("apkUrl").takeIf { it.isNotBlank() }
-                if (downloadUrl.isNullOrBlank()) {
-                    val assets = release.optJSONArray("assets")
-                    if (assets != null) {
-                        for (index in 0 until assets.length()) {
-                            val asset = assets.getJSONObject(index)
-                            if (asset.optString("name").endsWith(".apk", ignoreCase = true)) {
-                                downloadUrl = asset.optString("browser_download_url")
-                                break
-                            }
-                        }
-                    }
-                }
+            val result = runCatching {
                 val packageInfo = context.packageManager.getPackageInfo(context.packageName, 0)
                 val installedVersion = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.P) packageInfo.longVersionCode else packageInfo.versionCode.toLong()
-                mainHandler.post {
+                val release = UpdateChecker.check(installedVersion, {
+                    val manifest = JSONObject(UpdateChecker.readFreshJson(UpdateChecker.MANIFEST))
+                    UpdateChecker.Release(manifest.getInt("versionCode"), manifest.getString("apkUrl"))
+                }, { UpdateChecker.publishedRelease(installedVersion) })
+                Pair(installedVersion, release)
+            }
+            mainHandler.post {
+                val report = showCheckResult
+                checking = false
+                showCheckResult = false
+                result.fold(onSuccess = { (installedVersion, release) ->
                     when {
-                        versionCode != null && versionCode > installedVersion && !downloadUrl.isNullOrBlank() -> showUpdate(versionCode, downloadUrl)
-                        showNoUpdate -> Toast.makeText(context, "You're all up to date.", Toast.LENGTH_SHORT).show()
+                        release.version > installedVersion -> showUpdate(release.version, release.apkUrl)
+                        report -> Toast.makeText(context, "You're all up to date.", Toast.LENGTH_SHORT).show()
                     }
-                }
-            } catch (_: Exception) {
-                if (showNoUpdate) mainHandler.post {
-                    Toast.makeText(context, "Couldn't check for updates right now.", Toast.LENGTH_SHORT).show()
-                }
+                }, onFailure = {
+                    if (report) Toast.makeText(context, "Couldn't confirm the latest version. Please try again.", Toast.LENGTH_LONG).show()
+                })
             }
         }.start()
     }
 
-    private fun readUrl(url: String): String {
-        val connection = (URL(url).openConnection() as HttpURLConnection).apply {
-            connectTimeout = 12_000
-            readTimeout = 12_000
-            setRequestProperty("User-Agent", "ZoeysPocketPet-Updater")
-            setRequestProperty("Accept", "application/json")
-        }
-        return try {
-            connection.inputStream.bufferedReader().use { it.readText() }
-        } finally {
-            connection.disconnect()
-        }
-    }
-
     private fun showUpdate(versionCode: Int, url: String) {
         val activity = context as? Activity ?: return
-        if (activity.isFinishing) return
-        AlertDialog.Builder(activity)
+        if (activity.isFinishing || activity.isDestroyed || updateDialog?.isShowing == true) return
+        updateDialog = AlertDialog.Builder(activity)
             .setTitle("An update is ready")
             .setMessage("Version $versionCode is available. Would you like to download it now?")
             .setNegativeButton("NOT NOW", null)
@@ -328,8 +308,6 @@ private class AppUpdateManager(private val context: Context) {
     }
 
     private companion object {
-        const val UPDATE_MANIFEST_URL = "https://raw.githubusercontent.com/bottMage/zoeys-pocket-pet/main/update.json"
-        const val LATEST_RELEASE_URL = "https://api.github.com/repos/bottMage/zoeys-pocket-pet/releases/latest"
         const val UPDATE_FILE_NAME = "zoeys-pocket-pet-update.apk"
         const val APK_MIME_TYPE = "application/vnd.android.package-archive"
         const val PENDING_DOWNLOAD_ID = "pending_download_id"

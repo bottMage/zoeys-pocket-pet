@@ -1,5 +1,19 @@
 # Zoey's Pocket Pet — cloud handover
 
+## v39 update discovery correction (2026-10-08)
+
+The static raw manifest was cached by GitHub for five minutes (`max-age=300`).
+`UpdateChecker.java` now uses unique cache keys and no-cache headers. If the
+manifest does not offer a newer build, it independently checks the public
+`/releases/latest` redirect (not the rate-limited/API host) and verifies a newer
+APK exists before offering it. Missing/invalid metadata and unconfirmed latest
+versions are failures, not “up to date.” Overlapping launch/manual checks share
+one request and cannot show duplicate update dialogs. `tools/UpdateCheckerCheck.java`
+exercises the production HTTP code and decision logic with a local HTTP fixture.
+Publish the signed APK first, verify it exists, then update `update.json` as usual.
+Older installed builds still use the cached static manifest until they install v39.
+Animation, installer handoff and progress-saving behavior are unchanged.
+
 ## Current animation work — v37 (2026-10-08)
 
 ### v38 correction
