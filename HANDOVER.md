@@ -47,7 +47,7 @@ Publish the signed asset first
 and only advance `update.json` after its public availability/checksum are checked.
 Release commit and tag `v44` were pushed to `main`. The public
 APK returns 200, its downloaded checksum matches the signed build, and latest
-release resolves to v42. Root `update.json` now advertises 42 after verification.
+release resolves to v44. Root `update.json` now advertises 44 after verification.
 See `artwork/growth-stages/README.md` for behavior, checks and limitations.
 
 ## Current request: original whole-pet animation for all pets — v41
