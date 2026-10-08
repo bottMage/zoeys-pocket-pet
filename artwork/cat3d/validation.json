@@ -1,0 +1,24 @@
+{
+  "prototype_only": true,
+  "fps": 60,
+  "cycle_seconds": 1.2,
+  "stride_world_units": 0.72,
+  "skin_connected_components": 1,
+  "skin_vertices": 15502,
+  "skin_triangles": 31000,
+  "skeleton_bones": 26,
+  "animation": "Walk_full_body_root_motion",
+  "max_support_bone_ground_error": 1e-06,
+  "max_support_bone_slide_per_frame": 2e-06,
+  "max_paw_travel_per_frame": 0.044089,
+  "root_compensated_loop_error": 0.0,
+  "export_has_skin": true,
+  "export_has_full_body_animation": true,
+  "export_image_textures": 0,
+  "note": "Bone-contact/structure checks, not a claim of user-approved visual quality or device performance.",
+  "max_rendered_pad_slide_per_frame": 2e-06,
+  "supporting_pad_height_range": [
+    0.001874,
+    0.002416
+  ]
+}

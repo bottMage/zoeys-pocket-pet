@@ -25,3 +25,7 @@ local.properties
 Thumbs.db
 *.swp
 
+# Intermediate 3D preview frames and Blender backup files
+artwork/cat3d/preview-frames/
+*.blend1
+

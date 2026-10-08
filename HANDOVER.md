@@ -1,5 +1,31 @@
 # Zoey's Pocket Pet — cloud handover
 
+## True-3D cat prototype — review only (2026-10-08)
+
+The user rejected the independent PNG-part rig as rigid and robotic and approved
+a genuine 3D recreation of the purple/cream cat, with a walk preview **before**
+changing or publishing the app. `artwork/cat3d/` contains the editable Blender
+model/rig/scene, GLB and structural/motion validation. `tools/build-cat-3d.py`
+authors one connected external skin and a 26-bone full-body skeleton, including
+spine, pelvis, chest, scapulae, neck/head, legs/paws and six tail bones. Facial
+features are actual geometry attached to the same skeleton, not PNG billboards.
+The model remains first-pass styling, not user-approved production artwork.
+
+The GLB has a baked 1.2-second walk with 0.72-unit root motion. Extract/consume
+that motion once when integrating; do not add a separate controller's movement
+on top. No image textures/cutouts are required. GPU skinning uses four normalized
+influences per vertex. `tools/check-cat-3d.py` checks exported skin/animation and
+colours, body/shoulder/tail channels, supporting paw-bone and rendered-pad drift,
+ground height, finite positions and root-compensated looping. Always invoke
+Blender with `--python-exit-code 1` for meaningful failure status.
+
+`tools/render-cat-3d.py` renders an offline 60-fps review using lighter studio
+lighting for the cloud's software GPU. Rendered frames/video are **review only**,
+not runtime animation assets or a phone performance measurement. The app still
+ships v39's existing renderer; no app code, APK, update manifest, or save/cloud
+behavior has changed for this prototype. Obtain visual approval before app
+integration or a new APK release.
+
 ## v39 update discovery correction (2026-10-08)
 
 The static raw manifest was cached by GitHub for five minutes (`max-age=300`).
