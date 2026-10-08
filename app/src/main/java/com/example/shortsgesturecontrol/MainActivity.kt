@@ -172,24 +172,23 @@ private class AppUpdateManager(private val context: Context) {
     fun check(showNoUpdate: Boolean) {
         Thread {
             try {
-                val connection = (URL(LATEST_RELEASE_URL).openConnection() as HttpURLConnection).apply {
-                    connectTimeout = 12_000
-                    readTimeout = 12_000
-                    setRequestProperty("Accept", "application/vnd.github+json")
-                    setRequestProperty("User-Agent", "ZoeysPocketPet-Updater")
+                val release = try {
+                    JSONObject(readUrl(UPDATE_MANIFEST_URL))
+                } catch (_: Exception) {
+                    JSONObject(readUrl(LATEST_RELEASE_URL))
                 }
-                val response = connection.inputStream.bufferedReader().use { it.readText() }
-                connection.disconnect()
-                val release = JSONObject(response)
-                val versionCode = release.optString("tag_name").removePrefix("v").toIntOrNull()
-                val assets = release.optJSONArray("assets")
-                var downloadUrl: String? = null
-                if (assets != null) {
-                    for (index in 0 until assets.length()) {
-                        val asset = assets.getJSONObject(index)
-                        if (asset.optString("name").endsWith(".apk", ignoreCase = true)) {
-                            downloadUrl = asset.optString("browser_download_url")
-                            break
+                val versionCode = release.optInt("versionCode", 0).takeIf { it > 0 }
+                    ?: release.optString("tag_name").removePrefix("v").toIntOrNull()
+                var downloadUrl = release.optString("apkUrl").takeIf { it.isNotBlank() }
+                if (downloadUrl.isNullOrBlank()) {
+                    val assets = release.optJSONArray("assets")
+                    if (assets != null) {
+                        for (index in 0 until assets.length()) {
+                            val asset = assets.getJSONObject(index)
+                            if (asset.optString("name").endsWith(".apk", ignoreCase = true)) {
+                                downloadUrl = asset.optString("browser_download_url")
+                                break
+                            }
                         }
                     }
                 }
@@ -207,6 +206,20 @@ private class AppUpdateManager(private val context: Context) {
                 }
             }
         }.start()
+    }
+
+    private fun readUrl(url: String): String {
+        val connection = (URL(url).openConnection() as HttpURLConnection).apply {
+            connectTimeout = 12_000
+            readTimeout = 12_000
+            setRequestProperty("User-Agent", "ZoeysPocketPet-Updater")
+            setRequestProperty("Accept", "application/json")
+        }
+        return try {
+            connection.inputStream.bufferedReader().use { it.readText() }
+        } finally {
+            connection.disconnect()
+        }
     }
 
     private fun showUpdate(versionCode: Int, url: String) {
@@ -270,6 +283,7 @@ private class AppUpdateManager(private val context: Context) {
     }
 
     private companion object {
+        const val UPDATE_MANIFEST_URL = "https://raw.githubusercontent.com/bottMage/zoeys-pocket-pet/main/update.json"
         const val LATEST_RELEASE_URL = "https://api.github.com/repos/bottMage/zoeys-pocket-pet/releases/latest"
         const val UPDATE_FILE_NAME = "zoeys-pocket-pet-update.apk"
         const val APK_MIME_TYPE = "application/vnd.android.package-archive"
