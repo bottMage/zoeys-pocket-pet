@@ -41,6 +41,9 @@ APK package/version 42.0 and unchanged signing certificate are verified. Its
 SHA-256 is `21185004ac52a94272e582927fdc9c048274a232ae44729f7e384af5f85337e2`.
 The updater is byte-for-byte unchanged from v41. Publish the signed asset first
 and only advance `update.json` after its public availability/checksum are checked.
+Release commit `7194c13` was pushed to `main` with annotated `v42`. The public
+APK returns 200, its downloaded checksum matches the signed build, and latest
+release resolves to v42. Root `update.json` now advertises 42 after verification.
 See `artwork/growth-stages/README.md` for behavior, checks and limitations.
 
 ## Current request: original whole-pet animation for all pets — v41
