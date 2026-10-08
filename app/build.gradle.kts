@@ -18,8 +18,8 @@ android {
         targetSdk = 35
         // Keep the v5 whole-body renderer, but use a higher code so Android
         // accepts this rollback over the newer installed builds.
-        versionCode = 27
-        versionName = "27.0"
+        versionCode = 28
+        versionName = "28.0"
     }
 
     buildTypes {

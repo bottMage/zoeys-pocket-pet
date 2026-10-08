@@ -659,7 +659,12 @@ private class PetGameView(context: Context, private val onPetCreated: () -> Unit
         // its full bitmap made the pet appear trapped in a smaller box. Use
         // the visible silhouette envelope so the actual pet can use the full
         // scene while its transparent edges sit safely outside it.
-        val visibleReach = artWidth * .42f
+        // The transparent animation canvases are tightly packed. Their
+        // furthest anti-aliased pixels sit just inside roughly 42% of the
+        // bitmap width, so leaving only that exact amount makes tails and
+        // ears visually touch the scene edge and look clipped. Keep a real
+        // safety envelope around the complete animated silhouette.
+        val visibleReach = artWidth * .44f + dp(6f)
         val minCenterX = sceneLeft + visibleReach
         val maxCenterX = sceneRight - visibleReach
         val centerX = minCenterX + motionX * (maxCenterX - minCenterX)
