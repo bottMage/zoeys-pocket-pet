@@ -425,7 +425,6 @@ private class PetGameView(context: Context, private val onPetCreated: () -> Unit
 
     init {
         isFocusable = true
-        setLayerType(View.LAYER_TYPE_SOFTWARE, null)
         pet.updateFromClock()
         motionModeUntil = motionLastAt + 1800L
     }
@@ -457,7 +456,7 @@ private class PetGameView(context: Context, private val onPetCreated: () -> Unit
         drawActions(canvas)
         if (menuOpen || menuAnimationStart != 0L) drawMenu(canvas, now)
         if (now - lastSaved > 30_000L) savePet()
-        postInvalidateDelayed(33L)
+        postInvalidateOnAnimation()
     }
 
     private fun drawBackground(canvas: Canvas) {
@@ -705,7 +704,9 @@ private class PetGameView(context: Context, private val onPetCreated: () -> Unit
         val groundY = bottom - dp(42f)
         val seconds = (now - animationStart) / 1000f
         val walking = motionMode == MotionMode.WALK && activeAction == null
-        val frame = if (walking || activeAction == Action.PLAY) ((now / 105L) % WALK_FRAME_COUNT).toInt() else 0
+        val frame = if (walking || activeAction == Action.PLAY) {
+            ((now - animationStart) / WALK_FRAME_DURATION_MS % WALK_FRAME_COUNT).toInt()
+        } else 0
         // The cel is a 512px canvas with transparent padding. Constraining
         // its full bitmap made the pet appear trapped in a smaller box. Use
         // the visible silhouette envelope so the actual pet can use the full
@@ -736,8 +737,6 @@ private class PetGameView(context: Context, private val onPetCreated: () -> Unit
         paint.isAntiAlias = true
         paint.isFilterBitmap = true
         paint.color = Color.WHITE
-        // 10 fps gives the drawn cels time to read as a deliberate gait rather
-        // than a frantic, glitchy run.
         val visibleBottom = walkFrameBottom(pet.kind, frame)
         val artTop = rootY - visibleBottom * artScale
         val artBottom = artTop + bitmap.height * artScale
@@ -1265,6 +1264,7 @@ private class PetGameView(context: Context, private val onPetCreated: () -> Unit
 
     companion object {
         private const val WALK_FRAME_COUNT = 12
+        private const val WALK_FRAME_DURATION_MS = 80L
     }
 
     private enum class MotionMode { REST, WALK, CURIOUS, STAND }
