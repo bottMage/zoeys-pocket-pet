@@ -394,7 +394,7 @@ private class PetGameView(context: Context, private val onPetCreated: () -> Unit
     }
 
     private fun walkFrameArtwork(kind: PetKind, frame: Int): Bitmap {
-        val index = frame.mod(walkFrameCount(kind))
+        val index = frame.mod(WALK_FRAME_COUNT)
         val cacheKey = "${kind.name}_$index"
         return walkFrameCache.getOrPut(cacheKey) {
             val resourceId = resources.getIdentifier("walk_${kind.name.lowercase()}_$index", "drawable", context.packageName)
@@ -410,7 +410,7 @@ private class PetGameView(context: Context, private val onPetCreated: () -> Unit
      * appears to hover when a cel has slightly different padding.
      */
     private fun walkFrameBottom(kind: PetKind, frame: Int): Int {
-        val index = frame.mod(walkFrameCount(kind))
+        val index = frame.mod(WALK_FRAME_COUNT)
         val cacheKey = "${kind.name}_$index"
         return walkFrameBottomCache.getOrPut(cacheKey) {
             val bitmap = walkFrameArtwork(kind, index)
@@ -704,10 +704,8 @@ private class PetGameView(context: Context, private val onPetCreated: () -> Unit
         val groundY = bottom - dp(42f)
         val seconds = (now - animationStart) / 1000f
         val walking = motionMode == MotionMode.WALK && activeAction == null
-        val frameCount = walkFrameCount(pet.kind)
-        val frameDuration = if (pet.kind == PetKind.CAT) CAT_WALK_FRAME_DURATION_MS else WALK_FRAME_DURATION_MS
         val frame = if (walking || activeAction == Action.PLAY) {
-            ((now - animationStart) / frameDuration % frameCount).toInt()
+            ((now - animationStart) / WALK_FRAME_DURATION_MS % WALK_FRAME_COUNT).toInt()
         } else 0
         // The cel is a 512px canvas with transparent padding. Constraining
         // its full bitmap made the pet appear trapped in a smaller box. Use
@@ -1267,12 +1265,7 @@ private class PetGameView(context: Context, private val onPetCreated: () -> Unit
     companion object {
         private const val WALK_FRAME_COUNT = 12
         private const val WALK_FRAME_DURATION_MS = 80L
-        private const val CAT_WALK_FRAME_COUNT = 24
-        private const val CAT_WALK_FRAME_DURATION_MS = 40L
     }
-
-    private fun walkFrameCount(kind: PetKind): Int =
-        if (kind == PetKind.CAT) CAT_WALK_FRAME_COUNT else WALK_FRAME_COUNT
 
     private enum class MotionMode { REST, WALK, CURIOUS, STAND }
 
