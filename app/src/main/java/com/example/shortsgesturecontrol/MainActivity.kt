@@ -13,6 +13,7 @@ import android.graphics.Paint
 import android.graphics.Path
 import android.graphics.RadialGradient
 import android.graphics.RectF
+import android.graphics.Rect
 import android.graphics.Shader
 import android.os.Bundle
 import android.os.Build
@@ -304,6 +305,14 @@ private class PetGameView(context: Context, private val updateManager: AppUpdate
         PetKind.HAMSTER to R.drawable.rig_hamster,
         PetKind.DRAGON to R.drawable.rig_dragon
     )
+    private val rigSheetCache = HashMap<PetKind, RigSheet>()
+    private val rigSheetResources = mapOf(
+        PetKind.CAT to R.drawable.rigsheet_cat,
+        PetKind.DOG to R.drawable.rigsheet_dog,
+        PetKind.BUNNY to R.drawable.rigsheet_bunny,
+        PetKind.HAMSTER to R.drawable.rigsheet_hamster,
+        PetKind.DRAGON to R.drawable.rigsheet_dragon
+    )
     private val petArtResources = mapOf(
         PetKind.CAT to R.drawable.companion_cat,
         PetKind.DOG to R.drawable.companion_dog,
@@ -354,6 +363,68 @@ private class PetGameView(context: Context, private val updateManager: AppUpdate
             }
         }
         bitmap.height
+    }
+
+    private data class RigSheet(
+        val bitmap: Bitmap,
+        val head: Rect,
+        val body: Rect,
+        val tail: Rect,
+        val legs: List<Rect>,
+        val backParts: List<Rect>,
+        val frontParts: List<Rect>
+    )
+
+    private fun rigSheet(kind: PetKind): RigSheet = rigSheetCache.getOrPut(kind) {
+        val bitmap = BitmapFactory.decodeResource(resources, rigSheetResources.getValue(kind))
+            ?: error("Unable to load rig sheet for ${kind.label}")
+        when (kind) {
+            PetKind.BUNNY -> RigSheet(
+                bitmap,
+                Rect(0, 120, 440, 820),
+                Rect(420, 560, 1010, 950),
+                Rect(980, 590, 1254, 960),
+                listOf(Rect(0, 920, 315, 1254), Rect(300, 920, 620, 1254), Rect(600, 920, 930, 1254), Rect(900, 920, 1254, 1254)),
+                listOf(Rect(430, 0, 800, 470), Rect(790, 70, 1254, 520)),
+                emptyList()
+            )
+            PetKind.CAT -> RigSheet(
+                bitmap,
+                Rect(0, 0, 510, 700),
+                Rect(440, 330, 1060, 710),
+                Rect(1060, 0, 1536, 650),
+                listOf(Rect(0, 650, 390, 1024), Rect(370, 650, 770, 1024), Rect(750, 650, 1150, 1024), Rect(1130, 650, 1536, 1024)),
+                listOf(Rect(500, 0, 970, 370)),
+                emptyList()
+            )
+            PetKind.DOG -> RigSheet(
+                bitmap,
+                Rect(0, 0, 440, 660),
+                Rect(350, 470, 1010, 870),
+                Rect(950, 20, 1254, 540),
+                listOf(Rect(0, 850, 315, 1254), Rect(300, 850, 620, 1254), Rect(600, 850, 930, 1254), Rect(900, 850, 1254, 1254)),
+                listOf(Rect(420, 0, 1010, 530)),
+                emptyList()
+            )
+            PetKind.HAMSTER -> RigSheet(
+                bitmap,
+                Rect(0, 0, 610, 650),
+                Rect(560, 250, 1280, 710),
+                Rect(1240, 250, 1536, 620),
+                listOf(Rect(500, 650, 760, 1024), Rect(730, 650, 980, 1024), Rect(950, 650, 1240, 1024), Rect(1210, 650, 1536, 1024)),
+                listOf(Rect(0, 640, 520, 1024)),
+                emptyList()
+            )
+            PetKind.DRAGON -> RigSheet(
+                bitmap,
+                Rect(0, 0, 510, 530),
+                Rect(410, 350, 1040, 770),
+                Rect(970, 350, 1536, 770),
+                listOf(Rect(0, 650, 430, 1024), Rect(400, 650, 810, 1024), Rect(780, 650, 1160, 1024), Rect(1130, 650, 1536, 1024)),
+                listOf(Rect(760, 0, 1240, 440), Rect(1160, 0, 1536, 440)),
+                listOf(Rect(480, 0, 900, 320))
+            )
+        }
     }
 
     init {
@@ -889,6 +960,73 @@ private class PetGameView(context: Context, private val updateManager: AppUpdate
         canvas.restore()
     }
 
+    /** A real cutout rig: each limb is a separate original-art texture with a joint pivot. */
+    private fun drawBoneRigPet(
+        canvas: Canvas,
+        kind: PetKind,
+        centerX: Float,
+        groundY: Float,
+        artWidth: Float,
+        direction: Float,
+        phase: Float
+    ) {
+        val sheet = rigSheet(kind)
+        val unit = artWidth / 220f
+        val bodyBob = sin(phase * 2f) * 1.5f
+        val frontStride = sin(phase) * 17f
+        val rearStride = sin(phase + Math.PI.toFloat()) * 15f
+        canvas.save()
+        canvas.translate(centerX, groundY)
+        canvas.scale(if (direction > 0f) -unit else unit, unit)
+        canvas.translate(0f, bodyBob)
+
+        // Wings and tail are rear bones.
+        if (kind == PetKind.DRAGON) {
+            drawBonePart(canvas, sheet.bitmap, sheet.backParts[0], RectF(12f, -170f, 112f, -65f), 20f, -82f, sin(phase * .7f) * 4f)
+            drawBonePart(canvas, sheet.bitmap, sheet.backParts[1], RectF(18f, -157f, 95f, -62f), 24f, -80f, sin(phase * .7f + 1f) * 3f)
+        }
+        drawBonePart(canvas, sheet.bitmap, sheet.tail, RectF(48f, -101f, 124f, -18f), 53f, -72f, sin(phase) * 12f)
+
+        // Far legs move first and disappear behind the torso.
+        drawBonePart(canvas, sheet.bitmap, sheet.legs[0], RectF(-68f, -77f, -29f, 3f), -50f, -58f, rearStride)
+        drawBonePart(canvas, sheet.bitmap, sheet.legs[1], RectF(23f, -77f, 63f, 3f), 43f, -58f, frontStride)
+
+        drawBonePart(canvas, sheet.bitmap, sheet.body, RectF(-67f, -108f, 68f, -26f), 0f, -54f, sin(phase * 2f) * 1.2f)
+        drawBonePart(canvas, sheet.bitmap, sheet.head, RectF(-111f, -186f, -18f, -78f), -64f, -89f, sin(phase * 2f) * 1.6f)
+
+        // Ears/horns are attached to the head bone.
+        when (kind) {
+            PetKind.BUNNY -> {
+                drawBonePart(canvas, sheet.bitmap, sheet.backParts[0], RectF(-101f, -222f, -59f, -121f), -72f, -156f, sin(phase * 2f) * 1.6f)
+                drawBonePart(canvas, sheet.bitmap, sheet.backParts[1], RectF(-64f, -224f, -12f, -121f), -40f, -157f, sin(phase * 2f + .4f) * 1.6f)
+            }
+            PetKind.CAT -> drawBonePart(canvas, sheet.bitmap, sheet.backParts[0], RectF(-91f, -210f, -5f, -124f), -49f, -148f, sin(phase * 2f) * 1.5f)
+            PetKind.DOG -> drawBonePart(canvas, sheet.bitmap, sheet.backParts[0], RectF(-116f, -198f, -8f, -101f), -64f, -146f, sin(phase * 2f) * 1.5f)
+            PetKind.HAMSTER -> drawBonePart(canvas, sheet.bitmap, sheet.backParts[0], RectF(-102f, -184f, -4f, -115f), -55f, -145f, sin(phase * 2f) * 1.5f)
+            PetKind.DRAGON -> drawBonePart(canvas, sheet.bitmap, sheet.frontParts[0], RectF(-84f, -224f, -5f, -149f), -45f, -166f, sin(phase * 2f) * 1.2f)
+        }
+
+        // Near legs are the readable stride and sit above the body.
+        drawBonePart(canvas, sheet.bitmap, sheet.legs[2], RectF(-57f, -78f, -18f, 3f), -41f, -58f, frontStride)
+        drawBonePart(canvas, sheet.bitmap, sheet.legs[3], RectF(39f, -78f, 80f, 3f), 58f, -58f, rearStride)
+        canvas.restore()
+    }
+
+    private fun drawBonePart(
+        canvas: Canvas,
+        bitmap: Bitmap,
+        source: Rect,
+        destination: RectF,
+        pivotX: Float,
+        pivotY: Float,
+        rotation: Float
+    ) {
+        canvas.save()
+        canvas.rotate(rotation, pivotX, pivotY)
+        canvas.drawBitmap(bitmap, source, destination, rigPaint)
+        canvas.restore()
+    }
+
     private fun drawPet(canvas: Canvas, now: Long) {
         val top = dp(77f)
         val bottom = statsTop() - dp(10f)
@@ -969,7 +1107,7 @@ private class PetGameView(context: Context, private val updateManager: AppUpdate
             motionMode == MotionMode.CURIOUS -> sin(seconds * 1.8f) * .16f
             else -> 0f
         }
-        drawTexturedRigPet(
+        drawBoneRigPet(
             canvas = canvas,
             kind = pet.kind,
             centerX = centerX,
