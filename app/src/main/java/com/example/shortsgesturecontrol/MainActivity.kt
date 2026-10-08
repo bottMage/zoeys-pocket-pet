@@ -348,6 +348,7 @@ private class PetGameView(context: Context, private val onPetCreated: () -> Unit
     private val petArtCache = HashMap<PetKind, Bitmap>()
     private val walkFrameCache = HashMap<String, Bitmap>()
     private val walkFrameBottomCache = HashMap<String, Int>()
+    private val catRigCache = HashMap<String, Bitmap>()
     private val petArtResources = mapOf(
         PetKind.CAT to R.drawable.companion_cat,
         PetKind.DOG to R.drawable.companion_dog,
@@ -366,6 +367,7 @@ private class PetGameView(context: Context, private val onPetCreated: () -> Unit
     private var actionUntil = 0L
     private var motionX = .5f
     private var motionDirection = 1f
+    private var catFacingRight = false
     private var motionMode = MotionMode.REST
     private var motionModeUntil = 0L
     private var motionLastAt = SystemClock.uptimeMillis()
@@ -421,6 +423,14 @@ private class PetGameView(context: Context, private val onPetCreated: () -> Unit
             }
             bitmap.height
         }
+    }
+
+    private fun catRigArtwork(part: String): Bitmap = catRigCache.getOrPut(part) {
+        val resourceId = resources.getIdentifier("cat_rig_$part", "drawable", context.packageName)
+        check(resourceId != 0) { "Missing cat rig part: $part" }
+        BitmapFactory.decodeResource(resources, resourceId, BitmapFactory.Options().apply {
+            inScaled = false
+        }) ?: error("Unable to decode cat rig part: $part")
     }
 
     init {
@@ -687,7 +697,8 @@ private class PetGameView(context: Context, private val onPetCreated: () -> Unit
             val startBlend = min(1f, (now - motionModeStartedAt).coerceAtLeast(0L) / 500f)
             // Give each gait cycle enough forward travel to match the foot
             // cadence.  The blend still eases into and out of each walk.
-            val speed = .11f * min(startBlend, walkProgress.coerceIn(0f, 1f))
+            val speed = (if (pet.kind == PetKind.CAT) .13f else .11f) *
+                min(startBlend, walkProgress.coerceIn(0f, 1f))
             motionX += motionDirection * dt * speed
             if (motionX <= 0f) { motionX = 0f; motionDirection = 1f }
             if (motionX >= 1f) { motionX = 1f; motionDirection = -1f }
@@ -716,12 +727,17 @@ private class PetGameView(context: Context, private val onPetCreated: () -> Unit
         // bitmap width, so leaving only that exact amount makes tails and
         // ears visually touch the scene edge and look clipped. Keep a real
         // safety envelope around the complete animated silhouette.
-        val visibleReach = artWidth * .44f + dp(6f)
+        val visibleReach = if (pet.kind == PetKind.CAT) {
+            // The rig can swing a paw and wag the tail beyond its rest pose.
+            // Reserve that animation envelope so no rotated layer is clipped
+            // at the scene edge.
+            artWidth * .48f + dp(10f)
+        } else {
+            artWidth * .44f + dp(6f)
+        }
         val minCenterX = sceneLeft + visibleReach
         val maxCenterX = sceneRight - visibleReach
         val centerX = minCenterX + motionX * (maxCenterX - minCenterX)
-        val bitmap = walkFrameArtwork(pet.kind, frame)
-        val artScale = artWidth / bitmap.width
         // Keep the feet planted while resting.  A whole-body vertical bob reads
         // as hovering, especially against the simple ground in this scene.
         val idleBob = 0f
@@ -737,16 +753,23 @@ private class PetGameView(context: Context, private val onPetCreated: () -> Unit
         paint.isAntiAlias = true
         paint.isFilterBitmap = true
         paint.color = Color.WHITE
-        val visibleBottom = walkFrameBottom(pet.kind, frame)
-        val artTop = rootY - visibleBottom * artScale
-        val artBottom = artTop + bitmap.height * artScale
-        val artRect = RectF(centerX - artWidth / 2f, artTop, centerX + artWidth / 2f, artBottom)
-        canvas.save()
-        // The artwork faces left by default.  Mirror it only while travelling
-        // right; the old condition reversed that relationship.
-        if (motionDirection > 0f && walking) canvas.scale(-1f, 1f, centerX, rootY)
-        canvas.drawBitmap(bitmap, null, artRect, paint)
-        canvas.restore()
+        if (pet.kind == PetKind.CAT) {
+            if (walking) catFacingRight = motionDirection > 0f
+            drawCatRig(canvas, centerX, rootY, artWidth, seconds, walking, catFacingRight)
+        } else {
+            val bitmap = walkFrameArtwork(pet.kind, frame)
+            val artScale = artWidth / bitmap.width
+            val visibleBottom = walkFrameBottom(pet.kind, frame)
+            val artTop = rootY - visibleBottom * artScale
+            val artBottom = artTop + bitmap.height * artScale
+            val artRect = RectF(centerX - artWidth / 2f, artTop, centerX + artWidth / 2f, artBottom)
+            canvas.save()
+            // The artwork faces left by default.  Mirror it only while travelling
+            // right; the old condition reversed that relationship.
+            if (motionDirection > 0f && walking) canvas.scale(-1f, 1f, centerX, rootY)
+            canvas.drawBitmap(bitmap, null, artRect, paint)
+            canvas.restore()
+        }
 
         textPaint.textAlign = Paint.Align.CENTER
         textPaint.typeface = PaintTypeface.bold()
@@ -761,6 +784,77 @@ private class PetGameView(context: Context, private val onPetCreated: () -> Unit
         )
         textPaint.color = pet.kind.dark
         canvas.drawText(name, centerX, nameBaseline, textPaint)
+    }
+
+    /**
+     * The cat is a small 2-D bone rig, not a sequence of whole-body cels.  Each
+     * painted part stays rigid and is rotated around an anatomical joint while
+     * the hardware canvas interpolates continuously between poses.  Keeping the
+     * rig in a 512px authoring space makes the pivots readable and gives every
+     * phone the same proportions after scaling.
+     */
+    private fun drawCatRig(
+        canvas: Canvas,
+        centerX: Float,
+        groundY: Float,
+        artWidth: Float,
+        seconds: Float,
+        walking: Boolean,
+        facingRight: Boolean
+    ) {
+        val scale = artWidth / CAT_RIG_SIZE
+        val left = centerX - CAT_RIG_SIZE * scale / 2f
+        val top = groundY - CAT_RIG_GROUND * scale
+        val phase = seconds * (6.2831855f / CAT_RIG_CYCLE_SECONDS)
+        val gait = if (walking) sin(phase) else 0f
+        val oppositeGait = if (walking) sin(phase + 3.1415927f) else 0f
+        val settle = if (walking) 0f else sin(seconds * 1.7f) * .35f
+        val tailWag = sin(phase * .72f + .45f) * if (walking) 4.5f else 2.2f
+        val bodyRock = sin(phase * 2f) * if (walking) .9f else .25f
+        val headNod = sin(phase * 2f + .4f) * if (walking) 1.1f else .35f
+
+        canvas.save()
+        if (facingRight) canvas.scale(-1f, 1f, centerX, groundY)
+
+        // Far legs first; their smaller, quieter swing gives the body depth.
+        drawCatRigPart(canvas, catRigArtwork("tail"), left, top, scale, 320f, 70f, 175f, 203f, 330f, 226f, tailWag)
+        drawCatRigPart(canvas, catRigArtwork("rear_far"), left, top, scale, 245f, 305f, 117f, 152f, 276f, 319f, oppositeGait * 7.5f)
+        drawCatRigPart(canvas, catRigArtwork("front_far"), left, top, scale, 165f, 315f, 90f, 145f, 187f, 331f, gait * 8.5f)
+        drawCatRigPart(canvas, catRigArtwork("rear_near"), left, top, scale, 330f, 300f, 116f, 159f, 360f, 316f, gait * 8.5f)
+        drawCatRigPart(canvas, catRigArtwork("front_near"), left, top, scale, 70f, 315f, 120f, 152f, 111f, 331f, oppositeGait * 9.5f)
+
+        // The torso is the stable mass.  It rocks by less than one degree, so
+        // the feet remain contacts instead of bouncing with the root.
+        drawCatRigPart(canvas, catRigArtwork("body"), left, top, scale, 170f, 230f, 235f, 139f, 190f, 330f, bodyRock + settle)
+        drawCatRigPart(canvas, catRigArtwork("head"), left, top, scale, 45f, 100f, 195f, 253f, 190f, 330f, headNod)
+        drawCatRigPart(canvas, catRigArtwork("chest"), left, top, scale, 130f, 270f, 125f, 99f, 185f, 282f, headNod * .55f)
+        canvas.restore()
+    }
+
+    private fun drawCatRigPart(
+        canvas: Canvas,
+        bitmap: Bitmap,
+        left: Float,
+        top: Float,
+        scale: Float,
+        x: Float,
+        y: Float,
+        width: Float,
+        height: Float,
+        pivotX: Float,
+        pivotY: Float,
+        rotation: Float
+    ) {
+        val destination = RectF(
+            left + x * scale,
+            top + y * scale,
+            left + (x + width) * scale,
+            top + (y + height) * scale
+        )
+        canvas.save()
+        canvas.rotate(rotation, left + pivotX * scale, top + pivotY * scale)
+        canvas.drawBitmap(bitmap, null, destination, paint)
+        canvas.restore()
     }
 
     private fun drawActionEffects(canvas: Canvas, now: Long) {
@@ -1265,6 +1359,9 @@ private class PetGameView(context: Context, private val onPetCreated: () -> Unit
     companion object {
         private const val WALK_FRAME_COUNT = 12
         private const val WALK_FRAME_DURATION_MS = 80L
+        private const val CAT_RIG_SIZE = 512f
+        private const val CAT_RIG_GROUND = 468f
+        private const val CAT_RIG_CYCLE_SECONDS = .92f
     }
 
     private enum class MotionMode { REST, WALK, CURIOUS, STAND }
