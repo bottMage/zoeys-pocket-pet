@@ -31,6 +31,15 @@ import android.widget.EditText
 import android.widget.Toast
 import androidx.core.content.FileProvider
 import androidx.core.content.ContextCompat
+import com.google.android.gms.auth.api.signin.GoogleSignIn
+import com.google.android.gms.auth.api.signin.GoogleSignInClient
+import com.google.android.gms.auth.api.signin.GoogleSignInOptions
+import com.google.android.gms.common.api.ApiException
+import com.google.firebase.auth.FirebaseAuth
+import com.google.firebase.auth.GoogleAuthProvider
+import com.google.firebase.firestore.FieldValue
+import com.google.firebase.firestore.FirebaseFirestore
+import com.google.firebase.firestore.SetOptions
 import org.json.JSONObject
 import java.io.File
 import java.net.HttpURLConnection
@@ -44,20 +53,83 @@ import kotlin.math.roundToInt
 
 class MainActivity : Activity() {
     private lateinit var gameView: PetGameView
+    private lateinit var auth: FirebaseAuth
+    private var googleSignInClient: GoogleSignInClient? = null
+
+    companion object {
+        private const val GOOGLE_SIGN_IN_REQUEST = 7401
+    }
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         window.statusBarColor = Color.rgb(65, 44, 112)
         window.navigationBarColor = Color.rgb(35, 24, 63)
         window.decorView.systemUiVisibility = View.SYSTEM_UI_FLAG_LIGHT_STATUS_BAR.inv()
-        gameView = PetGameView(this)
+        auth = FirebaseAuth.getInstance()
+        googleSignInClient = buildGoogleSignInClient()
+        gameView = PetGameView(this) { maybePromptForCloudBackup() }
         setContentView(gameView)
         gameView.postDelayed({ gameView.checkForUpdates(showNoUpdate = false) }, 650L)
+        gameView.postDelayed({
+            if (auth.currentUser != null) gameView.syncCloud() else maybePromptForCloudBackup()
+        }, 1800L)
     }
 
     override fun onPause() {
         gameView.savePet()
         super.onPause()
+    }
+
+    private fun buildGoogleSignInClient(): GoogleSignInClient? {
+        val clientIdResource = resources.getIdentifier("default_web_client_id", "string", packageName)
+        if (clientIdResource == 0) return null
+        val options = GoogleSignInOptions.Builder(GoogleSignInOptions.DEFAULT_SIGN_IN)
+            .requestIdToken(getString(clientIdResource))
+            .requestEmail()
+            .build()
+        return GoogleSignIn.getClient(this, options)
+    }
+
+    private fun maybePromptForCloudBackup() {
+        if (isFinishing || auth.currentUser != null || googleSignInClient == null || !gameView.hasCreatedPet()) return
+        AlertDialog.Builder(this)
+            .setTitle("Keep progress safe")
+            .setMessage("Sign in with Google to back up ${gameView.petName()} and restore it on another phone.")
+            .setNegativeButton("NOT NOW", null)
+            .setPositiveButton("SIGN IN") { _, _ -> startGoogleSignIn() }
+            .show()
+    }
+
+    private fun startGoogleSignIn() {
+        val client = googleSignInClient
+        if (client == null) {
+            Toast.makeText(this, "Google backup is still being configured.", Toast.LENGTH_LONG).show()
+            return
+        }
+        startActivityForResult(client.signInIntent, GOOGLE_SIGN_IN_REQUEST)
+    }
+
+    @Deprecated("Uses the Google Sign-In activity result API for Android 8 compatibility")
+    override fun onActivityResult(requestCode: Int, resultCode: Int, data: Intent?) {
+        super.onActivityResult(requestCode, resultCode, data)
+        if (requestCode != GOOGLE_SIGN_IN_REQUEST) return
+        try {
+            val account = GoogleSignIn.getSignedInAccountFromIntent(data)
+                .getResult(ApiException::class.java)
+            val token = account.idToken
+            if (token.isNullOrBlank()) throw IllegalStateException("Google did not return an ID token")
+            auth.signInWithCredential(GoogleAuthProvider.getCredential(token, null))
+                .addOnCompleteListener(this) { task ->
+                    if (task.isSuccessful) {
+                        gameView.syncCloud()
+                        Toast.makeText(this, "Google backup enabled.", Toast.LENGTH_SHORT).show()
+                    } else {
+                        Toast.makeText(this, "Google sign-in failed. Progress is still saved on this phone.", Toast.LENGTH_LONG).show()
+                    }
+                }
+        } catch (_: Exception) {
+            Toast.makeText(this, "Google sign-in was cancelled.", Toast.LENGTH_SHORT).show()
+        }
     }
 }
 
@@ -176,12 +248,13 @@ private class AppUpdateManager(private val context: Context) {
     }
 }
 
-private class PetGameView(context: Context) : View(context) {
+private class PetGameView(context: Context, private val onPetCreated: () -> Unit) : View(context) {
     private val appContext = context
     private val prefs = context.getSharedPreferences("zoey_pet", Context.MODE_PRIVATE)
     private val paint = Paint(Paint.ANTI_ALIAS_FLAG)
     private val textPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply { typeface = PaintTypeface.rounded() }
     private val pet = PetState(prefs)
+    private val cloudSave = CloudSaveManager()
     private val petArtCache = HashMap<PetKind, Bitmap>()
     private val walkFrameCache = HashMap<String, Bitmap>()
     private val walkFrameBottomCache = HashMap<String, Int>()
@@ -785,6 +858,7 @@ private class PetGameView(context: Context) : View(context) {
             message = "Welcome, ${pet.name}! Let's grow together."
             messageUntil = SystemClock.uptimeMillis() + 5000L
             savePet()
+            post { onPetCreated() }
             invalidate()
         }
         return true
@@ -841,8 +915,20 @@ private class PetGameView(context: Context) : View(context) {
 
     fun savePet() {
         pet.save()
+        cloudSave.upload()
         lastSaved = SystemClock.uptimeMillis()
     }
+
+    fun syncCloud() {
+        cloudSave.restore { restored ->
+            if (restored) invalidate()
+            else Toast.makeText(appContext, "Cloud backup could not sync yet; this phone still has your progress.", Toast.LENGTH_LONG).show()
+        }
+    }
+
+    fun hasCreatedPet(): Boolean = pet.created && pet.hatched
+
+    fun petName(): String = pet.name
 
     fun checkForUpdates(showNoUpdate: Boolean) {
         AppUpdateManager(appContext).check(showNoUpdate)
@@ -868,6 +954,49 @@ private class PetGameView(context: Context) : View(context) {
         DRAGON("DRAGON", Color.rgb(194, 235, 177), Color.rgb(106, 184, 126), Color.rgb(47, 104, 82))
     }
 
+    private inner class CloudSaveManager {
+        private val auth = FirebaseAuth.getInstance()
+        private val firestore = FirebaseFirestore.getInstance()
+
+        fun upload() {
+            val user = auth.currentUser ?: return
+            if (pet.savedAt == 0L) pet.save()
+            val data = pet.cloudData().toMutableMap()
+            data["updatedAt"] = FieldValue.serverTimestamp()
+            firestore.collection("users").document(user.uid)
+                .collection("pets").document("main")
+                .set(data, SetOptions.merge())
+        }
+
+        fun restore(onComplete: (Boolean) -> Unit) {
+            val user = auth.currentUser
+            if (user == null) {
+                onComplete(false)
+                return
+            }
+            firestore.collection("users").document(user.uid)
+                .collection("pets").document("main")
+                .get()
+                .addOnSuccessListener { snapshot ->
+                    if (!snapshot.exists()) {
+                        upload()
+                    } else {
+                        val cloudSavedAt = snapshot.getLong("savedAt") ?: 0L
+                        when {
+                            cloudSavedAt > pet.savedAt -> {
+                                pet.loadCloud(snapshot.data.orEmpty())
+                                pet.save()
+                                upload()
+                            }
+                            pet.savedAt > cloudSavedAt -> upload()
+                        }
+                    }
+                    onComplete(true)
+                }
+                .addOnFailureListener { onComplete(false) }
+        }
+    }
+
     private class PetState(private val prefs: android.content.SharedPreferences) {
         var hunger = readMetric("hunger", 78f)
         var joy = readMetric("joy", 82f)
@@ -885,7 +1014,11 @@ private class PetGameView(context: Context) : View(context) {
         var created = prefs.getBoolean("created", false)
         var hatched = prefs.getBoolean("hatched", false)
         private var lastUpdate = prefs.getLong("last_update", System.currentTimeMillis())
+        private var lastSavedAt = prefs.getLong("saved_at", 0L)
         private var evolutionEvent = false
+
+        val savedAt: Long
+            get() = lastSavedAt
 
         val stage: String
             get() = when {
@@ -1016,7 +1149,49 @@ private class PetGameView(context: Context) : View(context) {
             return happened
         }
 
+        fun cloudData(): Map<String, Any> = mapOf(
+            "hunger" to hunger.toDouble(),
+            "joy" to joy.toDouble(),
+            "energy" to energy.toDouble(),
+            "clean" to clean.toDouble(),
+            "growth" to growth.toDouble(),
+            "generation" to generation.toLong(),
+            "ageMillis" to ageMillis,
+            "goodCareMillis" to goodCareMillis,
+            "totalCareMillis" to totalCareMillis,
+            "name" to name,
+            "kind" to kind.name,
+            "created" to created,
+            "hatched" to hatched,
+            "lastUpdate" to lastUpdate,
+            "savedAt" to lastSavedAt
+        )
+
+        fun loadCloud(data: Map<String, Any>) {
+            fun number(key: String, fallback: Float): Float = (data[key] as? Number)?.toFloat() ?: fallback
+            fun long(key: String, fallback: Long): Long = (data[key] as? Number)?.toLong() ?: fallback
+
+            hunger = number("hunger", hunger).coerceIn(0f, 100f)
+            joy = number("joy", joy).coerceIn(0f, 100f)
+            energy = number("energy", energy).coerceIn(0f, 100f)
+            clean = number("clean", clean).coerceIn(0f, 100f)
+            growth = number("growth", growth).coerceIn(0f, 100f)
+            generation = long("generation", generation.toLong()).toInt().coerceIn(0, 2)
+            ageMillis = long("ageMillis", ageMillis)
+            goodCareMillis = long("goodCareMillis", goodCareMillis)
+            totalCareMillis = long("totalCareMillis", totalCareMillis)
+            name = ((data["name"] as? String)?.take(14))?.ifBlank { name } ?: name
+            (data["kind"] as? String)?.let { value ->
+                kind = PetKind.values().firstOrNull { it.name == value } ?: kind
+            }
+            created = data["created"] as? Boolean ?: created
+            hatched = data["hatched"] as? Boolean ?: hatched
+            lastUpdate = long("lastUpdate", lastUpdate)
+            lastSavedAt = long("savedAt", lastSavedAt)
+        }
+
         fun save() {
+            lastSavedAt = System.currentTimeMillis()
             prefs.edit()
                 .putFloat("hunger", hunger)
                 .putFloat("joy", joy)
@@ -1032,6 +1207,7 @@ private class PetGameView(context: Context) : View(context) {
                 .putBoolean("created", created)
                 .putBoolean("hatched", hatched)
                 .putLong("last_update", lastUpdate)
+                .putLong("saved_at", lastSavedAt)
                 .apply()
         }
 

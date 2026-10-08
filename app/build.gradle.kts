@@ -1,5 +1,6 @@
 plugins {
     id("com.android.application")
+    id("com.google.gms.google-services")
 }
 
 android {
@@ -17,8 +18,8 @@ android {
         targetSdk = 35
         // Keep the v5 whole-body renderer, but use a higher code so Android
         // accepts this rollback over the newer installed builds.
-        versionCode = 23
-        versionName = "23.0"
+        versionCode = 24
+        versionName = "24.0"
     }
 
     buildTypes {
@@ -42,4 +43,8 @@ dependencies {
     implementation("androidx.appcompat:appcompat:1.7.0")
     implementation("androidx.activity:activity-ktx:1.10.1")
     implementation("androidx.lifecycle:lifecycle-runtime-ktx:2.8.7")
+    implementation(platform("com.google.firebase:firebase-bom:33.7.0"))
+    implementation("com.google.firebase:firebase-auth")
+    implementation("com.google.firebase:firebase-firestore")
+    implementation("com.google.android.gms:play-services-auth:21.2.0")
 }

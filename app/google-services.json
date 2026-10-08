@@ -1,0 +1,47 @@
+{
+  "project_info": {
+    "project_number": "221172292533",
+    "project_id": "zoey-s-pets",
+    "storage_bucket": "zoey-s-pets.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:221172292533:android:c452996bec0cbf7f3317fc",
+        "android_client_info": {
+          "package_name": "com.example.shortsgesturecontrol"
+        }
+      },
+      "oauth_client": [
+        {
+          "client_id": "221172292533-1jkqra2u492gncpjd2g9ps956o0dqdhg.apps.googleusercontent.com",
+          "client_type": 1,
+          "android_info": {
+            "package_name": "com.example.shortsgesturecontrol",
+            "certificate_hash": "7bcf7726a93c23c199fc3d6fb8e0ae3ad49f50ac"
+          }
+        },
+        {
+          "client_id": "221172292533-7bco2bslsbcdu7ui5kmdjgqbv08dlpl5.apps.googleusercontent.com",
+          "client_type": 3
+        }
+      ],
+      "api_key": [
+        {
+          "current_key": "AIzaSyCziAYJ9UNBEvK6eVpZEBH4N5hxeesLQIk"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": [
+            {
+              "client_id": "221172292533-7bco2bslsbcdu7ui5kmdjgqbv08dlpl5.apps.googleusercontent.com",
+              "client_type": 3
+            }
+          ]
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}
