@@ -300,17 +300,25 @@ private class PetGameView(context: Context) : View(context) {
     }
 
     private fun drawHeader(canvas: Canvas) {
+        val updates = headerUpdateRect()
+        val titleLeft = dp(22f)
+        val titleRight = updates.left - dp(16f)
+        val titleWidth = (titleRight - titleLeft).coerceAtLeast(dp(100f))
+        val titleCenter = (titleLeft + titleRight) / 2f
+
         textPaint.textAlign = Paint.Align.LEFT
         textPaint.color = Color.WHITE
         textPaint.textSize = dp(22f)
         textPaint.typeface = PaintTypeface.bold()
-        canvas.drawText("ZOEY'S POCKET PET", dp(22f), dp(38f), textPaint)
+        textPaint.textSize = min(dp(22f), dp(22f) * titleWidth / textPaint.measureText("ZOEY'S POCKET PET"))
+        textPaint.textAlign = Paint.Align.CENTER
+        canvas.drawText("ZOEY'S POCKET PET", titleCenter, dp(38f), textPaint)
         textPaint.textSize = dp(13f)
         textPaint.typeface = PaintTypeface.rounded()
         textPaint.color = Color.argb(220, 255, 255, 255)
-        canvas.drawText("A tiny friend made just for you", dp(23f), dp(59f), textPaint)
+        textPaint.textSize = min(dp(13f), dp(13f) * titleWidth / textPaint.measureText("A tiny friend made just for you"))
+        canvas.drawText("A tiny friend made just for you", titleCenter, dp(59f), textPaint)
 
-        val updates = headerUpdateRect()
         paint.color = Color.argb(54, 48, 27, 89)
         canvas.drawRoundRect(updates, dp(16f), dp(16f), paint)
         textPaint.textAlign = Paint.Align.CENTER
@@ -493,9 +501,9 @@ private class PetGameView(context: Context) : View(context) {
         if (motionMode == MotionMode.WALK && activeAction == null) {
             val walkProgress = ((motionModeUntil - now) / 500f).coerceIn(0f, 1f)
             val startBlend = min(1f, (now - motionModeStartedAt).coerceAtLeast(0L) / 500f)
-            // One complete gait should move only a small step.  Faster travel
-            // makes the feet visibly slide across the grass.
-            val speed = .070f * min(startBlend, walkProgress.coerceIn(0f, 1f))
+            // Give each gait cycle enough forward travel to match the foot
+            // cadence.  The blend still eases into and out of each walk.
+            val speed = .11f * min(startBlend, walkProgress.coerceIn(0f, 1f))
             motionX += motionDirection * dt * speed
             if (motionX <= .06f) { motionX = .06f; motionDirection = 1f }
             if (motionX >= .94f) { motionX = .94f; motionDirection = -1f }
@@ -647,7 +655,9 @@ private class PetGameView(context: Context) : View(context) {
             val col = i % 2
             val row = i / 2
             val x = dp(22f) + col * (colWidth + dp(10f))
-            val y = top + dp(68f) + row * dp(42f)
+            // Leave a clear gap below the evolution hint.  The old first row
+            // started almost on top of that line at compact phone widths.
+            val y = top + dp(88f) + row * dp(43f)
             textPaint.textSize = dp(11f)
             textPaint.typeface = PaintTypeface.bold()
             textPaint.color = Color.rgb(105, 82, 113)
@@ -682,13 +692,19 @@ private class PetGameView(context: Context) : View(context) {
             canvas.drawRoundRect(rect, dp(18f), dp(18f), paint)
             paint.color = Color.argb(32, 67, 39, 95)
             canvas.drawRoundRect(RectF(rect.left, rect.bottom - dp(5f), rect.right, rect.bottom + dp(2f)), dp(5f), dp(5f), paint)
-            textPaint.textAlign = Paint.Align.LEFT
             textPaint.typeface = PaintTypeface.bold()
             textPaint.textSize = dp(17f)
             textPaint.color = Color.rgb(76, 49, 94)
-            canvas.drawText(glyphs[i], rect.left + dp(17f), rect.top + dp(35f), textPaint)
+            val glyphWidth = textPaint.measureText(glyphs[i])
             textPaint.textSize = dp(13f)
-            canvas.drawText(labels[i], rect.left + dp(45f), rect.top + dp(34f), textPaint)
+            val labelWidth = textPaint.measureText(labels[i])
+            val groupWidth = glyphWidth + dp(14f) + labelWidth
+            val groupLeft = rect.centerX() - groupWidth / 2f
+            textPaint.textAlign = Paint.Align.LEFT
+            textPaint.textSize = dp(17f)
+            canvas.drawText(glyphs[i], groupLeft, rect.top + dp(35f), textPaint)
+            textPaint.textSize = dp(13f)
+            canvas.drawText(labels[i], groupLeft + glyphWidth + dp(14f), rect.top + dp(34f), textPaint)
         }
     }
 

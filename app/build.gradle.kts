@@ -17,8 +17,8 @@ android {
         targetSdk = 35
         // Keep the v5 whole-body renderer, but use a higher code so Android
         // accepts this rollback over the newer installed builds.
-        versionCode = 19
-        versionName = "19.0"
+        versionCode = 20
+        versionName = "20.0"
     }
 
     buildTypes {
