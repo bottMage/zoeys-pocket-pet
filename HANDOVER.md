@@ -1,6 +1,57 @@
 # Zoey's Pocket Pet — cloud handover
 
-## Current work: v40 anatomy-specific rigs (2026-10-08)
+## Current request: original whole-pet animation for all pets — v41
+
+The user clarified the rollback target with a v23 screenshot: restore that
+whole-body cutout/cel setup for ALL five species, with clipping gone. This
+supersedes the cat-locked/other-species rig work below. Do not resume the
+separate-limb rigs, dog posture trial or rejected 3D prototypes.
+
+`MainActivity.kt` now draws the original `walk_<kind>_<frame>.png` whole-pet
+artwork for cat, dog, bunny, hamster and dragon. The motion recipe comes from
+`bb2ddcc` (v32): v23-style movement with the subsequent source clipping repairs.
+Artwork is unchanged, not repainted or regenerated. Dragon source cel 5 still
+contained a duplicate, source-edge-clipped tail, so production skips that single
+malformed cel: 11 unique dragon frames, 12 for each other kind. No duplicated
+hold frame is inserted. Standing uses the same design/cel 0, with facing retained.
+
+`PetSpriteLayout.java` measures every nonzero-alpha pixel once, uses exclusive
+right/bottom bounds, and fits the full sequence's envelope in BOTH directions.
+It reserves a travel lane, side gap, message clearance and play-bounce headroom
+at every evolution size. Bottom visible pixels anchor to the grass. Cached
+bitmaps are limited to the current species; drawing remains hardware/vsync
+enabled. Historical rig source/assets stay in the repo but are not rendered.
+
+`WholePetCheck` passes 198,240 actual-alpha placement cases across five species,
+seven widths, six heights, four growth scales, both facings, five positions and
+two bounce offsets. Every selected source silhouette has transparent borders.
+This checks clipping, not professional animation quality or device FPS. The
+production `UpdateCheckerCheck` also passes. Activity/sign-in/updater code,
+UI/action/cloud entry points and the complete pet/save/cloud model match v40
+byte-for-byte; no progress migration, uninstall, reset or cloud write is needed.
+
+Source/build version is 41.0. `assembleDebug` and `lintDebug` pass (zero lint
+errors; existing/general warnings remain). APK package/version and the unchanged
+cloud signing certificate are verified. APK SHA-256 is
+`7a3541c2b91660c25c4dc897bb8ceb1560a170cfde61d63a0b21205946770671`.
+Publish the signed asset first, then advance the root update manifest only after
+v41 is confirmed publicly available. No phone/emulator is attached; device
+smoothness and user approval of the restored movement remain unverified.
+
+The rejected dog preview/tool remains recoverable outside the repository at
+`/workspace/artifacts/rejected-dog-standing.xvMpqo`. It was never shipped.
+
+Reproduce checks with JDK 21 on PATH:
+
+```bash
+check_classes=$(mktemp -d /tmp/whole-pet-check.XXXXXX)
+javac -d "$check_classes" \
+  app/src/main/java/com/example/shortsgesturecontrol/PetSpriteLayout.java \
+  tools/WholePetCheck.java
+java -cp "$check_classes" WholePetCheck app/src/main/res/drawable-nodpi
+```
+
+## Historical v40 anatomy-specific rigs (2026-10-08)
 
 The latest user request supersedes the older review-only notes below: leave the
 cat at its current livelier baseline and apply that recipe to every other pet,
