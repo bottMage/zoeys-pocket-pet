@@ -50,11 +50,13 @@ stay inside 256px from center, and at most three paws recover together. Existing
 `UpdateCheckerCheck` pass. These are regressions, not visual approval or phone
 FPS measurements.
 
-Release: build/lint and verify the unchanged certificate, commit
-`updates/zoeys-pocket-pet-v40.apk`, push `main` and annotated `v40`, confirm the
-public release asset returns 200, then commit/push root `update.json` for 40.
-Do not advance the manifest before its APK is available. Until that sequence
-finishes, the public manifest remains v39.
+Release v40: `assembleDebug`/`lintDebug` pass (zero lint errors; existing/general
+warnings remain). The APK's package/version and unchanged signing certificate
+are verified. Commit `e6ef649` contains `updates/zoeys-pocket-pet-v40.apk` and was
+pushed to `main` with annotated `v40`. GitHub workflow run `37815702797` succeeded
+and the public release APK returns 200. Root `update.json` now advertises 40,
+advanced only after the asset became available. Continue this asset-first
+release sequence; never publish a manifest pointing to a missing APK.
 
 ## Historical cat polish trials — now the retained baseline
 
