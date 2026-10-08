@@ -635,8 +635,9 @@ private class PetGameView(context: Context) : View(context) {
         textPaint.typeface = PaintTypeface.rounded()
         textPaint.color = Color.rgb(130, 102, 140)
         canvas.drawText("${pet.stage} • AGE ${pet.ageLabel} • CARE ${pet.carePercent.roundToInt()}%", dp(22f), top + dp(48f), textPaint)
-        textPaint.textSize = dp(10f)
-        textPaint.color = Color.rgb(160, 133, 155)
+        textPaint.textSize = dp(11f)
+        textPaint.typeface = PaintTypeface.bold()
+        textPaint.color = Color.rgb(105, 78, 116)
         canvas.drawText("EVOLUTION ${pet.evolutionProgress.roundToInt()}% • ${pet.evolutionHint}", dp(22f), top + dp(61f), textPaint)
 
         val reset = newPetRect()
@@ -661,9 +662,15 @@ private class PetGameView(context: Context) : View(context) {
             textPaint.textSize = dp(11f)
             textPaint.typeface = PaintTypeface.bold()
             textPaint.color = Color.rgb(105, 82, 113)
-            canvas.drawText(values[i].second, x, y, textPaint)
-            textPaint.textAlign = Paint.Align.RIGHT
-            canvas.drawText("${values[i].first.roundToInt()}%", x + colWidth, y, textPaint)
+            val label = values[i].second
+            val value = "${values[i].first.roundToInt()}%"
+            val labelWidth = textPaint.measureText(label)
+            val valueWidth = textPaint.measureText(value)
+            val groupWidth = labelWidth + dp(10f) + valueWidth
+            val groupLeft = x + (colWidth - groupWidth) / 2f
+            textPaint.textAlign = Paint.Align.LEFT
+            canvas.drawText(label, groupLeft, y, textPaint)
+            canvas.drawText(value, groupLeft + labelWidth + dp(10f), y, textPaint)
             textPaint.textAlign = Paint.Align.LEFT
             paint.color = Color.rgb(237, 225, 233)
             canvas.drawRoundRect(RectF(x, y + dp(8f), x + colWidth, y + dp(15f)), dp(4f), dp(4f), paint)
