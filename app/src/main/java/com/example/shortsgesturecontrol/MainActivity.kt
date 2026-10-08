@@ -505,8 +505,8 @@ private class PetGameView(context: Context) : View(context) {
             // cadence.  The blend still eases into and out of each walk.
             val speed = .11f * min(startBlend, walkProgress.coerceIn(0f, 1f))
             motionX += motionDirection * dt * speed
-            if (motionX <= .06f) { motionX = .06f; motionDirection = 1f }
-            if (motionX >= .94f) { motionX = .94f; motionDirection = -1f }
+            if (motionX <= 0f) { motionX = 0f; motionDirection = 1f }
+            if (motionX >= 1f) { motionX = 1f; motionDirection = -1f }
         }
 
         val stageScale = when (pet.stage) {
@@ -518,8 +518,13 @@ private class PetGameView(context: Context) : View(context) {
         }
         val artWidth = min(width - dp(42f), dp(296f)) * stageScale
         val groundY = bottom - dp(42f)
-        val minCenterX = max(sceneLeft + artWidth / 2f, artWidth / 2f + dp(4f))
-        val maxCenterX = min(sceneRight - artWidth / 2f, width - artWidth / 2f - dp(4f))
+        // The cel is a 512px canvas with transparent padding. Constraining
+        // its full bitmap made the pet appear trapped in a smaller box. Use
+        // the visible silhouette envelope so the actual pet can use the full
+        // scene while its transparent edges sit safely outside it.
+        val visibleReach = artWidth * .42f
+        val minCenterX = sceneLeft + visibleReach
+        val maxCenterX = sceneRight - visibleReach
         val centerX = minCenterX + motionX * (maxCenterX - minCenterX)
         val seconds = (now - animationStart) / 1000f
         val walking = motionMode == MotionMode.WALK && activeAction == null
