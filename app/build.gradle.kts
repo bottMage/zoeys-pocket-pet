@@ -15,8 +15,10 @@ android {
         applicationId = "com.example.shortsgesturecontrol"
         minSdk = 26
         targetSdk = 35
-        versionCode = 18
-        versionName = "18.0"
+        // Keep the v5 whole-body renderer, but use a higher code so Android
+        // accepts this rollback over the newer installed builds.
+        versionCode = 19
+        versionName = "19.0"
     }
 
     buildTypes {
