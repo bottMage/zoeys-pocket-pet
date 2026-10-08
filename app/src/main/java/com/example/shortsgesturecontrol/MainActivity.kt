@@ -348,7 +348,6 @@ private class PetGameView(context: Context, private val onPetCreated: () -> Unit
     private val petArtCache = HashMap<PetKind, Bitmap>()
     private val walkFrameCache = HashMap<String, Bitmap>()
     private val walkFrameBottomCache = HashMap<String, Int>()
-    private val bitmapBoundsCache = HashMap<String, BitmapBounds>()
     private val petArtResources = mapOf(
         PetKind.CAT to R.drawable.companion_cat,
         PetKind.DOG to R.drawable.companion_dog,
@@ -415,33 +414,12 @@ private class PetGameView(context: Context, private val onPetCreated: () -> Unit
         val cacheKey = "${kind.name}_$index"
         return walkFrameBottomCache.getOrPut(cacheKey) {
             val bitmap = walkFrameArtwork(kind, index)
-            visibleBitmapBounds("walk_$cacheKey", bitmap).bottom
-        }
-    }
-
-    /**
-     * Returns the non-transparent envelope of a sprite.  The source PNGs use
-     * different amounts of transparent padding, so a fixed fraction of the
-     * bitmap is not a reliable movement boundary.
-     */
-    private fun visibleBitmapBounds(cacheKey: String, bitmap: Bitmap): BitmapBounds {
-        return bitmapBoundsCache.getOrPut(cacheKey) {
-            var left = bitmap.width
-            var top = bitmap.height
-            var right = 0
-            var bottom = 0
-            for (y in 0 until bitmap.height) {
+            for (y in bitmap.height - 1 downTo 0) {
                 for (x in 0 until bitmap.width) {
-                    if (Color.alpha(bitmap.getPixel(x, y)) != 0) {
-                        if (x < left) left = x
-                        if (y < top) top = y
-                        if (x + 1 > right) right = x + 1
-                        if (y + 1 > bottom) bottom = y + 1
-                    }
+                    if (Color.alpha(bitmap.getPixel(x, y)) != 0) return@getOrPut y + 1
                 }
             }
-            if (right == 0) BitmapBounds(0, 0, bitmap.width, bitmap.height)
-            else BitmapBounds(left, top, right, bottom)
+            bitmap.height
         }
     }
 
@@ -728,22 +706,21 @@ private class PetGameView(context: Context, private val onPetCreated: () -> Unit
         val seconds = (now - animationStart) / 1000f
         val walking = motionMode == MotionMode.WALK && activeAction == null
         val frame = if (walking || activeAction == Action.PLAY) ((now / 105L) % WALK_FRAME_COUNT).toInt() else 0
-        // Idle/resting pets use the complete original artwork.  Some generated
-        // walk cels have an abbreviated outer silhouette, so displaying one of
-        // those cels while idle makes a tail look visibly chopped even though
-        // the pet is not moving.
-        val usingWalkCel = walking || activeAction == Action.PLAY
-        val bitmap = if (usingWalkCel) walkFrameArtwork(pet.kind, frame) else petArtwork(pet.kind)
-        val boundsKey = if (usingWalkCel) "walk_${pet.kind.name}_${frame.mod(WALK_FRAME_COUNT)}" else "static_${pet.kind.name}"
-        val visibleBounds = visibleBitmapBounds(boundsKey, bitmap)
+        // The cel is a 512px canvas with transparent padding. Constraining
+        // its full bitmap made the pet appear trapped in a smaller box. Use
+        // the visible silhouette envelope so the actual pet can use the full
+        // scene while its transparent edges sit safely outside it.
+        // The transparent animation canvases are tightly packed. Their
+        // furthest anti-aliased pixels sit just inside roughly 42% of the
+        // bitmap width, so leaving only that exact amount makes tails and
+        // ears visually touch the scene edge and look clipped. Keep a real
+        // safety envelope around the complete animated silhouette.
+        val visibleReach = artWidth * .44f + dp(6f)
+        val minCenterX = sceneLeft + visibleReach
+        val maxCenterX = sceneRight - visibleReach
+        val centerX = minCenterX + motionX * (maxCenterX - minCenterX)
+        val bitmap = walkFrameArtwork(pet.kind, frame)
         val artScale = artWidth / bitmap.width
-        val leftReach = (bitmap.width / 2f - visibleBounds.left) * artScale
-        val rightReach = (visibleBounds.right - bitmap.width / 2f) * artScale
-        // A small physical margin keeps anti-aliased outlines and a tail tip
-        // away from the rounded scene edge without shrinking the walk path.
-        val minCenterX = sceneLeft + leftReach + dp(8f)
-        val maxCenterX = sceneRight - rightReach - dp(8f)
-        val centerX = minCenterX + motionX.coerceIn(0f, 1f) * (maxCenterX - minCenterX)
         // Keep the feet planted while resting.  A whole-body vertical bob reads
         // as hovering, especially against the simple ground in this scene.
         val idleBob = 0f
@@ -761,7 +738,7 @@ private class PetGameView(context: Context, private val onPetCreated: () -> Unit
         paint.color = Color.WHITE
         // 10 fps gives the drawn cels time to read as a deliberate gait rather
         // than a frantic, glitchy run.
-        val visibleBottom = visibleBounds.bottom
+        val visibleBottom = walkFrameBottom(pet.kind, frame)
         val artTop = rootY - visibleBottom * artScale
         val artBottom = artTop + bitmap.height * artScale
         val artRect = RectF(centerX - artWidth / 2f, artTop, centerX + artWidth / 2f, artBottom)
@@ -1274,8 +1251,6 @@ private class PetGameView(context: Context, private val onPetCreated: () -> Unit
     }
 
     private fun dp(value: Float): Float = value * resources.displayMetrics.density
-
-    private data class BitmapBounds(val left: Int, val top: Int, val right: Int, val bottom: Int)
 
     private data class ActionButton(val action: Action, val rect: RectF)
 
