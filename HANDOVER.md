@@ -1,6 +1,65 @@
 # Zoey's Pocket Pet — cloud handover
 
-## Existing-artwork cat polish candidate — not published (2026-10-08)
+## Current work: v40 anatomy-specific rigs (2026-10-08)
+
+The latest user request supersedes the older review-only notes below: leave the
+cat at its current livelier baseline and apply that recipe to every other pet,
+adjusting to anatomy, especially dragon wings. The user is not claiming the cat
+looks professional; do not interpret acceptance as a request for another cat
+redesign. Earlier permission to keep publishing remains in effect.
+
+All pets now use continuous 2D joint/mesh rendering. Dog, bunny, hamster and
+dragon each have nine newly drawn separable layers derived from their existing
+reference artwork. Their proportions, pivots, gait phases, strides/lifts and
+head/tail/ear/wing arcs are species-specific. Dog uses diagonal step timing and
+floppy ears; bunny uses paired timing and hind-push compression (grounded, not
+authored flight); hamster uses compact strides and low lift; dragon has two
+body-parented wing layers, its own neck placement and grounded gait. This is
+the accepted layered recipe, not 3D or movie-quality animation.
+
+`PetRig.java` owns geometry, parent transforms, depth, proximal cap masks and
+two-bone leg meshes. `PetMotion.java` owns persistent world contacts, timed
+recoveries, acceleration/braking and repeated roaming. A fourth recovery waits
+for a support contact. Root travel is bounded by the remaining support's reach,
+and recovery targets stay reachable even if a resize/action interrupts travel.
+Original cat geometry, motion and all cat PNGs are unchanged. Existing companion
+and whole-pet walk PNGs are retained, but non-cat runtime frame cycling is gone.
+No designs are swapped between walking and standing.
+
+Android decodes/masks each kind's artwork once into caches, including when
+restoring/choosing a kind. It reuses leg vertex buffers and monotonic frame
+timing; background time is not played back as animation. Complete appendage
+bounds reserve a travel lane and scene-edge margin at every evolution size.
+No UI, sign-in, local/cloud save/reset/restore, updater implementation, package
+ID, SDK target or signing-key changes. The source diff is rendering only plus
+the version bump. Keep protecting progress; do not uninstall/reset to test.
+
+Source sheets, standing image, nine-second 60fps combined review, exporter and
+reproduction commands: `artwork/pet-rigs/README.md`. Previews use production
+geometry with Java2D, not recorded Android rendering; no phone/emulator is
+attached, so measured device smoothness is unverified. Turning still mirrors
+the rig while stopped. New layers follow the original designs but are not
+pixel-identical originals.
+
+`PetRigCheck` passes 180 simulated seconds for each of 36 species/fps/lane
+combinations (30/60/120 fps; 24/90/224px lanes), including actions, zero travel,
+120ms stalls and repeated turns/restarts. World-contact slip is zero; joint
+reach excess stays below the 1 authoring-pixel tolerance, horizontal bounds
+stay inside 256px from center, and at most three paws recover together. Existing
+`CatGaitCheck`, `CatLayersCheck`, `CatMotionCheck`, `CatLivelinessCheck` and
+`UpdateCheckerCheck` pass. These are regressions, not visual approval or phone
+FPS measurements.
+
+Release: build/lint and verify the unchanged certificate, commit
+`updates/zoeys-pocket-pet-v40.apk`, push `main` and annotated `v40`, confirm the
+public release asset returns 200, then commit/push root `update.json` for 40.
+Do not advance the manifest before its APK is available. Until that sequence
+finishes, the public manifest remains v39.
+
+## Historical cat polish trials — now the retained baseline
+
+The trial-specific "do not publish" instructions below applied before the
+latest request above. They are historical context, not the current workflow.
 
 ### Livelier walk trial after front-pair approval
 

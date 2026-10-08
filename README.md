@@ -2,7 +2,19 @@
 
 A gentle, stylized virtual-pet game made for Zoey.
 
+## Current animation
+
+All five species now use continuous 2D rigs instead of cycling whole-pet walk
+images. The cat baseline is retained; dog, bunny, hamster and dragon have their
+own anatomy, step proportions and appendage parenting, including dragon wings.
+See [rig sources, preview and checks](artwork/pet-rigs/README.md).
+Local/cloud save behavior and account restoration are unchanged by this update.
+Current operational and release instructions are in [HANDOVER.md](HANDOVER.md).
+
 ## First playable version
+
+The following describes the original prototype, not the current UI or account
+features.
 
 - Mochi is Zoey's LCD/pixel-style Tamagotchi pet, drawn locally with chunky sprite blocks and a limited palette.
 - New eggs can hatch into original animal choices: cat, dog, bunny, hamster, or dragon.
