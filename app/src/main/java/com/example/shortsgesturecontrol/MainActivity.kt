@@ -12,6 +12,7 @@ import android.graphics.LinearGradient
 import android.graphics.Paint
 import android.graphics.Path
 import android.graphics.RadialGradient
+import android.graphics.Rect
 import android.graphics.RectF
 import android.graphics.Shader
 import android.os.Bundle
@@ -990,8 +991,8 @@ private class PetGameView(context: Context, private val updateManager: AppUpdate
         drawBonePart(canvas, sheet.tail, RectF(48f, -101f, 124f, -18f), 53f, -72f, bodyRotation + sin(phase) * 12f)
 
         // Far legs move first and disappear behind the torso.
-        drawBonePart(canvas, sheet.legs[0], RectF(-68f, -77f, -29f, 3f), -50f, -58f, bodyRotation + rearStride)
-        drawBonePart(canvas, sheet.legs[1], RectF(23f, -77f, 63f, 3f), 43f, -58f, bodyRotation + frontStride)
+        drawBoneLeg(canvas, sheet.legs[0], RectF(-68f, -77f, -29f, 3f), -50f, -58f, bodyRotation + rearStride, -rearStride * .55f)
+        drawBoneLeg(canvas, sheet.legs[1], RectF(23f, -77f, 63f, 3f), 43f, -58f, bodyRotation + frontStride, -frontStride * .55f)
 
         drawBonePart(canvas, sheet.body, RectF(-67f, -108f, 68f, -26f), 0f, -54f, bodyRotation)
 
@@ -1016,8 +1017,50 @@ private class PetGameView(context: Context, private val updateManager: AppUpdate
         canvas.restore()
 
         // Near legs are the readable stride and sit above the body.
-        drawBonePart(canvas, sheet.legs[2], RectF(-57f, -78f, -18f, 3f), -41f, -58f, bodyRotation + frontStride)
-        drawBonePart(canvas, sheet.legs[3], RectF(39f, -78f, 80f, 3f), 58f, -58f, bodyRotation + rearStride)
+        drawBoneLeg(canvas, sheet.legs[2], RectF(-57f, -78f, -18f, 3f), -41f, -58f, bodyRotation + frontStride, -frontStride * .55f)
+        drawBoneLeg(canvas, sheet.legs[3], RectF(39f, -78f, 80f, 3f), 58f, -58f, bodyRotation + rearStride, -rearStride * .55f)
+        canvas.restore()
+    }
+
+    /**
+     * Split a painted limb at its natural knee. The overlap is intentional:
+     * it hides the cut line while allowing the lower paw section to follow a
+     * second joint, which reads as a limb rather than a rotating sticker.
+     */
+    private fun drawBoneLeg(
+        canvas: Canvas,
+        bitmap: Bitmap,
+        destination: RectF,
+        hipX: Float,
+        hipY: Float,
+        hipRotation: Float,
+        kneeRotation: Float
+    ) {
+        val splitStart = (bitmap.height * .52f).roundToInt().coerceIn(1, bitmap.height - 2)
+        val splitEnd = (bitmap.height * .70f).roundToInt().coerceAtLeast(splitStart + 1).coerceAtMost(bitmap.height)
+        val sourceUpper = Rect(0, 0, bitmap.width, splitEnd)
+        val sourceLower = Rect(0, splitStart, bitmap.width, bitmap.height)
+        val sourceHeight = bitmap.height.toFloat()
+        val kneeY = destination.top + destination.height() * splitEnd / sourceHeight
+        val lowerTop = destination.top + destination.height() * splitStart / sourceHeight
+
+        canvas.save()
+        canvas.rotate(hipRotation, hipX, hipY)
+        canvas.drawBitmap(
+            bitmap,
+            sourceUpper,
+            RectF(destination.left, destination.top, destination.right, kneeY),
+            rigPaint
+        )
+        canvas.save()
+        canvas.rotate(kneeRotation, destination.centerX(), kneeY)
+        canvas.drawBitmap(
+            bitmap,
+            sourceLower,
+            RectF(destination.left, lowerTop, destination.right, destination.bottom),
+            rigPaint
+        )
+        canvas.restore()
         canvas.restore()
     }
 
