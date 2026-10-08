@@ -34,9 +34,12 @@ Source/build version is 41.0. `assembleDebug` and `lintDebug` pass (zero lint
 errors; existing/general warnings remain). APK package/version and the unchanged
 cloud signing certificate are verified. APK SHA-256 is
 `7a3541c2b91660c25c4dc897bb8ceb1560a170cfde61d63a0b21205946770671`.
-Publish the signed asset first, then advance the root update manifest only after
-v41 is confirmed publicly available. No phone/emulator is attached; device
-smoothness and user approval of the restored movement remain unverified.
+Commit `c92ba0e` contains the signed v41 APK and was pushed to `main` with
+annotated tag `v41`. The public APK returns 200, its streamed checksum matches,
+and `/releases/latest` redirects to v41. Root `update.json` now advertises 41,
+advanced only after those checks. Keep this asset-first release sequence.
+No phone/emulator is attached; device smoothness and user approval of the
+restored movement remain unverified.
 
 The rejected dog preview/tool remains recoverable outside the repository at
 `/workspace/artifacts/rejected-dog-standing.xvMpqo`. It was never shipped.
