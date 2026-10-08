@@ -2,6 +2,21 @@
 
 ## Current animation work — v37 (2026-10-08)
 
+### v38 correction
+
+The user reported a permanent stop after the first walk and visible frayed seams.
+The stop was an edge restart bug: a zero-speed first frame at an edge was treated
+as another collision. `CatMotion.java` now owns cat roaming, only ends a walk on
+an actual outward collision, and is exercised by `tools/CatMotionCheck.java` over
+three minutes at 30/60/120 fps, including actions and temporary zero-width lanes.
+Cat sizing reserves a travel lane for every evolution stage.
+
+The layer export previously replaced original 8-bit alpha with a 1-bit connected
+component mask, promoting almost-transparent colored noise to fully opaque edges.
+The repaired artwork is exported by `tools/export-cat-layers.sh` without replacing
+alpha. `tools/CatAssetCheck.java` checks fractional alpha and opaque colored fringe
+speckles. The torso's attachment strokes are repaired to soften leg/neck seams.
+
 The historical notes below describe v5 and must not be treated as the current release.
 v37 replaces v36's rigid swinging cat legs with a two-bone IK chain and a level
 paw bone. `CatRig.java` computes the mesh vertices for `drawBitmapMesh` on the

@@ -7,7 +7,9 @@ public final class CatRig {
     public static final double GROUND = 468;
     public static final Leg FRONT_NEAR = new Leg("front_near",70,315,120,153,138,331,145,396,112,453,0);
     public static final Leg FRONT_FAR = new Leg("front_far",165,315,90,153,200,331,220,394,203,453,.5);
-    public static final Leg REAR_NEAR = new Leg("rear_near",330,300,116,168,360,317,396,388,394,453,.25);
+    // Seat the upper thigh inside the painted haunch instead of exposing its
+    // closed attachment cap to the right of the torso silhouette.
+    public static final Leg REAR_NEAR = new Leg("rear_near",312,300,116,168,342,317,378,388,376,453,.25);
     public static final Leg REAR_FAR = new Leg("rear_far",245,305,117,163,277,320,306,386,287,453,.75);
     public static final Leg[] LEGS = { REAR_FAR, FRONT_FAR, REAR_NEAR, FRONT_NEAR };
 

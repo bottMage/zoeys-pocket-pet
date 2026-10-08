@@ -1,4 +1,5 @@
 import com.example.shortsgesturecontrol.CatRig;
+import com.example.shortsgesturecontrol.CatMotion;
 import java.awt.*;
 import java.awt.geom.*;
 import java.awt.image.BufferedImage;
@@ -80,23 +81,32 @@ public class CatRigPreview {
     public static void main(String[] args) throws Exception {
         assets=new File(args[0]); File out=new File(args[1]);out.mkdirs(); verify();
         int frameCount=args.length>2?Integer.parseInt(args[2]):180;
+        boolean roaming=args.length>3&&args[3].equals("roam");
+        CatMotion motion=new CatMotion();
         for(int frame=0;frame<frameCount;frame++) {
             double cycle=frame/60.0*42/CatRig.STRIDE,blend=1;
+            if(roaming) {
+                motion.advance(1.0/30,224,1,false);
+                cycle=motion.cycle;blend=motion.blend;
+            }
             double body=CatRig.bodyY(cycle,blend);
-            BufferedImage image=new BufferedImage(640,540,BufferedImage.TYPE_INT_RGB);
+            int sceneWidth=roaming?800:640;
+            BufferedImage image=new BufferedImage(sceneWidth,540,BufferedImage.TYPE_INT_RGB);
             Graphics2D g=image.createGraphics();
             g.setRenderingHint(RenderingHints.KEY_INTERPOLATION,RenderingHints.VALUE_INTERPOLATION_BILINEAR);
             g.setRenderingHint(RenderingHints.KEY_ANTIALIASING,RenderingHints.VALUE_ANTIALIAS_OFF);
-            g.setColor(new Color(233,234,247));g.fillRect(0,0,640,540);
-            g.setColor(new Color(185,224,194));g.fillRect(0,488,640,52);
-            g.setColor(new Color(147,184,154));g.fillOval(172,480,240,16);
+            g.setColor(new Color(233,234,247));g.fillRect(0,0,sceneWidth,540);
+            g.setColor(new Color(185,224,194));g.fillRect(0,488,sceneWidth,52);
+            int rootX=roaming?32+(int)(motion.position*224):64;
+            g.setColor(new Color(147,184,154));g.fillOval(rootX+108,480,240,16);
             // Move the scene under the rig to make world-space contacts visible.
             g.setColor(new Color(150,193,161));
             for(int x=-100;x<800;x+=40) {
-                int mark=x+(int)(cycle*CatRig.STRIDE)%40;
+                int mark=roaming?x:x+(int)(cycle*CatRig.STRIDE)%40;
                 g.fillRect(mark,490,2,9);
             }
-            g.translate(64,20);
+            g.translate(rootX,20);
+            if(roaming&&motion.facingRight) {g.translate(512,0);g.scale(-1,1);}
             part(g,"tail",320,70+(int)body,175,203);
             for(CatRig.Leg l:CatRig.LEGS) leg(g,l,cycle,blend,body);
             part(g,"body",170,230+(int)body,235,139);

@@ -367,9 +367,7 @@ private class PetGameView(context: Context, private val onPetCreated: () -> Unit
     private var actionUntil = 0L
     private var motionX = .5f
     private var motionDirection = 1f
-    private var catFacingRight = false
-    private var catCycle = 0.0
-    private var catWalkBlend = 0f
+    private val catMotion = CatMotion()
     private var motionMode = MotionMode.REST
     private var motionModeUntil = 0L
     private var motionLastAt = SystemClock.uptimeMillis()
@@ -678,7 +676,7 @@ private class PetGameView(context: Context, private val onPetCreated: () -> Unit
         val sceneRight = width - dp(18f)
         val dt = ((now - motionLastAt).coerceAtLeast(0L)).coerceAtMost(120L) / 1000f
         motionLastAt = now
-        if (now >= motionModeUntil && activeAction == null) {
+        if (pet.kind != PetKind.CAT && now >= motionModeUntil && activeAction == null) {
             motionMode = when (motionMode) {
                 MotionMode.REST -> if ((now / 1000L) % 3L == 0L) MotionMode.STAND else MotionMode.WALK
                 MotionMode.WALK -> if ((now / 1000L) % 2L == 0L) MotionMode.CURIOUS else MotionMode.REST
@@ -713,18 +711,15 @@ private class PetGameView(context: Context, private val onPetCreated: () -> Unit
             "EVOLVED" -> 1.08f
             else -> 1f
         }
-        val artWidth = min(width - dp(42f), dp(296f)) * stageScale
+        val requestedWidth = min(width - dp(42f), dp(296f)) * stageScale
+        // Reserve a real travel lane at every evolution size. Otherwise an
+        // evolved cat can fill the scene and have no room to move at all.
+        val artWidth = if (pet.kind == PetKind.CAT) {
+            min(requestedWidth, (sceneRight - sceneLeft - dp(68f)).coerceAtLeast(dp(80f)) / .96f)
+        } else requestedWidth
         val groundY = bottom - dp(42f)
         val seconds = (now - animationStart) / 1000f
         val walking = motionMode == MotionMode.WALK && activeAction == null
-        if (pet.kind == PetKind.CAT) {
-            val start = ((now - motionModeStartedAt) / 450f).coerceIn(0f, 1f)
-            val end = ((motionModeUntil - now) / 650f).coerceIn(0f, 1f)
-            val ramp = min(start, end)
-            val target = if (walking) ramp * ramp * (3f - 2f * ramp) else 0f
-            catWalkBlend += (target - catWalkBlend) * (1f - kotlin.math.exp(-dt * 12f))
-            if (catWalkBlend < .001f) catWalkBlend = 0f
-        }
         val frame = if (walking || activeAction == Action.PLAY) {
             ((now - animationStart) / WALK_FRAME_DURATION_MS % WALK_FRAME_COUNT).toInt()
         } else 0
@@ -748,19 +743,9 @@ private class PetGameView(context: Context, private val onPetCreated: () -> Unit
         val minCenterX = sceneLeft + visibleReach
         val maxCenterX = sceneRight - visibleReach
         val travelRange = (maxCenterX - minCenterX).coerceAtLeast(0f)
-        if (pet.kind == PetKind.CAT && walking && travelRange > 0f) {
-            // Authoring-space speed and stride share one distance clock.
-            // A dropped display frame cannot advance the feet independently.
-            val oldX = motionX
-            val travel = dt * 42f * (artWidth / CAT_RIG_SIZE) * catWalkBlend
-            motionX = (motionX + motionDirection * travel / travelRange).coerceIn(0f, 1f)
-            catCycle += abs(motionX - oldX) * travelRange / (artWidth / CAT_RIG_SIZE) / CatRig.STRIDE
-            if (motionX <= 0f || motionX >= 1f) {
-                // Settle before reversing, rather than reflecting instantly.
-                motionMode = MotionMode.REST
-                motionModeUntil = now + 900L
-                motionDirection = if (motionX <= 0f) 1f else -1f
-            } else catFacingRight = motionDirection > 0f
+        if (pet.kind == PetKind.CAT) {
+            catMotion.advance(dt.toDouble(), travelRange.toDouble(), (artWidth / CAT_RIG_SIZE).toDouble(), activeAction != null)
+            motionX = catMotion.position
         }
         val centerX = minCenterX + motionX * travelRange
         // Keep the feet planted while resting.  A whole-body vertical bob reads
@@ -779,7 +764,7 @@ private class PetGameView(context: Context, private val onPetCreated: () -> Unit
         paint.isFilterBitmap = true
         paint.color = Color.WHITE
         if (pet.kind == PetKind.CAT) {
-            drawCatRig(canvas, centerX, rootY, artWidth, seconds, catFacingRight)
+            drawCatRig(canvas, centerX, rootY, artWidth, seconds, catMotion.facingRight)
         } else {
             val bitmap = walkFrameArtwork(pet.kind, frame)
             val artScale = artWidth / bitmap.width
@@ -822,10 +807,10 @@ private class PetGameView(context: Context, private val onPetCreated: () -> Unit
         val scale = artWidth / CAT_RIG_SIZE
         val left = centerX - CAT_RIG_SIZE * scale / 2f
         val top = groundY - CAT_RIG_GROUND * scale
-        val phase = (catCycle * 6.283185307).toFloat()
-        val bodyY = CatRig.bodyY(catCycle, catWalkBlend.toDouble()).toFloat()
-        val tailWag = sin(seconds * 1.8f) * 1.2f + sin(phase + .45f) * 1.8f * catWalkBlend
-        val headNod = sin(seconds * 1.4f) * .25f + sin(phase * 2f + .4f) * .5f * catWalkBlend
+        val phase = (catMotion.cycle * 6.283185307).toFloat()
+        val bodyY = CatRig.bodyY(catMotion.cycle, catMotion.blend.toDouble()).toFloat()
+        val tailWag = sin(seconds * 1.8f) * 1.2f + sin(phase + .45f) * 1.8f * catMotion.blend
+        val headNod = sin(seconds * 1.4f) * .25f + sin(phase * 2f + .4f) * .5f * catMotion.blend
 
         canvas.save()
         if (facingRight) canvas.scale(-1f, 1f, centerX, groundY)
@@ -835,7 +820,7 @@ private class PetGameView(context: Context, private val onPetCreated: () -> Unit
         canvas.translate(left, top)
         canvas.scale(scale, scale)
         for (leg in CatRig.LEGS) {
-            CatRig.skin(leg, catCycle, catWalkBlend.toDouble(), bodyY.toDouble())
+            CatRig.skin(leg, catMotion.cycle, catMotion.blend.toDouble(), bodyY.toDouble())
             canvas.drawBitmapMesh(catRigArtwork(leg.name), CatRig.COLS, CatRig.ROWS, leg.vertices, 0, null, 0, paint)
         }
         canvas.restore()
