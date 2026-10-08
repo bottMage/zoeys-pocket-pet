@@ -2,6 +2,39 @@
 
 ## Existing-artwork cat polish candidate — not published (2026-10-08)
 
+### Livelier walk trial after front-pair approval
+
+The user approved the front-pair standing pose and its walking preview, but
+found the movement too slow/stiff and asked for more travel, articulation,
+head movement and tail movement. Keep the approved bind/rest geometry and all
+PNGs. `CatMotion.WALK_SPEED` is 72 instead of 42 authoring px/s; stride is 60
+instead of 48px and stance fraction .64 instead of .68. Paw lift rises from
+15 to 26px using a broader cubic arch with zero contact velocity/acceleration.
+Rigid trunk weight transfer crouches 5..8.4px; neck and tail counterbalance
+the same distance-driven gait with broader arcs and subtle idle rotations.
+No torso stretching or independently swapped art. First wait is 1.2s and pauses
+are .65/.7s instead of .9/1.1s; starts still accelerate and stops still brake.
+
+The reach guard now protects all four legs using the current shared body pose,
+including interruptions, rather than only the upright front pair's rest reach.
+Recovery speed has an explicit 380px/s safety bound with horizontal headroom
+for paw lift. The existing contact/reach/attachment/roaming checks pass at
+30/60/120 fps. `CatLivelinessCheck` additionally measures actual travel, lift,
+head/tail arcs, joint-angle ranges and at least one supporting paw during
+roaming. Measurements are not proof of professional quality or device FPS.
+
+Latest review: `artwork/cat-rig-review/livelier-walking-preview.mp4`, 18s/60fps,
+rendered from production code. Prior, approved-but-too-slow motion is preserved
+as `front-pair-walking-preview.mp4`; `front-pair-standing.png` still records the
+approved placement. Do not redesign the pet or return to the rejected 3D work.
+Obtain visual approval of this livelier motion before tagging/publishing.
+APK version, public v39 release/manifest, UI, other pets and local/cloud saves
+are untouched. `assembleDebug`/`lintDebug` pass and the original signing
+certificate is verified. Measured review ranges: 72px/s peak travel, 26px lift,
+8.4px crouch, 5-degree head and 9.9-degree tail arcs, and 55..75 degrees of joint
+articulation. At most three paws recover together. Full-bitmap bounds include
+head, torso and tail; the observed horizontal envelope is 254.87/256px.
+
 ### Front-pair standing pose trial — still review first
 
 After the relocation preview, the user still found the front pair wrong and

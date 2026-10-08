@@ -43,7 +43,7 @@ public class CatGaitCheck {
         if(maxSlip>1e-7) throw new AssertionError("Contact slides "+maxSlip);
         if(maxReach>1) throw new AssertionError("Leg overextends: "+maxReach+" at "+reachAt);
         System.out.println("Peak recovery: "+jumpAt+"; peak reach: "+reachAt);
-        if(maxJump*fps>260) throw new AssertionError("Foot teleport: "+maxJump);
+        if(maxJump*fps>CatMotion.MAX_PAW_SPEED) throw new AssertionError("Foot teleport: "+maxJump);
         if(contacts<100) throw new AssertionError("No grounded samples");
         System.out.printf("PASS: %d fps lane %.0f, %d contacts, slip %.9f, max reach excess %.3f, max foot speed %.1f px/s%n",
             fps,lane,contacts,maxSlip,maxReach,maxJump*fps);
@@ -52,7 +52,9 @@ public class CatGaitCheck {
         for(int fps:new int[]{30,60,120}) for(double lane:new double[]{24,90,224}) checkRun(fps,lane);
         // C2 recovery: position, velocity and acceleration join a planted paw.
         for(double boundary:new double[]{0,CatRig.STANCE,1}) {
-            double e=1e-5;
+            // Use a short enough interval to measure the contact limit, not
+            // acceleration already building inside the broader cubic lift arch.
+            double e=1e-6;
             for(boolean vertical:new boolean[]{false,true}) {
                 double left=sample(boundary-e,vertical),at=sample(boundary,vertical),right=sample(boundary+e,vertical);
                 if(Math.abs((at-left)/e-(right-at)/e)>.05) throw new AssertionError("Velocity kink");

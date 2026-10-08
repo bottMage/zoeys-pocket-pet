@@ -3,7 +3,7 @@ package com.example.shortsgesturecontrol;
 /** Shared, allocation-free two-bone skinning used by Android and the motion preview. */
 public final class CatRig {
     public static final int COLS = 8, ROWS = 20;
-    public static final double STRIDE = 48, STANCE = .68;
+    public static final double STRIDE = 60, STANCE = .64, PAW_LIFT = 26;
     public static final double GROUND = 468;
     // Keep the artwork's bind joints, but repose the front pair so both paws
     // stand under their shoulders instead of leaving the near paw reaching ahead.
@@ -21,13 +21,14 @@ public final class CatRig {
         private double ca=1,sa=0;
         public void sample(double cycle,double activity,double seconds) {
             double phase=2*Math.PI*cycle;
-            y=activity*(3.0+.9*(1-Math.cos(2*phase)));
-            angle=activity*.016*Math.sin(phase-.35);
+            y=activity*(5.0+1.7*(1-Math.cos(2*phase)));
+            angle=activity*.024*Math.sin(phase-.35);
             ca=Math.cos(angle);sa=Math.sin(angle);
-            // Counterbalance the trunk to keep the gaze calm; tail follows it.
-            headAngle=-angle*.7+activity*.004*Math.sin(2*phase-.5);
-            tailAngle=-angle*.5+activity*.025*Math.sin(phase-.8)
-                +(1-activity)*.006*Math.sin(seconds*.9);
+            // Broader, coordinated neck/tail arcs, not independent twitching.
+            headAngle=-angle*.65+activity*(.030*Math.sin(phase-.25)+.012*Math.sin(2*phase-.4))
+                +(1-activity)*.012*Math.sin(seconds*.75);
+            tailAngle=-angle*.5+activity*.075*Math.sin(phase-.8)
+                +(1-activity)*.022*Math.sin(seconds*.9);
         }
         public double x(double x,double y) { return 285+(x-285)*ca-(y-333)*sa; }
         public double y(double x,double y) { return 333+this.y+(x-285)*sa+(y-333)*ca; }
@@ -37,7 +38,7 @@ public final class CatRig {
         public final String name;
         public final double x,y,width,height,hx,hy,kx,ky,fx,fy,offset;
         /** Neutral-pose offsets, separate from the source artwork's bind joints. */
-        public final double restFootShift,shoulderRise,standingReach;
+        public final double restFootShift,shoulderRise,standingReach,boneLength;
         public final float[] vertices = new float[(COLS+1)*(ROWS+1)*2];
         private final double upper,lower,bend;
         Leg(String name,double x,double y,double width,double height,
@@ -52,8 +53,9 @@ public final class CatRig {
             this.restFootShift=restFootShift;this.shoulderRise=shoulderRise;
             upper=Math.hypot(kx-hx,ky-hy); lower=Math.hypot(fx-kx,fy-ky);
             bend=Math.signum((fx-hx)*(ky-hy)-(fy-hy)*(kx-hx));
-            double standingHeight=fy-shoulderY(),length=upper+lower;
-            standingReach=Math.sqrt(Math.max(0,length*length-standingHeight*standingHeight))-3;
+            boneLength=upper+lower;
+            double standingHeight=fy-shoulderY();
+            standingReach=Math.sqrt(Math.max(0,boneLength*boneLength-standingHeight*standingHeight))-3;
         }
         public double restFootX() { return fx+restFootShift; }
         public double shoulderY() { return hy-shoulderRise; }
@@ -73,8 +75,13 @@ public final class CatRig {
     public static double footLift(double cycle) {
         double p=cycle-Math.floor(cycle);
         if(p<STANCE) return 0;
-        double t=(p-STANCE)/(1-STANCE), s=Math.sin(Math.PI*t);
-        return 15*s*s*s*s; // also zero acceleration at both contacts
+        return recoveryLift((p-STANCE)/(1-STANCE));
+    }
+    public static double recoveryLift(double t) {
+        t=Math.max(0,Math.min(1,t));
+        double arch=t*(1-t);
+        // A broader lifted interval, still zero velocity/acceleration at contact.
+        return PAW_LIFT*64*arch*arch*arch;
     }
     public static double bodyY(double cycle,double blend) {
         return -1.2*blend*(1-Math.cos(4*Math.PI*cycle));

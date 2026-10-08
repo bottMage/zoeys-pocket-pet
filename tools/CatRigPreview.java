@@ -98,7 +98,7 @@ public class CatRigPreview {
         boolean roaming=args.length>3&&args[3].equals("roam");
         CatMotion motion=new CatMotion();CatRig.Pose pose=new CatRig.Pose();
         for(int frame=0;frame<frameCount;frame++) {
-            double cycle=frame/60.0*42/CatRig.STRIDE,blend=1;
+            double cycle=frame/60.0*CatMotion.WALK_SPEED/CatRig.STRIDE,blend=1;
             if(roaming) {
                 motion.advance(1.0/60,224,1,false);
                 cycle=motion.cycle;blend=motion.blend;

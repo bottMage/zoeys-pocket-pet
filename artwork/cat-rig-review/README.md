@@ -5,6 +5,22 @@ prototypes. This candidate keeps every PNG unchanged. It is still a 2D layered
 rig, not a professionally authored 3D character or replacement cel animation.
 Do not claim the animation quality has been approved.
 
+## Livelier walk trial
+
+Latest review: `livelier-walking-preview.mp4` (18s, 60fps). The user approved the
+standing placement and subsequent walk, but found its movement too restrained.
+The original artwork and approved resting geometry stay unchanged. Travel is
+72px/s (previously 42), stride 60px (48), paw lift 26px (15), with broader,
+smooth joint recovery and shorter pauses. Head, tail and rigid-body weight
+transfer have larger coordinated ranges; no torso stretching or new art.
+Reach protection covers all four legs during normal motion and interruptions.
+
+Keep `front-pair-walking-preview.mp4` as the prior motion comparison. The new
+preview remains unpublished pending approval; no updater, save, UI or other-pet
+changes. `CatLivelinessCheck` measures travel/lift/neck/tail/joint ranges and
+support contacts, in addition to the existing mechanical regressions. These
+measurements are not visual approval or a phone frame-rate measurement.
+
 ## Front-pair standing pose trial
 
 Latest review: `front-pair-standing.png`, a neutral standing render, not another
@@ -77,20 +93,22 @@ mkdir -p /workspace/artifacts/cat-rig-review/classes
   app/src/main/java/com/example/shortsgesturecontrol/CatMotion.java \
   app/src/main/java/com/example/shortsgesturecontrol/CatLayers.java \
   tools/CatMotionCheck.java tools/CatGaitCheck.java tools/CatRigPreview.java \
-  tools/CatLayersCheck.java
+  tools/CatLayersCheck.java tools/CatLivelinessCheck.java
 /workspace/.toolchains/jdk-21/bin/java \
   -cp /workspace/artifacts/cat-rig-review/classes CatLayersCheck
 /workspace/.toolchains/jdk-21/bin/java \
   -cp /workspace/artifacts/cat-rig-review/classes CatGaitCheck
 /workspace/.toolchains/jdk-21/bin/java \
   -cp /workspace/artifacts/cat-rig-review/classes CatMotionCheck
+/workspace/.toolchains/jdk-21/bin/java \
+  -cp /workspace/artifacts/cat-rig-review/classes CatLivelinessCheck
 /workspace/.toolchains/jdk-21/bin/java -Djava.awt.headless=true \
   -cp /workspace/artifacts/cat-rig-review/classes CatRigPreview \
-  app/src/main/res/drawable-nodpi /workspace/artifacts/cat-rig-review/final 540 roam
+  app/src/main/res/drawable-nodpi /workspace/artifacts/cat-rig-review/final 1080 roam
 ffmpeg -hide_banner -loglevel error -framerate 60 \
   -i /workspace/artifacts/cat-rig-review/final/frame-%03d.png \
   -c:v libx264 -crf 18 -pix_fmt yuv420p -movflags +faststart \
-  artwork/cat-rig-review/foreleg-placement-preview.mp4
+  artwork/cat-rig-review/livelier-walking-preview.mp4
 ```
 
 Tests check rendered paw height, planted contact drift, reach, recovery speeds,

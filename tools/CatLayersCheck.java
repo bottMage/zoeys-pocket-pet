@@ -74,15 +74,23 @@ public class CatLayersCheck {
                 for(int v=0;v<l.vertices.length;v+=2) maxEnvelope=Math.max(maxEnvelope,Math.abs(l.vertices[v]-256));
             }
             // Conservative full-bitmap corners, including invisible padding.
-            for(double x:new double[]{CatLayers.TAIL_X,CatLayers.TAIL_X+CatLayers.TAIL_WIDTH})
-                for(double y:new double[]{CatLayers.TAIL_Y,CatLayers.TAIL_Y+CatLayers.TAIL_HEIGHT}) {
-                    double a=m.pose.tailAngle,c=Math.cos(a),s=Math.sin(a),px=CatLayers.TAIL_PIVOT_X,py=CatLayers.TAIL_PIVOT_Y;
-                    double tx=px+(x-px)*c-(y-py)*s,ty=py+(x-px)*s+(y-py)*c;
-                    maxEnvelope=Math.max(maxEnvelope,Math.abs(m.pose.x(tx,ty)-256));
-                }
+            maxEnvelope=Math.max(maxEnvelope,partEnvelope(m.pose,CatLayers.TAIL_X,CatLayers.TAIL_Y,
+                CatLayers.TAIL_WIDTH,CatLayers.TAIL_HEIGHT,CatLayers.TAIL_PIVOT_X,CatLayers.TAIL_PIVOT_Y,m.pose.tailAngle));
+            maxEnvelope=Math.max(maxEnvelope,partEnvelope(m.pose,45,100,195,253,190,330,m.pose.headAngle));
+            maxEnvelope=Math.max(maxEnvelope,partEnvelope(m.pose,170,230,235,139,190,330,0));
         }
         if(maxRootError>.0001) throw new AssertionError("Joint separates from body: "+maxRootError);
-        if(maxEnvelope>256) throw new AssertionError("New tail escapes reserved horizontal envelope: "+maxEnvelope);
+        if(maxEnvelope>256) throw new AssertionError("Rig escapes reserved horizontal envelope: "+maxEnvelope);
         System.out.printf("PASS: near/far groups; open root caps; untouched paws/free-tail/head/body; pinned joint error %.6f; envelope %.2f/256 px%n",maxRootError,maxEnvelope);
+    }
+    static double partEnvelope(CatRig.Pose pose,double x,double y,double width,double height,double px,double py,double angle) {
+        double max=0,c=Math.cos(angle),s=Math.sin(angle);
+        for(double xx:new double[]{x,x+width}) for(double yy:new double[]{y,y+height}) {
+            double tx=px+(xx-px)*c-(yy-py)*s,ty=py+(xx-px)*s+(yy-py)*c;
+            double worldY=pose.y(tx,ty);
+            if(worldY<0||worldY>512) throw new AssertionError("Part escapes vertical envelope");
+            max=Math.max(max,Math.abs(pose.x(tx,ty)-256));
+        }
+        return max;
     }
 }

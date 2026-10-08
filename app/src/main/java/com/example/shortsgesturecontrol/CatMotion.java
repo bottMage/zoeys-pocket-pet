@@ -8,8 +8,9 @@ public final class CatMotion {
     public final Foot[] feet=new Foot[CatRig.LEGS.length];
     private int direction=-1;
     private boolean walking=false;
-    private double remaining=1.8,speed=0,distance=0,seconds=0;
-    private static final double SPEED=42,ACCELERATION=110;
+    private double remaining=1.2,speed=0,distance=0,seconds=0;
+    public static final double WALK_SPEED=72,MAX_PAW_SPEED=380;
+    private static final double ACCELERATION=200;
     private static final int[] STEP_ORDER={2,3,0,1};
 
     public static final class Foot {
@@ -59,10 +60,10 @@ public final class CatMotion {
         for(Foot f:feet) recovering|=!f.grounded;
         if(!action && valid) {
             remaining-=dt;
-            if(walking && remaining<=0) {walking=false;remaining=1.1;}
+            if(walking && remaining<=0) {walking=false;remaining=.7;}
             else if(!walking && remaining<=0 && speed<.001 && !recovering) startWalk();
         }
-        double target=walking&&!action&&valid?SPEED:0;
+        double target=walking&&!action&&valid?WALK_SPEED:0;
         double edge=valid?(direction<0?position:1-position)*range/scale:0;
         if(target>0) target=Math.min(target,Math.sqrt(Math.max(0,2*ACCELERATION*edge))*.85);
         double previousSpeed=speed;
@@ -72,24 +73,27 @@ public final class CatMotion {
             position=Math.max(0,Math.min(1,position+direction*moved*scale/range));
             distance+=moved;cycle+=moved/CatRig.STRIDE;
         }
-        if(valid && walking && edge-moved<.04) { walking=false;remaining=.9; }
+        if(valid && walking && edge-moved<.04) { walking=false;remaining=.65; }
         if(!valid) speed=0;
         // A recovery finishes even when an action or a stop pauses travel.
         for(int index=0;index<feet.length;index++) {
             Foot f=feet[index];CatRig.Leg l=CatRig.LEGS[index];
             double local=f.contact+distance;
-            // The more upright front stance has less horizontal reach. Finish
-            // with a real recovery step, not a stretched joint or a dragged paw,
-            // if braking/an action would leave it outside its standing reach.
+            // Larger steps need reach protection on all four legs, especially
+            // when braking/actions pause a planted paw. Use the coupled body's
+            // current shoulder rather than stretching a leg to reach its target.
             boolean front=l==CatRig.FRONT_NEAR || l==CatRig.FRONT_FAR;
-            boolean frontLimit=front && Math.abs(l.restFootX()+local-l.hx)>=l.standingReach;
+            double hx=pose.x(l.hx,l.shoulderY()),hy=pose.y(l.hx,l.shoulderY());
+            double height=l.fy-hy;
+            double supportReach=Math.sqrt(Math.max(0,l.boneLength*l.boneLength-height*height))-3;
+            boolean reachLimit=Math.abs(l.restFootX()+local-hx)>=supportReach;
             boolean normalStep=walking && !action && moved>0 && distance>=f.nextLift;
-            if(f.grounded && (normalStep || frontLimit)) {
+            if(f.grounded && (normalStep || reachLimit)) {
                 f.grounded=false;f.age=0;f.from=f.contact;
-                f.duration=Math.max(.24,Math.min(.42,CatRig.STRIDE*(1-CatRig.STANCE)/Math.max(30,speed)));
-                double recoverySpeed=front?240:260;
+                f.duration=Math.max(.28,Math.min(.40,CatRig.STRIDE*(1-CatRig.STANCE)/Math.max(45,speed)));
+                double recoverySpeed=MAX_PAW_SPEED-(front?50:30);
                 f.duration=Math.max(f.duration,Math.min(.65,1.875*Math.max(0,local+CatRig.STRIDE*CatRig.STANCE*.5)/(recoverySpeed-1.875*speed)));
-                double accelerating=Math.min(f.duration,Math.max(0,(SPEED-speed)/ACCELERATION));
+                double accelerating=Math.min(f.duration,Math.max(0,(WALK_SPEED-speed)/ACCELERATION));
                 double forecast=speed*f.duration+ACCELERATION*(f.duration*accelerating-.5*accelerating*accelerating);
                 boolean settling=target==0;
                 if(settling) {
@@ -103,13 +107,13 @@ public final class CatMotion {
             if(!f.grounded) {
                 f.age+=dt;
                 double t=Math.min(1,f.age/f.duration);
-                double h=CatRig.ease(t),s=Math.sin(Math.PI*t);
+                double h=CatRig.ease(t);
                 f.x=f.from+(f.to-f.from)*h+distance;
-                f.lift=15*s*s*s*s;
+                f.lift=CatRig.recoveryLift(t);
                 if(t>=1) { f.grounded=true;f.contact=f.to;f.lift=0; }
             } else { f.x=f.contact+distance;f.lift=0; }
         }
-        double activity=Math.max(speed/SPEED,recovering?.35:0);
+        double activity=Math.max(speed/WALK_SPEED,recovering?.35:0);
         blend+=(activity-blend)*(1-Math.exp(-dt*9));
         if(blend<.00001) blend=0;
         pose.sample(cycle,blend,seconds);
