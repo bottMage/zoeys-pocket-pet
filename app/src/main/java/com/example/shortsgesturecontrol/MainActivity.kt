@@ -327,6 +327,26 @@ private class PetGameView(context: Context, private val onPetCreated: () -> Unit
     private val walkFrameCache = HashMap<String, Bitmap>()
     private val walkFrameBoundsCache = HashMap<String, PetSpriteLayout.Bounds>()
     private val walkEnvelopeCache = HashMap<PetKind, PetSpriteLayout.Envelope>()
+    private val growthColorFilters = HashMap<String, android.graphics.ColorMatrixColorFilter>()
+    private val eggGradients = HashMap<PetKind, RadialGradient>()
+    private val eggBackStrands = Array(26) { strand ->
+        val x = -91f + strand * 7f
+        Path().apply {
+            moveTo(x - 8f, -6f + (strand % 4) * 3f)
+            quadTo(x + 12f, -27f + (strand % 5) * 4f, x + 29f, -6f + (strand % 3) * 3f)
+        }
+    }
+    private val eggFrontStrands = Array(21) { strand ->
+        val x = -91f + strand * 8f
+        Path().apply {
+            moveTo(x - 9f, 2f + (strand % 3) * 2f)
+            quadTo(x + 7f, 16f + (strand % 4), x + 24f, -1f + (strand % 3) * 2f)
+        }
+    }
+    private val eggCrack = Path().apply {
+        moveTo(-6f, -123f);lineTo(1f, -111f);lineTo(-6f, -99f)
+        lineTo(6f, -88f);lineTo(1f, -74f)
+    }
     private var warmedKind: PetKind? = null
     private val petArtResources = mapOf(
         PetKind.CAT to R.drawable.companion_cat,
@@ -412,7 +432,7 @@ private class PetGameView(context: Context, private val onPetCreated: () -> Unit
         isFocusable = true
         pet.updateFromClock()
         motionModeUntil = motionLastAt + 1800L
-        if (pet.created) {
+        if (pet.created && pet.hatched && !pet.dead) {
             // Decode before the first animated draw, not during the first step.
             preloadWalkArtwork(pet.kind)
         }
@@ -428,7 +448,18 @@ private class PetGameView(context: Context, private val onPetCreated: () -> Unit
         super.onDraw(canvas)
         val now = SystemClock.uptimeMillis()
         pet.updateFromClock()
-        if (!setupMode && pet.consumeEvolutionEvent()) {
+        if (!setupMode && pet.consumeHatchEvent()) {
+            message = "${pet.name} has hatched! Hello, little one!"
+            messageUntil = now + 6000L
+            activeAction = Action.PLAY
+            actionUntil = now + 1600L
+            savePet()
+        }
+        if (!setupMode && pet.consumeDeathEvent()) {
+            activeAction = null
+            savePet()
+        }
+        if (!setupMode && !pet.dead && pet.consumeEvolutionEvent()) {
             activeAction = Action.PLAY
             actionUntil = now + 2400L
             message = "Amazing! ${pet.name} evolved!"
@@ -532,11 +563,10 @@ private class PetGameView(context: Context, private val onPetCreated: () -> Unit
         textPaint.textSize = dp(13f)
         textPaint.typeface = PaintTypeface.rounded()
         textPaint.color = Color.argb(225, 255, 255, 255)
-        canvas.drawText("Choose a pet, give it a name, then hatch it!", width / 2f, dp(66f), textPaint)
+        canvas.drawText("Choose your egg and give it a name", width / 2f, dp(66f), textPaint)
 
         val cx = width / 2f
-        val cy = dp(190f) + sin((now - animationStart) / 1000f * 2f) * dp(4f)
-        drawEgg(canvas, cx, cy)
+        drawEgg(canvas, cx, dp(275f), setupKind, (now - animationStart) / 1000.0, 0.0, dp(1f))
 
         val nameRect = RectF(dp(28f), dp(305f), width - dp(28f), dp(357f))
         paint.color = Color.argb(70, 54, 30, 92)
@@ -584,23 +614,80 @@ private class PetGameView(context: Context, private val onPetCreated: () -> Unit
         canvas.drawRoundRect(hatch, dp(24f), dp(24f), paint)
         textPaint.textSize = dp(17f)
         textPaint.color = Color.rgb(92, 52, 91)
-        canvas.drawText("HATCH ${setupName.uppercase()}!", hatch.centerX(), hatch.centerY() + dp(6f), textPaint)
+        val welcome = "WELCOME ${setupName.uppercase()}"
+        textPaint.textSize = min(dp(17f), dp(17f) * (hatch.width() - dp(24f)) / textPaint.measureText(welcome))
+        canvas.drawText(welcome, hatch.centerX(), hatch.centerY() + dp(6f), textPaint)
     }
 
-    private fun drawEgg(canvas: Canvas, cx: Float, cy: Float) {
-        paint.color = Color.argb(65, 80, 38, 90)
-        canvas.drawOval(RectF(cx - dp(70f), cy + dp(88f), cx + dp(70f), cy + dp(110f)), paint)
-        val eggGradient = RadialGradient(cx - dp(25f), cy - dp(35f), dp(115f), Color.rgb(255, 241, 198), Color.rgb(239, 133, 177), Shader.TileMode.CLAMP)
-        paint.shader = eggGradient
-        canvas.drawOval(RectF(cx - dp(66f), cy - dp(95f), cx + dp(66f), cy + dp(98f)), paint)
+    private fun drawEgg(canvas: Canvas, cx: Float, ground: Float, kind: PetKind, seconds: Double, progress: Double, scale: Float) {
+        canvas.save()
+        canvas.translate(cx, ground)
+        canvas.scale(scale, scale)
+        paint.colorFilter = null
+        paint.style = Paint.Style.FILL
+        val dragon = kind == PetKind.DRAGON
+        paint.color = Color.argb(45, 67, 57, 82)
+        canvas.drawOval(RectF(-98f, -4f, 98f, 22f), paint)
+        paint.color = if (dragon) Color.rgb(137, 92, 57) else Color.rgb(222, 182, 101)
+        canvas.drawOval(RectF(-94f, -19f, 94f, 15f), paint)
+        paint.style = Paint.Style.STROKE
+        paint.strokeWidth = 3f
+        for (strand in 0..25) {
+            paint.color = if (dragon) {
+                if (strand % 2 == 0) Color.rgb(173, 123, 72) else Color.rgb(107, 72, 48)
+            } else {
+                if (strand % 2 == 0) Color.rgb(250, 217, 144) else Color.rgb(195, 151, 76)
+            }
+            canvas.drawPath(eggBackStrands[strand], paint)
+        }
+        canvas.save()
+        canvas.translate(0f, PetGrowth.eggLift(seconds).toFloat())
+        canvas.rotate(PetGrowth.eggAngle(seconds, progress).toFloat(), 0f, 0f)
+        val shell = when (kind) {
+            PetKind.CAT -> Color.rgb(221, 199, 240)
+            PetKind.DOG -> Color.rgb(255, 220, 163)
+            PetKind.BUNNY -> Color.rgb(202, 238, 211)
+            PetKind.HAMSTER -> Color.rgb(255, 227, 174)
+            PetKind.DRAGON -> Color.rgb(171, 233, 234)
+        }
+        val spot = when (kind) {
+            PetKind.CAT -> Color.rgb(173, 135, 207)
+            PetKind.DOG -> Color.rgb(217, 156, 94)
+            PetKind.BUNNY -> Color.rgb(141, 195, 158)
+            PetKind.HAMSTER -> Color.rgb(226, 172, 91)
+            PetKind.DRAGON -> Color.rgb(86, 177, 185)
+        }
+        paint.style = Paint.Style.FILL
+        paint.shader = eggGradients.getOrPut(kind) {
+            RadialGradient(-20f, -110f, 142f, Color.rgb(255, 248, 225), shell, Shader.TileMode.CLAMP)
+        }
+        canvas.drawOval(RectF(-48f, -146f, 48f, 2f), paint)
         paint.shader = null
-        paint.color = Color.argb(100, 255, 255, 255)
-        canvas.drawOval(RectF(cx - dp(40f), cy - dp(65f), cx - dp(14f), cy - dp(43f)), paint)
-        textPaint.textAlign = Paint.Align.CENTER
-        textPaint.typeface = PaintTypeface.bold()
-        textPaint.textSize = dp(24f)
-        textPaint.color = Color.argb(210, 255, 255, 255)
-        canvas.drawText("?", cx, cy + dp(13f), textPaint)
+        paint.color = spot
+        canvas.drawOval(RectF(5f, -127f, 21f, -111f), paint)
+        canvas.drawOval(RectF(-34f, -83f, -15f, -62f), paint)
+        canvas.drawOval(RectF(15f, -52f, 34f, -33f), paint)
+        paint.color = Color.argb(110, 255, 255, 255)
+        canvas.drawOval(RectF(-31f, -119f, -17f, -82f), paint)
+        if (progress > .85) {
+            paint.style = Paint.Style.STROKE
+            paint.strokeWidth = 1.8f
+            paint.color = spot
+            canvas.drawPath(eggCrack, paint)
+        }
+        canvas.restore()
+        paint.style = Paint.Style.STROKE
+        paint.strokeWidth = if (dragon) 3.5f else 2f
+        for (strand in 0..20) {
+            paint.color = if (dragon) {
+                if (strand % 2 == 0) Color.rgb(178, 128, 76) else Color.rgb(114, 79, 50)
+            } else {
+                if (strand % 2 == 0) Color.rgb(247, 213, 127) else Color.rgb(208, 164, 88)
+            }
+            canvas.drawPath(eggFrontStrands[strand], paint)
+        }
+        paint.style = Paint.Style.FILL
+        canvas.restore()
     }
 
     private fun drawPlayground(canvas: Canvas, now: Long) {
@@ -654,6 +741,19 @@ private class PetGameView(context: Context, private val onPetCreated: () -> Unit
     }
 
     private fun drawPet(canvas: Canvas, now: Long) {
+        if (pet.dead) {
+            drawMemorial(canvas)
+            return
+        }
+        if (!pet.hatched) {
+            val ground = statsTop() - dp(64f)
+            val eggScale = min(dp(1f), min((width - dp(64f)) / 240f, ((ground - dp(125f)) / 166f).coerceAtLeast(0f)))
+            drawEgg(canvas, width / 2f, ground, pet.kind, (now - animationStart) / 1000.0, pet.hatchProgress.toDouble(), eggScale)
+            motionLastAt = now
+            motionX = .5f
+            drawPetName(canvas, width / 2f, ground + dp(12f))
+            return
+        }
         preloadWalkArtwork(pet.kind)
         val bottom = statsTop() - dp(10f)
         val sceneLeft = dp(18f)
@@ -688,14 +788,7 @@ private class PetGameView(context: Context, private val onPetCreated: () -> Unit
             if (motionX >= 1f) { motionX = 1f; motionDirection = -1f }
         }
 
-        val stageScale = when (pet.stage) {
-            "BABY" -> .90f
-            "YOUNG" -> .96f
-            "TEEN" -> 1f
-            "EVOLVED" -> 1.08f
-            else -> 1f
-        }
-        val requestedWidth = min(width - dp(42f), dp(296f)) * stageScale
+        val requestedWidth = min(width - dp(42f), dp(296f))
         val groundY = bottom - dp(42f)
         val seconds = (now - animationStart) / 1000f
         val walking = motionMode == MotionMode.WALK && activeAction == null
@@ -708,8 +801,13 @@ private class PetGameView(context: Context, private val onPetCreated: () -> Unit
             sceneLeft.toDouble(), sceneRight.toDouble(), dp(134f).toDouble(),
             groundY.toDouble(), dp(6f).toDouble(), dp(68f).toDouble()
         )
-        val artWidth = layout.artWidth.toFloat()
-        val centerX = (layout.minCenter + motionX * (layout.maxCenter - layout.minCenter)).toFloat()
+        // Fit the adult first, then scale every earlier stage relative to it.
+        // Otherwise scenery fitting can make baby and adult the same size.
+        val artWidth = (layout.artWidth * pet.growthStage.size).toFloat()
+        val reach = walkEnvelopeCache.getValue(pet.kind).reach * artWidth
+        val leftCenter = sceneLeft + dp(6f) + reach
+        val rightCenter = sceneRight - dp(6f) - reach
+        val centerX = (leftCenter + motionX * (rightCenter - leftCenter)).toFloat()
         val bitmap = walkFrameArtwork(pet.kind, frame)
         val artScale = artWidth / bitmap.width
         // Keep the feet planted while resting.  A whole-body vertical bob reads
@@ -727,6 +825,10 @@ private class PetGameView(context: Context, private val onPetCreated: () -> Unit
         paint.isAntiAlias = true
         paint.isFilterBitmap = true
         paint.color = Color.WHITE
+        val filterKey = "${pet.kind.name}_${pet.stage}"
+        paint.colorFilter = growthColorFilters.getOrPut(filterKey) {
+            android.graphics.ColorMatrixColorFilter(PetGrowth.colorMatrix(pet.kind.name.lowercase(), pet.growthStage))
+        }
         // 10 fps gives the drawn cels time to read as a deliberate gait rather
         // than a frantic, glitchy run.
         val visibleBottom = walkFrameBounds(pet.kind, frame).bottom
@@ -739,7 +841,13 @@ private class PetGameView(context: Context, private val onPetCreated: () -> Unit
         if (motionDirection > 0f) canvas.scale(-1f, 1f, centerX, rootY)
         canvas.drawBitmap(bitmap, null, artRect, paint)
         canvas.restore()
+        paint.colorFilter = null
 
+        drawPetName(canvas, centerX, groundY)
+    }
+
+    private fun drawPetName(canvas: Canvas, centerX: Float, groundY: Float) {
+        val bottom = statsTop() - dp(10f)
         textPaint.textAlign = Paint.Align.CENTER
         textPaint.typeface = PaintTypeface.bold()
         textPaint.textSize = dp(13f)
@@ -755,7 +863,37 @@ private class PetGameView(context: Context, private val onPetCreated: () -> Unit
         canvas.drawText(name, centerX, nameBaseline, textPaint)
     }
 
+    private fun drawMemorial(canvas: Canvas) {
+        val rect = RectF(dp(36f), dp(139f), width - dp(36f), statsTop() - dp(38f))
+        paint.color = Color.argb(225, 255, 250, 252)
+        canvas.drawRoundRect(rect, dp(24f), dp(24f), paint)
+        val cy = rect.centerY()
+        textPaint.textAlign = Paint.Align.CENTER
+        textPaint.typeface = PaintTypeface.bold()
+        textPaint.color = Color.rgb(91, 63, 112)
+        textPaint.textSize = dp(20f)
+        val title = "Remembering ${pet.name}"
+        textPaint.textSize = min(dp(20f), dp(20f) * (rect.width() - dp(24f)) / textPaint.measureText(title))
+        canvas.drawText(title, width / 2f, cy - dp(32f), textPaint)
+        textPaint.textSize = dp(14f)
+        textPaint.typeface = PaintTypeface.rounded()
+        canvas.drawText("A little friend, always remembered", width / 2f, cy + dp(2f), textPaint)
+        textPaint.textSize = dp(12f)
+        canvas.drawText("Your memories are saved", width / 2f, cy + dp(33f), textPaint)
+    }
+
+    private fun memoriesRect(): RectF = RectF(dp(28f), height - dp(154f), width - dp(28f), height - dp(95f))
+
+    private fun showMemories() {
+        val memories = pet.memories()
+        val dialog = AlertDialog.Builder(appContext).setTitle("Saved memories").setPositiveButton("CLOSE", null)
+        if (memories.isEmpty()) dialog.setMessage("Your past pets will be remembered here.")
+        else dialog.setItems(memories.toTypedArray(), null)
+        dialog.show()
+    }
+
     private fun drawActionEffects(canvas: Canvas, now: Long) {
+        if (pet.dead) return
         val action = activeAction ?: return
         if (now >= actionUntil) {
             activeAction = null
@@ -804,7 +942,12 @@ private class PetGameView(context: Context, private val onPetCreated: () -> Unit
         textPaint.typeface = PaintTypeface.rounded()
         textPaint.textSize = dp(12f)
         textPaint.color = if (now < messageUntil) Color.rgb(47, 57, 45) else Color.rgb(87, 96, 75)
-        val shortMessage = if (message.length > 31) message.take(28) + "..." else message
+        val displayedMessage = when {
+            pet.dead -> "A little friend, always remembered"
+            !pet.hatched && now >= messageUntil -> "A little friend is growing inside"
+            else -> message
+        }
+        val shortMessage = if (displayedMessage.length > 31) displayedMessage.take(28) + "..." else displayedMessage
         canvas.drawText(shortMessage, width / 2f, dp(101f), textPaint)
     }
 
@@ -831,7 +974,10 @@ private class PetGameView(context: Context, private val onPetCreated: () -> Unit
         textPaint.textSize = dp(11f)
         textPaint.typeface = PaintTypeface.bold()
         textPaint.color = Color.rgb(105, 78, 116)
-        canvas.drawText("EVOLUTION ${pet.evolutionProgress.roundToInt()}% • ${pet.evolutionHint}", dp(22f), top + dp(61f), textPaint)
+        val progressLabel = if (pet.hatched) "EVOLUTION" else "HATCHING"
+        val evolutionText = "$progressLabel ${pet.evolutionProgress.roundToInt()}% • ${pet.evolutionHint}"
+        textPaint.textSize = min(dp(11f), dp(11f) * (width - dp(44f)) / textPaint.measureText(evolutionText))
+        canvas.drawText(evolutionText, dp(22f), top + dp(61f), textPaint)
 
         paint.color = Color.rgb(244, 226, 238)
         canvas.drawRoundRect(reset, dp(15f), dp(15f), paint)
@@ -841,7 +987,9 @@ private class PetGameView(context: Context, private val onPetCreated: () -> Unit
         textPaint.color = Color.rgb(122, 69, 123)
         canvas.drawText("NEW PET", reset.centerX(), reset.centerY() + dp(4f), textPaint)
 
-        val values = listOf(pet.hunger to "HUNGER", pet.joy to "JOY", pet.energy to "ENERGY", pet.clean to "CLEAN")
+        if (pet.dead) return
+        val values = if (!pet.hatched) listOf(pet.hunger to "WARMTH", pet.joy to "COMFORT", pet.energy to "REST", pet.clean to "NEST")
+            else listOf(pet.hunger to "HUNGER", pet.joy to "JOY", pet.energy to "ENERGY", pet.clean to "CLEAN")
         val colors = intArrayOf(Color.rgb(245, 143, 90), Color.rgb(239, 91, 145), Color.rgb(117, 106, 220), Color.rgb(67, 177, 155))
         val colWidth = (width - dp(44f)) / 2f
         for (i in values.indices) {
@@ -873,6 +1021,20 @@ private class PetGameView(context: Context, private val onPetCreated: () -> Unit
 
     private fun drawActions(canvas: Canvas) {
         buttons.clear()
+        if (pet.dead) {
+            val rect = memoriesRect()
+            paint.color = Color.rgb(228, 211, 240)
+            canvas.drawRoundRect(rect, dp(20f), dp(20f), paint)
+            textPaint.textAlign = Paint.Align.CENTER
+            textPaint.color = Color.rgb(68, 43, 90)
+            textPaint.typeface = PaintTypeface.bold()
+            textPaint.textSize = dp(15f)
+            canvas.drawText("SAVED MEMORIES", rect.centerX(), rect.centerY() + dp(5f), textPaint)
+            textPaint.textSize = dp(12f)
+            textPaint.typeface = PaintTypeface.rounded()
+            canvas.drawText("Choose NEW PET whenever you're ready", width / 2f, rect.bottom + dp(31f), textPaint)
+            return
+        }
         val top = height - dp(160f)
         val gap = dp(10f)
         val left = dp(18f)
@@ -880,7 +1042,7 @@ private class PetGameView(context: Context, private val onPetCreated: () -> Unit
         val buttonHeight = dp(55f)
         val actions = listOf(Action.FEED, Action.PLAY, Action.BATH, Action.SLEEP)
         val fills = intArrayOf(Color.rgb(255, 225, 170), Color.rgb(255, 193, 216), Color.rgb(190, 232, 220), Color.rgb(198, 205, 255))
-        val labels = listOf("FEED", "PLAY", "BATH", "SLEEP")
+        val labels = if (pet.hatched) listOf("FEED", "PLAY", "BATH", "SLEEP") else listOf("WARM", "SOOTHE", "TIDY", "REST")
         val glyphs = listOf("+", "★", "✦", "Z")
         for (i in actions.indices) {
             val x = left + (i % 2) * (buttonWidth + gap)
@@ -964,6 +1126,7 @@ private class PetGameView(context: Context, private val onPetCreated: () -> Unit
             .setTitle("Settings")
             .setMessage(if (cloudSave.isSignedIn()) "Google backup is connected." else "Google backup is not connected yet.")
             .setNegativeButton("CLOSE", null)
+            .setNeutralButton("MEMORIES") { _, _ -> showMemories() }
             .setPositiveButton("RESET DATA") { _, _ -> showResetChoices() }
             .show()
     }
@@ -1051,6 +1214,10 @@ private class PetGameView(context: Context, private val onPetCreated: () -> Unit
                 return true
             }
             MotionEvent.ACTION_UP -> {
+                if (pet.dead && memoriesRect().contains(event.x, event.y)) {
+                    showMemories()
+                    return true
+                }
                 val action = buttons.firstOrNull { it.rect.contains(event.x, event.y) }?.action
                 if (action != null && action == pressedAction) perform(action)
                 if (newPetRect().contains(event.x, event.y) || headerResetRect().contains(event.x, event.y)) confirmNewPet()
@@ -1101,9 +1268,9 @@ private class PetGameView(context: Context, private val onPetCreated: () -> Unit
         }
         val hatch = RectF(dp(34f), height - dp(86f), width - dp(34f), height - dp(25f))
         if (hatch.contains(event.x, event.y)) {
-            pet.hatch(setupName, setupKind)
+            pet.createEgg(setupName, setupKind)
             setupMode = false
-            message = "Welcome, ${pet.name}! Let's grow together."
+            message = "${pet.name}'s egg is settling in!"
             messageUntil = SystemClock.uptimeMillis() + 5000L
             savePet()
             post { onPetCreated() }
@@ -1143,12 +1310,12 @@ private class PetGameView(context: Context, private val onPetCreated: () -> Unit
     private fun confirmNewPet() {
         AlertDialog.Builder(appContext)
             .setTitle("Start a new pet?")
-            .setMessage("Your current pet will stay in this game until you choose a new one. Start over now?")
+            .setMessage("Your current pet stays until you choose a new egg. Its memories will be saved when you do.")
             .setNegativeButton("KEEP PET", null)
             .setPositiveButton("NEW PET") { _, _ ->
-                pet.prepareNewPet()
-                setupKind = pet.kind
-                setupName = pet.name
+                // Keep the current pet/save until a replacement egg is chosen.
+                setupKind = PetKind.BUNNY
+                setupName = "Mochi"
                 setupMode = true
                 invalidate()
             }
@@ -1156,7 +1323,9 @@ private class PetGameView(context: Context, private val onPetCreated: () -> Unit
     }
 
     private fun perform(action: Action) {
+        if (pet.dead) return
         val result = pet.apply(action)
+        if (pet.dead) { savePet(); invalidate(); return }
         activeAction = action
         actionUntil = SystemClock.uptimeMillis() + 1600L
         message = result.first
@@ -1227,7 +1396,7 @@ private class PetGameView(context: Context, private val onPetCreated: () -> Unit
         }
     }
 
-    fun hasCreatedPet(): Boolean = pet.created && pet.hatched
+    fun hasCreatedPet(): Boolean = pet.created
 
     fun hasCloudAccount(): Boolean = cloudSave.isSignedIn()
 
@@ -1305,7 +1474,8 @@ private class PetGameView(context: Context, private val onPetCreated: () -> Unit
                         if (pet.hasCreatedPet()) upload()
                         onComplete(CloudRestoreResult.NO_CLOUD_BACKUP)
                     } else {
-                        val cloudHasPet = snapshot.getBoolean("created") == true && snapshot.getBoolean("hatched") == true
+                        pet.mergeHistory(snapshot.data?.get("historyJson") as? String)
+                        val cloudHasPet = snapshot.getBoolean("created") == true
                         val cloudSavedAt = snapshot.getLong("savedAt") ?: 0L
                         when {
                             cloudHasPet && (preferCloud || cloudSavedAt > pet.savedAt) -> {
@@ -1353,238 +1523,224 @@ private class PetGameView(context: Context, private val onPetCreated: () -> Unit
     }
 
     private class PetState(private val prefs: android.content.SharedPreferences) {
-        var hunger = readMetric("hunger", 78f)
-        var joy = readMetric("joy", 82f)
-        var energy = readMetric("energy", 74f)
-        var clean = readMetric("clean", 88f)
+        private val life = PetLife().apply {
+            needs[0] = readMetric("hunger", 78f)
+            needs[1] = readMetric("joy", 82f)
+            needs[2] = readMetric("energy", 74f)
+            needs[3] = readMetric("clean", 88f)
+            generation = prefs.getInt("generation", 0).coerceIn(0, 2)
+            ageMillis = prefs.getLong("age_millis", 0L).coerceAtLeast(0)
+            goodCareMillis = prefs.getLong("good_care_millis", 0L).coerceAtLeast(0)
+            totalCareMillis = prefs.getLong("total_care_millis", 0L).coerceAtLeast(goodCareMillis)
+            created = prefs.getBoolean("created", false)
+            hatched = prefs.getBoolean("hatched", false)
+            dead = prefs.getBoolean("dead", false)
+            diedAt = prefs.getLong("died_at", 0L)
+            eggAgeMillis = prefs.getLong("egg_age_millis", 0L)
+            eggProgressMillis = prefs.getLong("egg_progress_millis", 0L).toDouble()
+            evolutionMillis = if (prefs.contains("evolution_millis")) prefs.getLong("evolution_millis", 0L).toDouble()
+                else PetGrowth.migrateEvolution(generation, ageMillis, carePercent())
+            adultAgeMillis = prefs.getLong("adult_age_millis", 0L)
+            adultClockReady = prefs.getBoolean("adult_clock_ready", generation < 2 || prefs.contains("adult_age_millis"))
+        }
+        val hunger: Float get() = life.needs[0]
+        val joy: Float get() = life.needs[1]
+        val energy: Float get() = life.needs[2]
+        val clean: Float get() = life.needs[3]
         var growth = prefs.getFloat("growth", 0f)
-        var generation = prefs.getInt("generation", 0).coerceIn(0, 2)
-        private var ageMillis = prefs.getLong("age_millis", 0L)
-        private var goodCareMillis = prefs.getLong("good_care_millis", 0L)
-        private var totalCareMillis = prefs.getLong("total_care_millis", 0L)
+        val generation: Int get() = life.generation
+        val created: Boolean get() = life.created
+        val hatched: Boolean get() = life.hatched
+        val dead: Boolean get() = life.dead
         var name = prefs.getString("name", "Mochi") ?: "Mochi"
         var kind = prefs.getString("kind", PetKind.BUNNY.name)?.let { value ->
             PetKind.values().firstOrNull { it.name == value }
         } ?: PetKind.BUNNY
-        var created = prefs.getBoolean("created", false)
-        var hatched = prefs.getBoolean("hatched", false)
         private var lastUpdate = prefs.getLong("last_update", System.currentTimeMillis())
         private var lastSavedAt = prefs.getLong("saved_at", 0L)
-        private var evolutionEvent = false
+        private var petId = prefs.getString("pet_id", null) ?: java.util.UUID.randomUUID().toString()
+        private var createdAt = prefs.getLong("created_at", lastUpdate - life.ageMillis - life.eggAgeMillis)
+        private var historyJson = prefs.getString("history_json", "[]") ?: "[]"
 
-        val savedAt: Long
-            get() = lastSavedAt
-
-        val stage: String
-            get() = when {
-                !hatched -> "EGG"
-                generation >= 2 -> "EVOLVED"
-                generation == 1 -> "TEEN"
-                ageHours < 12f -> "BABY"
-                else -> "YOUNG"
-            }
-
-        val level: Int
-            get() = when (stage) {
-                "BABY", "YOUNG" -> 1
-                "TEEN" -> 2
-                "EVOLVED" -> 3
-                else -> 0
-            }
-
-        val ageHours: Float
-            get() = ageMillis / 3_600_000f
-
+        val savedAt: Long get() = lastSavedAt
+        val growthStage: PetGrowth.Stage get() = PetGrowth.stage(hatched, generation)
+        val stage: String get() = if (dead) "REMEMBERED" else growthStage.name
+        val level: Int get() = if (!hatched) 0 else generation + 1
+        val ageHours: Float get() = life.ageMillis / 3_600_000f
         val ageLabel: String
-            get() = when {
-                ageHours < 1f -> "${(ageMillis / 60_000L).coerceAtLeast(0L)}m"
-                ageHours < 24f -> "${ageHours.roundToInt()}h"
-                else -> "${(ageHours / 24f).roundToInt()}d"
-            }
-
-        val carePercent: Float
-            get() = if (totalCareMillis <= 0L) 0f else (goodCareMillis.toDouble() / totalCareMillis * 100.0).toFloat().coerceIn(0f, 100f)
-
-        val evolutionProgress: Float
             get() {
-                if (generation >= 2) return 100f
-                val ageTargetHours = if (generation == 0) 12f else 72f
-                val careTarget = if (generation == 0) 55f else 72f
-                val agePart = (ageHours / ageTargetHours * 100f).coerceAtMost(100f)
-                val carePart = (carePercent / careTarget * 100f).coerceAtMost(100f)
-                return min(agePart, carePart).coerceIn(0f, 100f)
+                val millis = if (hatched) life.ageMillis else life.eggAgeMillis
+                return when {
+                    millis < 3_600_000L -> "${millis / 60_000L}m"
+                    millis < PetGrowth.DAY_MILLIS -> "${millis / 3_600_000L}h"
+                    else -> "${millis / PetGrowth.DAY_MILLIS}d"
+                }
             }
-
+        val carePercent: Float get() = life.carePercent().toFloat().coerceIn(0f, 100f)
+        val hatchProgress: Float get() = PetGrowth.hatchProgress(life.eggProgressMillis.toLong()).toFloat()
+        val evolutionProgress: Float
+            get() = when {
+                !hatched -> hatchProgress * 100f
+                generation >= 2 -> 100f
+                else -> (life.evolutionMillis / PetGrowth.STAGE_MILLIS * 100).toFloat().coerceIn(0f, 100f)
+            }
         val evolutionHint: String
             get() = when {
-                generation >= 2 -> "Fully evolved"
-                generation == 0 && ageHours < 12f -> "Needs ${max(0f, 12f - ageHours).roundToInt()}h + good care"
-                generation == 0 -> "Keep care above 55%"
-                generation == 1 && ageHours < 72f -> "Needs ${max(0f, 72f - ageHours).roundToInt()}h + patience"
-                else -> "Keep care above 72%"
+                dead -> "Memories saved"
+                !hatched -> "About 2 days with good care"
+                generation >= 2 -> "Adult • enjoy your time together"
+                else -> "About a week per stage • care helps"
             }
-
-        private val careAverage: Float
-            get() = (hunger + joy + energy + clean) / 4f
 
         fun updateFromClock() {
             val now = System.currentTimeMillis()
-            val elapsedMillis = ((now - lastUpdate).coerceAtLeast(0L)).coerceAtMost(7L * 24L * 60L * 60L * 1000L)
-            if (elapsedMillis == 0L) return
-            if (created && hatched) {
-                val minutes = elapsedMillis / 60_000f
-                hunger = (hunger - minutes * 0.13f).coerceIn(0f, 100f)
-                joy = (joy - minutes * 0.08f).coerceIn(0f, 100f)
-                energy = (energy - minutes * 0.10f).coerceIn(0f, 100f)
-                clean = (clean - minutes * 0.06f).coerceIn(0f, 100f)
-                val hours = elapsedMillis / 3_600_000f
-                growth = (growth + hours * (0.75f + careAverage / 100f * 1.25f)).coerceAtMost(100f)
-                ageMillis = (ageMillis + elapsedMillis).coerceAtMost(365L * 24L * 60L * 60L * 1000L)
-                totalCareMillis = (totalCareMillis + elapsedMillis).coerceAtMost(365L * 24L * 60L * 60L * 1000L)
-                if (careAverage >= 65f) goodCareMillis = (goodCareMillis + elapsedMillis).coerceAtMost(totalCareMillis)
-                advanceIfReady()
-            }
+            life.advance((now - lastUpdate).coerceAtLeast(0), now)
             lastUpdate = now
+            if (life.deathEvent) archiveCurrent("old_age")
         }
 
         fun apply(action: Action): Pair<String, Int> {
             updateFromClock()
-            val result = when (action) {
-                Action.FEED -> { hunger = (hunger + 18f).coerceAtMost(100f); joy = (joy + 3f).coerceAtMost(100f); growth = (growth + 0.35f).coerceAtMost(100f); "Nom nom! Tasty treats!" to Color.rgb(172, 86, 40) }
-                Action.PLAY -> { joy = (joy + 16f).coerceAtMost(100f); energy = (energy - 9f).coerceAtLeast(0f); hunger = (hunger - 4f).coerceAtLeast(0f); growth = (growth + 0.45f).coerceAtMost(100f); "Wheee! That was fun!" to Color.rgb(191, 54, 112) }
-                Action.BATH -> { clean = (clean + 22f).coerceAtMost(100f); joy = (joy + 4f).coerceAtMost(100f); growth = (growth + 0.25f).coerceAtMost(100f); "Sparkly clean! ✦" to Color.rgb(39, 135, 119) }
-                Action.SLEEP -> { energy = (energy + 25f).coerceAtMost(100f); joy = (joy + 2f).coerceAtMost(100f); growth = (growth + 0.3f).coerceAtMost(100f); "Sweet dreams, little one." to Color.rgb(75, 78, 173) }
+            life.care(action.ordinal)
+            return when (action) {
+                Action.FEED -> (if (hatched) "Nom nom! Tasty treats!" else "Warm and cosy.") to Color.rgb(172, 86, 40)
+                Action.PLAY -> (if (hatched) "Wheee! That was fun!" else "Your egg feels comforted.") to Color.rgb(191, 54, 112)
+                Action.BATH -> (if (hatched) "Sparkly clean!" else "Fresh, tidy bedding.") to Color.rgb(39, 135, 119)
+                Action.SLEEP -> (if (hatched) "Sweet dreams, little one." else "A peaceful rest.") to Color.rgb(75, 78, 173)
             }
-            return result
         }
 
-        fun hatch(newName: String, newKind: PetKind) {
-            name = newName.ifBlank { "Mochi" }
-            kind = newKind
-            created = true
-            hatched = true
-            hunger = 82f
-            joy = 88f
-            energy = 84f
-            clean = 92f
+        fun createEgg(newName: String, newKind: PetKind) {
+            if (created) archiveCurrent(if (dead) "old_age" else "retired")
+            name = newName.ifBlank { "Mochi" };kind = newKind
+            life.createEgg()
             growth = 0f
-            generation = 0
-            ageMillis = 0L
-            goodCareMillis = 0L
-            totalCareMillis = 0L
-            lastUpdate = System.currentTimeMillis()
-        }
-
-        fun prepareNewPet() {
-            name = "Mochi"
-            kind = PetKind.BUNNY
-            created = false
-            hatched = false
-            growth = 0f
-            generation = 0
-            ageMillis = 0L
-            goodCareMillis = 0L
-            totalCareMillis = 0L
-            lastUpdate = System.currentTimeMillis()
+            petId = java.util.UUID.randomUUID().toString()
+            createdAt = System.currentTimeMillis()
+            lastUpdate = createdAt
         }
 
         fun resetLocal() {
             prefs.edit().clear().apply()
-            hunger = 78f
-            joy = 82f
-            energy = 74f
-            clean = 88f
-            growth = 0f
-            generation = 0
-            ageMillis = 0L
-            goodCareMillis = 0L
-            totalCareMillis = 0L
-            name = "Mochi"
-            kind = PetKind.BUNNY
-            created = false
-            hatched = false
-            lastUpdate = System.currentTimeMillis()
-            lastSavedAt = 0L
-            evolutionEvent = false
+            life.createEgg();life.created = false
+            life.needs[0] = 78f;life.needs[1] = 82f;life.needs[2] = 74f;life.needs[3] = 88f
+            name = "Mochi";kind = PetKind.BUNNY;growth = 0f
+            historyJson = "[]";petId = java.util.UUID.randomUUID().toString()
+            lastUpdate = System.currentTimeMillis();createdAt = lastUpdate;lastSavedAt = 0L
         }
 
-        private fun advanceIfReady() {
-            if (generation == 0 && ageHours >= 12f && carePercent >= 55f && careAverage >= 60f) {
-                generation = 1
-                evolutionEvent = true
-            } else if (generation == 1 && ageHours >= 72f && carePercent >= 72f && careAverage >= 70f) {
-                generation = 2
-                evolutionEvent = true
+        fun consumeHatchEvent(): Boolean = life.hatchEvent.also { life.hatchEvent = false }
+        fun consumeEvolutionEvent(): Boolean = life.evolutionEvent.also { life.evolutionEvent = false }
+        fun consumeDeathEvent(): Boolean = life.deathEvent.also { life.deathEvent = false }
+
+        private fun history(): org.json.JSONArray = try {
+            org.json.JSONArray(historyJson)
+        } catch (_: Exception) {
+            // Keep a recoverable copy rather than deleting unreadable history.
+            prefs.edit().putString("history_recovery", historyJson).apply()
+            org.json.JSONArray()
+        }
+
+        private fun archiveCurrent(reason: String) {
+            val items = history()
+            for (index in 0 until items.length()) if (items.getJSONObject(index).optString("id") == petId) return
+            items.put(JSONObject().apply {
+                put("id", petId);put("name", name);put("kind", kind.name)
+                put("ageMillis", life.ageMillis);put("carePercent", carePercent)
+                put("createdAt", createdAt);put("endedAt", if (dead) life.diedAt else System.currentTimeMillis())
+                put("reason", reason);put("generation", generation)
+                put("snapshot", JSONObject(cloudData().filterKeys { it != "historyJson" }))
+            })
+            historyJson = items.toString()
+        }
+
+        fun memories(): List<String> {
+            val items = history()
+            return (items.length() - 1 downTo 0).map { index ->
+                val item = items.getJSONObject(index)
+                val days = item.optLong("ageMillis") / PetGrowth.DAY_MILLIS
+                val ending = if (item.optString("reason") == "old_age") "Old age" else "Retired"
+                "${item.optString("name")} • ${item.optString("kind").lowercase()} • ${days}d • $ending"
             }
         }
 
-        fun consumeEvolutionEvent(): Boolean {
-            val happened = evolutionEvent
-            evolutionEvent = false
-            return happened
+        fun mergeHistory(remote: String?) {
+            if (remote == null) return
+            val merged = history()
+            try {
+                val incoming = org.json.JSONArray(remote)
+                for (index in 0 until incoming.length()) {
+                    val item = incoming.optJSONObject(index) ?: continue
+                    if ((0 until merged.length()).none { merged.getJSONObject(it).optString("id") == item.optString("id") }) merged.put(item)
+                }
+                historyJson = merged.toString()
+                prefs.edit().putString("history_json", historyJson).apply()
+            } catch (_: Exception) {
+                prefs.edit().putString("history_remote_recovery", remote).apply()
+            }
         }
 
         fun cloudData(): Map<String, Any> = mapOf(
-            "hunger" to hunger.toDouble(),
-            "joy" to joy.toDouble(),
-            "energy" to energy.toDouble(),
-            "clean" to clean.toDouble(),
-            "growth" to growth.toDouble(),
-            "generation" to generation.toLong(),
-            "ageMillis" to ageMillis,
-            "goodCareMillis" to goodCareMillis,
-            "totalCareMillis" to totalCareMillis,
-            "name" to name,
-            "kind" to kind.name,
-            "created" to created,
-            "hatched" to hatched,
-            "lastUpdate" to lastUpdate,
-            "savedAt" to lastSavedAt
+            "hunger" to hunger.toDouble(), "joy" to joy.toDouble(), "energy" to energy.toDouble(), "clean" to clean.toDouble(),
+            "growth" to growth.toDouble(), "generation" to generation.toLong(), "ageMillis" to life.ageMillis,
+            "goodCareMillis" to life.goodCareMillis, "totalCareMillis" to life.totalCareMillis,
+            "name" to name, "kind" to kind.name, "created" to created, "hatched" to hatched,
+            "lastUpdate" to lastUpdate, "savedAt" to lastSavedAt,
+            "eggAgeMillis" to life.eggAgeMillis, "eggProgressMillis" to life.eggProgressMillis.toLong(),
+            "evolutionMillis" to life.evolutionMillis.toLong(), "adultAgeMillis" to life.adultAgeMillis,
+            "adultClockReady" to life.adultClockReady,
+            "dead" to dead, "diedAt" to life.diedAt, "petId" to petId, "createdAt" to createdAt, "historyJson" to historyJson
         )
 
-        fun hasCreatedPet(): Boolean = created && hatched
+        fun hasCreatedPet(): Boolean = created
 
         fun loadCloud(data: Map<String, Any>) {
             fun number(key: String, fallback: Float): Float = (data[key] as? Number)?.toFloat() ?: fallback
             fun long(key: String, fallback: Long): Long = (data[key] as? Number)?.toLong() ?: fallback
-
-            hunger = number("hunger", hunger).coerceIn(0f, 100f)
-            joy = number("joy", joy).coerceIn(0f, 100f)
-            energy = number("energy", energy).coerceIn(0f, 100f)
-            clean = number("clean", clean).coerceIn(0f, 100f)
+            life.needs[0] = number("hunger", hunger).coerceIn(0f, 100f)
+            life.needs[1] = number("joy", joy).coerceIn(0f, 100f)
+            life.needs[2] = number("energy", energy).coerceIn(0f, 100f)
+            life.needs[3] = number("clean", clean).coerceIn(0f, 100f)
             growth = number("growth", growth).coerceIn(0f, 100f)
-            generation = long("generation", generation.toLong()).toInt().coerceIn(0, 2)
-            ageMillis = long("ageMillis", ageMillis)
-            goodCareMillis = long("goodCareMillis", goodCareMillis)
-            totalCareMillis = long("totalCareMillis", totalCareMillis)
-            name = ((data["name"] as? String)?.take(14))?.ifBlank { name } ?: name
-            (data["kind"] as? String)?.let { value ->
-                kind = PetKind.values().firstOrNull { it.name == value } ?: kind
-            }
-            created = data["created"] as? Boolean ?: created
-            hatched = data["hatched"] as? Boolean ?: hatched
+            life.generation = long("generation", generation.toLong()).toInt().coerceIn(0, 2)
+            life.ageMillis = long("ageMillis", life.ageMillis).coerceAtLeast(0)
+            life.goodCareMillis = long("goodCareMillis", life.goodCareMillis).coerceAtLeast(0)
+            life.totalCareMillis = long("totalCareMillis", life.totalCareMillis).coerceAtLeast(life.goodCareMillis)
+            name = (data["name"] as? String)?.take(14)?.ifBlank { name } ?: name
+            (data["kind"] as? String)?.let { value -> kind = PetKind.values().firstOrNull { it.name == value } ?: kind }
+            life.created = data["created"] as? Boolean ?: created
+            life.hatched = data["hatched"] as? Boolean ?: hatched
+            life.dead = data["dead"] as? Boolean ?: false
+            life.diedAt = long("diedAt", 0)
+            life.eggAgeMillis = long("eggAgeMillis", 0)
+            life.eggProgressMillis = long("eggProgressMillis", 0).toDouble()
+            life.evolutionMillis = if (data.containsKey("evolutionMillis")) long("evolutionMillis", 0).toDouble()
+                else PetGrowth.migrateEvolution(generation, life.ageMillis, life.carePercent())
+            life.adultAgeMillis = long("adultAgeMillis", 0)
+            life.adultClockReady = data["adultClockReady"] as? Boolean ?: (generation < 2 || data.containsKey("adultAgeMillis"))
             lastUpdate = long("lastUpdate", lastUpdate)
             lastSavedAt = long("savedAt", lastSavedAt)
+            petId = data["petId"] as? String ?: petId
+            createdAt = long("createdAt", lastUpdate - life.ageMillis - life.eggAgeMillis)
+            // Merge memorials by pet id so restoring an older backup cannot
+            // discard locally recorded history.
+            mergeHistory(data["historyJson"] as? String)
+            life.hatchEvent = false;life.evolutionEvent = false;life.deathEvent = false
         }
 
         fun save() {
             lastSavedAt = System.currentTimeMillis()
             prefs.edit()
-                .putFloat("hunger", hunger)
-                .putFloat("joy", joy)
-                .putFloat("energy", energy)
-                .putFloat("clean", clean)
-                .putFloat("growth", growth)
-                .putInt("generation", generation)
-                .putLong("age_millis", ageMillis)
-                .putLong("good_care_millis", goodCareMillis)
-                .putLong("total_care_millis", totalCareMillis)
-                .putString("name", name)
-                .putString("kind", kind.name)
-                .putBoolean("created", created)
-                .putBoolean("hatched", hatched)
-                .putLong("last_update", lastUpdate)
-                .putLong("saved_at", lastSavedAt)
+                .putFloat("hunger", hunger).putFloat("joy", joy).putFloat("energy", energy).putFloat("clean", clean)
+                .putFloat("growth", growth).putInt("generation", generation)
+                .putLong("age_millis", life.ageMillis).putLong("good_care_millis", life.goodCareMillis).putLong("total_care_millis", life.totalCareMillis)
+                .putString("name", name).putString("kind", kind.name).putBoolean("created", created).putBoolean("hatched", hatched)
+                .putLong("last_update", lastUpdate).putLong("saved_at", lastSavedAt)
+                .putLong("egg_age_millis", life.eggAgeMillis).putLong("egg_progress_millis", life.eggProgressMillis.toLong())
+                .putLong("evolution_millis", life.evolutionMillis.toLong()).putLong("adult_age_millis", life.adultAgeMillis)
+                .putBoolean("adult_clock_ready", life.adultClockReady)
+                .putBoolean("dead", dead).putLong("died_at", life.diedAt)
+                .putString("pet_id", petId).putLong("created_at", createdAt).putString("history_json", historyJson)
                 .apply()
         }
 

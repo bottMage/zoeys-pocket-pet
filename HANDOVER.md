@@ -1,5 +1,48 @@
 # Zoey's Pocket Pet — cloud handover
 
+## Current work: eggs, visible growth and care lifecycle — v42
+
+This supersedes earlier rollback-only notes. The user requested moving eggs in
+a twig nest for dragon/straw for others, then the current design as a small
+baby, visibly bigger/changed young and adult stages, and death from old age.
+They clarified: egg about two days, **each** live stage about a week, poor care
+lengthens evolution, and care actions must not affect other needs.
+
+`PetGrowth.java`/`PetLife.java` own the testable timeline, care speed, palette and
+size rules. Main uses the v41 whole-pet renderer, not the rejected limb/3D rigs.
+Artwork pixels are unchanged; young/adult differences are size and modest colour,
+not separate new anatomical drawings. Adult size is fitted first, then baby
+55% and young 77%, retaining the complete silhouette clipping protections.
+Egg paths/gradients and coat filters are cached. All five stages/species reviews
+are in `artwork/growth-stages`; these are offline stills, not phone recordings.
+
+Egg/baby/young growth accumulates at 10..100% speed according to care; no earned
+progress is erased. Adults live one week, following the user's "each stage"
+timing answer, and die of old age rather than neglect. `PetState` delegates the
+clock to the engine, retains existing prefs/cloud keys and generations, migrates
+old evolution percentages, and persists incubation, stage progress and adult age.
+Legacy adults receive a full new adult lifespan on upgrade/restore, even if saved
+and reopened before first draw. Eggs/remembered pets remain Google backup eligible.
+Initial restore-before-write protection and updater implementation are retained.
+
+Each action changes only its own need. Eggs show WARM/SOOTHE/TIDY/REST. Old-age
+death archives a complete snapshot once; starting a replacement also preserves
+the old pet as retired. Opening selection alone no longer resets the pet.
+Memories merge by id across local/cloud copies and can be viewed in Settings
+or the memorial screen. Explicit local/cloud reset choices retain their semantics.
+
+`PetLifeCheck` and `PetSaveCheck` pass. The latter exercises the actual compiled
+Kotlin model against in-memory Android preferences, including old cloud restore,
+process-restart migration, egg backup, full archives/history and action wiring.
+`WholePetCheck` passes 148,680 alpha-bound placement cases. Final `assembleDebug`
+and `lintDebug` pass (zero errors, 132 existing/general warnings). The real-model
+save/restore and lifecycle checks also pass against the final compiled classes.
+APK package/version 42.0 and unchanged signing certificate are verified. Its
+SHA-256 is `21185004ac52a94272e582927fdc9c048274a232ae44729f7e384af5f85337e2`.
+The updater is byte-for-byte unchanged from v41. Publish the signed asset first
+and only advance `update.json` after its public availability/checksum are checked.
+See `artwork/growth-stages/README.md` for behavior, checks and limitations.
+
 ## Current request: original whole-pet animation for all pets — v41
 
 The user clarified the rollback target with a v23 screenshot: restore that
