@@ -1,5 +1,27 @@
 # Zoey's Pocket Pet — cloud handover
 
+## Current animation work — v37 (2026-10-08)
+
+The historical notes below describe v5 and must not be treated as the current release.
+v37 replaces v36's rigid swinging cat legs with a two-bone IK chain and a level
+paw bone. `CatRig.java` computes the mesh vertices for `drawBitmapMesh` on the
+hardware Canvas. Four staggered steps use a 68% stance period. During steady
+walking, root distance and gait phase share a 48 authoring-pixel stride; supporting
+paws stay fixed in world space. Walking acceleration/deceleration and pose blend
+are eased; the cat settles before reversing. Head and tail follow gently.
+The cat head's neck attachment was repaired and the extra chest overlay removed.
+The other pets retain their existing cel renderer. Cloud progress and updater
+code were not modified by this animation change.
+
+`tools/CatRigPreview.java` renders the same joint/mesh calculations outside Android
+and checks the rendered paw's horizontal contact, ground height, finite vertices,
+and continuity at touchdown. Compile it with `CatRig.java` using the cloud JDK,
+then run with drawable-nodpi and an output directory as its two arguments. Optional
+third argument controls frame count. Preview output is 60 fps at a steady walk.
+Rendered poses and contact math were inspected, and Android assemble/lint must
+pass before publishing. No phone or emulator is attached to this workspace, so
+do not claim measured device frame rates or final user-approved visual quality.
+
 ## What the user wants now
 
 Continue improving the Android pet app, especially the creature animation. The user is unhappy with the current movement: pets look as if they float, are rigid/glitchy, and may appear to run backward or slide rather than interact with the ground. Treat this as the main product problem; do not claim it is solved without visual validation on a device/screenshot.

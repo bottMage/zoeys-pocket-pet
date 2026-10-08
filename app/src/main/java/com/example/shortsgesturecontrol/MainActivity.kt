@@ -368,6 +368,8 @@ private class PetGameView(context: Context, private val onPetCreated: () -> Unit
     private var motionX = .5f
     private var motionDirection = 1f
     private var catFacingRight = false
+    private var catCycle = 0.0
+    private var catWalkBlend = 0f
     private var motionMode = MotionMode.REST
     private var motionModeUntil = 0L
     private var motionLastAt = SystemClock.uptimeMillis()
@@ -430,6 +432,7 @@ private class PetGameView(context: Context, private val onPetCreated: () -> Unit
         check(resourceId != 0) { "Missing cat rig part: $part" }
         BitmapFactory.decodeResource(resources, resourceId, BitmapFactory.Options().apply {
             inScaled = false
+            if (part == "head") inSampleSize = 2
         }) ?: error("Unable to decode cat rig part: $part")
     }
 
@@ -692,13 +695,12 @@ private class PetGameView(context: Context, private val onPetCreated: () -> Unit
             if (motionMode == MotionMode.WALK && motionX <= .08f) motionDirection = 1f
             if (motionMode == MotionMode.WALK && motionX >= .92f) motionDirection = -1f
         }
-        if (motionMode == MotionMode.WALK && activeAction == null) {
+        if (pet.kind != PetKind.CAT && motionMode == MotionMode.WALK && activeAction == null) {
             val walkProgress = ((motionModeUntil - now) / 500f).coerceIn(0f, 1f)
             val startBlend = min(1f, (now - motionModeStartedAt).coerceAtLeast(0L) / 500f)
             // Give each gait cycle enough forward travel to match the foot
             // cadence.  The blend still eases into and out of each walk.
-            val speed = (if (pet.kind == PetKind.CAT) .13f else .11f) *
-                min(startBlend, walkProgress.coerceIn(0f, 1f))
+            val speed = .11f * min(startBlend, walkProgress.coerceIn(0f, 1f))
             motionX += motionDirection * dt * speed
             if (motionX <= 0f) { motionX = 0f; motionDirection = 1f }
             if (motionX >= 1f) { motionX = 1f; motionDirection = -1f }
@@ -715,6 +717,14 @@ private class PetGameView(context: Context, private val onPetCreated: () -> Unit
         val groundY = bottom - dp(42f)
         val seconds = (now - animationStart) / 1000f
         val walking = motionMode == MotionMode.WALK && activeAction == null
+        if (pet.kind == PetKind.CAT) {
+            val start = ((now - motionModeStartedAt) / 450f).coerceIn(0f, 1f)
+            val end = ((motionModeUntil - now) / 650f).coerceIn(0f, 1f)
+            val ramp = min(start, end)
+            val target = if (walking) ramp * ramp * (3f - 2f * ramp) else 0f
+            catWalkBlend += (target - catWalkBlend) * (1f - kotlin.math.exp(-dt * 12f))
+            if (catWalkBlend < .001f) catWalkBlend = 0f
+        }
         val frame = if (walking || activeAction == Action.PLAY) {
             ((now - animationStart) / WALK_FRAME_DURATION_MS % WALK_FRAME_COUNT).toInt()
         } else 0
@@ -737,7 +747,22 @@ private class PetGameView(context: Context, private val onPetCreated: () -> Unit
         }
         val minCenterX = sceneLeft + visibleReach
         val maxCenterX = sceneRight - visibleReach
-        val centerX = minCenterX + motionX * (maxCenterX - minCenterX)
+        val travelRange = (maxCenterX - minCenterX).coerceAtLeast(0f)
+        if (pet.kind == PetKind.CAT && walking && travelRange > 0f) {
+            // Authoring-space speed and stride share one distance clock.
+            // A dropped display frame cannot advance the feet independently.
+            val oldX = motionX
+            val travel = dt * 42f * (artWidth / CAT_RIG_SIZE) * catWalkBlend
+            motionX = (motionX + motionDirection * travel / travelRange).coerceIn(0f, 1f)
+            catCycle += abs(motionX - oldX) * travelRange / (artWidth / CAT_RIG_SIZE) / CatRig.STRIDE
+            if (motionX <= 0f || motionX >= 1f) {
+                // Settle before reversing, rather than reflecting instantly.
+                motionMode = MotionMode.REST
+                motionModeUntil = now + 900L
+                motionDirection = if (motionX <= 0f) 1f else -1f
+            } else catFacingRight = motionDirection > 0f
+        }
+        val centerX = minCenterX + motionX * travelRange
         // Keep the feet planted while resting.  A whole-body vertical bob reads
         // as hovering, especially against the simple ground in this scene.
         val idleBob = 0f
@@ -754,8 +779,7 @@ private class PetGameView(context: Context, private val onPetCreated: () -> Unit
         paint.isFilterBitmap = true
         paint.color = Color.WHITE
         if (pet.kind == PetKind.CAT) {
-            if (walking) catFacingRight = motionDirection > 0f
-            drawCatRig(canvas, centerX, rootY, artWidth, seconds, walking, catFacingRight)
+            drawCatRig(canvas, centerX, rootY, artWidth, seconds, catFacingRight)
         } else {
             val bitmap = walkFrameArtwork(pet.kind, frame)
             val artScale = artWidth / bitmap.width
@@ -786,48 +810,37 @@ private class PetGameView(context: Context, private val onPetCreated: () -> Unit
         canvas.drawText(name, centerX, nameBaseline, textPaint)
     }
 
-    /**
-     * The cat is a small 2-D bone rig, not a sequence of whole-body cels.  Each
-     * painted part stays rigid and is rotated around an anatomical joint while
-     * the hardware canvas interpolates continuously between poses.  Keeping the
-     * rig in a 512px authoring space makes the pivots readable and gives every
-     * phone the same proportions after scaling.
-     */
+    /** Continuous two-bone leg IK with a level paw bone and distance-based gait. */
     private fun drawCatRig(
         canvas: Canvas,
         centerX: Float,
         groundY: Float,
         artWidth: Float,
         seconds: Float,
-        walking: Boolean,
         facingRight: Boolean
     ) {
         val scale = artWidth / CAT_RIG_SIZE
         val left = centerX - CAT_RIG_SIZE * scale / 2f
         val top = groundY - CAT_RIG_GROUND * scale
-        val phase = seconds * (6.2831855f / CAT_RIG_CYCLE_SECONDS)
-        val gait = if (walking) sin(phase) else 0f
-        val oppositeGait = if (walking) sin(phase + 3.1415927f) else 0f
-        val settle = if (walking) 0f else sin(seconds * 1.7f) * .35f
-        val tailWag = sin(phase * .72f + .45f) * if (walking) 4.5f else 2.2f
-        val bodyRock = sin(phase * 2f) * if (walking) .9f else .25f
-        val headNod = sin(phase * 2f + .4f) * if (walking) 1.1f else .35f
+        val phase = (catCycle * 6.283185307).toFloat()
+        val bodyY = CatRig.bodyY(catCycle, catWalkBlend.toDouble()).toFloat()
+        val tailWag = sin(seconds * 1.8f) * 1.2f + sin(phase + .45f) * 1.8f * catWalkBlend
+        val headNod = sin(seconds * 1.4f) * .25f + sin(phase * 2f + .4f) * .5f * catWalkBlend
 
         canvas.save()
         if (facingRight) canvas.scale(-1f, 1f, centerX, groundY)
 
-        // Far legs first; their smaller, quieter swing gives the body depth.
-        drawCatRigPart(canvas, catRigArtwork("tail"), left, top, scale, 320f, 70f, 175f, 203f, 330f, 226f, tailWag)
-        drawCatRigPart(canvas, catRigArtwork("rear_far"), left, top, scale, 245f, 305f, 117f, 152f, 276f, 319f, oppositeGait * 7.5f)
-        drawCatRigPart(canvas, catRigArtwork("front_far"), left, top, scale, 165f, 315f, 90f, 145f, 187f, 331f, gait * 8.5f)
-        drawCatRigPart(canvas, catRigArtwork("rear_near"), left, top, scale, 330f, 300f, 116f, 159f, 360f, 316f, gait * 8.5f)
-        drawCatRigPart(canvas, catRigArtwork("front_near"), left, top, scale, 70f, 315f, 120f, 152f, 111f, 331f, oppositeGait * 9.5f)
-
-        // The torso is the stable mass.  It rocks by less than one degree, so
-        // the feet remain contacts instead of bouncing with the root.
-        drawCatRigPart(canvas, catRigArtwork("body"), left, top, scale, 170f, 230f, 235f, 139f, 190f, 330f, bodyRock + settle)
-        drawCatRigPart(canvas, catRigArtwork("head"), left, top, scale, 45f, 100f, 195f, 253f, 190f, 330f, headNod)
-        drawCatRigPart(canvas, catRigArtwork("chest"), left, top, scale, 130f, 270f, 125f, 99f, 185f, 282f, headNod * .55f)
+        drawCatRigPart(canvas, catRigArtwork("tail"), left, top + bodyY * scale, scale, 320f, 70f, 175f, 203f, 330f, 226f, tailWag)
+        canvas.save()
+        canvas.translate(left, top)
+        canvas.scale(scale, scale)
+        for (leg in CatRig.LEGS) {
+            CatRig.skin(leg, catCycle, catWalkBlend.toDouble(), bodyY.toDouble())
+            canvas.drawBitmapMesh(catRigArtwork(leg.name), CatRig.COLS, CatRig.ROWS, leg.vertices, 0, null, 0, paint)
+        }
+        canvas.restore()
+        drawCatRigPart(canvas, catRigArtwork("body"), left, top + bodyY * scale, scale, 170f, 230f, 235f, 139f, 190f, 330f, 0f)
+        drawCatRigPart(canvas, catRigArtwork("head"), left, top + bodyY * scale, scale, 45f, 100f, 195f, 253f, 190f, 330f, headNod)
         canvas.restore()
     }
 
@@ -1361,7 +1374,6 @@ private class PetGameView(context: Context, private val onPetCreated: () -> Unit
         private const val WALK_FRAME_DURATION_MS = 80L
         private const val CAT_RIG_SIZE = 512f
         private const val CAT_RIG_GROUND = 468f
-        private const val CAT_RIG_CYCLE_SECONDS = .92f
     }
 
     private enum class MotionMode { REST, WALK, CURIOUS, STAND }
