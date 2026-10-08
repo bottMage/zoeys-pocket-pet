@@ -16,7 +16,7 @@ import sys
 from pathlib import Path
 
 import bpy
-from mathutils import Vector
+from mathutils import Quaternion, Vector
 
 
 parser = argparse.ArgumentParser()
@@ -29,7 +29,9 @@ out.mkdir(parents=True, exist_ok=True)
 bpy.ops.object.select_all(action="SELECT")
 bpy.ops.object.delete(use_global=False)
 
-FPS, CYCLE, STRIDE, STANCE = 60, 72, .72, .66
+FPS, CYCLE, STRIDE, STANCE = 60, 60, .98, .62
+CLIP_CYCLES = 4
+CLIP_FRAMES = CYCLE * CLIP_CYCLES
 TAU = math.tau
 skin_parts, features = [], []
 
@@ -254,9 +256,9 @@ for vertex in skin.data.vertices:
     paw_mask = 1 - smoothstep(.13, .25, z)
     rgb = blend(rgb, (1, .90, .74), max(muzzle_mask, bib_mask, belly_mask * .92))
     rgb = blend(rgb, (.92, .76, 1), paw_mask)
-    if y > .78 and z > 1.19:
+    if y > .55 and z > 1.10:
         distance, index, t = nearest_tail(p)
-        if distance < .30:
+        if distance < .33:
             along = index + t
             band = smoothstep(-.2, .25, math.cos(along * math.pi * 1.72))
             rgb = blend((.70, .48, .87), (1, .90, .74), band)
@@ -368,10 +370,19 @@ def near_weights(p, names, exponent=4):
 
 def skin_weights(p):
     x, y, z = p
-    if y > .83 and z > 1.17:
+    if y > .55 and z > 1.10:
         distance, index, _ = nearest_tail(p)
-        if distance < .31:
-            return near_weights(p, [f"tail_{i}" for i in range(6)])
+        if distance < .33:
+            # Arc position, not nearest arbitrary bones: the curled tip can be
+            # close to non-adjacent links. Also include its frontmost vertices,
+            # which used to fall through to the head weights and pinch the tip.
+            _, index, t = nearest_tail(p)
+            along = max(0, min(5, index + t - .5))
+            lower = min(4, int(along))
+            mix = smoothstep(0, 1, along - lower)
+            share = max(smoothstep(.68, .90, y), smoothstep(1.28, 1.55, z))
+            return {f"tail_{lower}": (1 - mix) * share,
+                    f"tail_{lower + 1}": mix * share, "pelvis": 1 - share}
     body_bones = ["pelvis", "spine", "chest", "neck", "head"]
     if y < -.10 and z < 1.60 and abs(x) > .14:
         body_bones.append("front_L_scapula" if x < 0 else "front_R_scapula")
@@ -438,13 +449,24 @@ def foot_path(phase):
     t = (p - STANCE) / (1 - STANCE)
     hermite = 3 * t * t - 2 * t * t * t
     offset = span / 2 - span * hermite + STRIDE * (1 - STANCE) * t * (1 - t) * (1 - 2 * t)
-    return offset, .135 * math.sin(math.pi * t) ** 2
+    return offset, .205 * math.sin(math.pi * t) ** 2
 
 
-# Bake an authored coupled cycle at 60 Hz. Body motion is deliberately subtle:
-# quadrupeds carry the torso between supports, not bounce the whole animal.
-for frame in range(1, CYCLE + 2):
-    u = (frame - 1) / CYCLE
+# Four strides give the head and tail time to look/swish independently of the
+# one-stride rhythm, while remaining part of the same coordinated skeleton.
+rig["gait_cycle_frames"] = CYCLE
+rig["clip_frames"] = CLIP_FRAMES
+rig["gait_stride"] = STRIDE
+rig["gait_stance"] = STANCE
+rig["clip_cycles"] = CLIP_CYCLES
+rig["gait_phases"] = json.dumps({name: spec["phase"] for name, spec in leg_specs.items()})
+rig["prototype_revision"] = 2
+for frame in range(1, CLIP_FRAMES + 2):
+    clock_cycles = (frame - 1) / CYCLE
+    mood = TAU * clock_cycles / CLIP_CYCLES
+    # Small speed variation, but foot phase is driven by actual root distance;
+    # supporting pads stay fixed rather than skating during the variation.
+    u = clock_cycles + .08 * CLIP_CYCLES / TAU * math.sin(mood)
     phase = TAU * u
     root_distance = -STRIDE * u
     rig.location = (0, root_distance, 0)
@@ -454,33 +476,47 @@ for frame in range(1, CYCLE + 2):
         pb.rotation_mode = "XYZ"
         pb.rotation_euler = (0, 0, 0)
         pb.location = (0, 0, 0)
-    rig.pose.bones["root"].location = (.022 * math.sin(phase), .013 * math.cos(phase * 2), 0)
-    # Bone local axes differ from world axes; these rotations are small and
-    # anatomically distributed across pelvis/spine/chest, not one torso hinge.
-    rig.pose.bones["pelvis"].rotation_euler = (.030 * math.sin(phase + .4), .035 * math.sin(phase), .024 * math.cos(phase))
-    rig.pose.bones["spine"].rotation_euler = (-.022 * math.sin(phase + .4), -.018 * math.sin(phase), -.018 * math.cos(phase))
-    rig.pose.bones["chest"].rotation_euler = (.016 * math.sin(phase - .4), -.025 * math.sin(phase), -.025 * math.cos(phase))
-    rig.pose.bones["neck"].rotation_euler.x = .013 * math.sin(phase * 2 + .3)
-    rig.pose.bones["head"].rotation_euler.x = -.012 * math.sin(phase * 2 + .3)
+    # The small lower carriage gives the legs room to flex and reach instead of
+    # standing on nearly straight struts. Root local Y is vertical in this rig.
+    rig.pose.bones["root"].location = (.050 * math.sin(phase), -.085 + .022 * math.cos(phase * 2), 0)
+    rig.pose.bones["pelvis"].rotation_euler = (.060 * math.sin(phase + .4), .060 * math.sin(phase), .042 * math.cos(phase))
+    rig.pose.bones["spine"].rotation_euler = (-.042 * math.sin(phase + .4), -.032 * math.sin(phase), -.032 * math.cos(phase))
+    rig.pose.bones["chest"].rotation_euler = (.036 * math.sin(phase - .4), -.044 * math.sin(phase), -.040 * math.cos(phase))
+    rig.pose.bones["neck"].rotation_euler = (.030 * math.sin(phase * 2 + .3), .04 * math.sin(mood), .015 * math.cos(mood))
+    rig.pose.bones["head"].rotation_euler = (-.024 * math.sin(phase * 2 + .3) + .018 * math.sin(mood),
+                                           .12 * math.sin(mood), .035 * math.sin(mood + .3))
     for name in ("root", "pelvis", "spine", "chest", "neck", "head"):
         rig.pose.bones[name].keyframe_insert("rotation_euler", frame=frame)
         rig.pose.bones[name].keyframe_insert("location", frame=frame)
     for index in range(6):
         pb = rig.pose.bones[f"tail_{index}"]
         pb.rotation_mode = "XYZ"
-        pb.rotation_euler = (.012 * math.sin(phase - index * .45), .022 * math.sin(phase - index * .5), .014 * math.sin(phase - index * .40))
+        lag = index * .45
+        pb.rotation_euler = (.023 * math.sin(phase - lag),
+                             .035 * math.sin(phase - lag) + .018 * math.sin(mood * 2 - lag),
+                             .025 * math.sin(phase - lag) + .020 * math.sin(mood - lag))
         pb.keyframe_insert("rotation_euler", frame=frame)
     for prefix, spec in leg_specs.items():
         if prefix.startswith("front"):
             scapula = rig.pose.bones[prefix + "_scapula"]
             scapula.rotation_mode = "XYZ"
-            scapula.rotation_euler = (.065 * math.sin(phase + spec["phase"] * TAU), 0,
-                                      .018 * math.sin(phase + spec["phase"] * TAU))
+            scapula.rotation_euler = (.120 * math.sin(phase + spec["phase"] * TAU), 0,
+                                      .035 * math.sin(phase + spec["phase"] * TAU))
             scapula.keyframe_insert("rotation_euler", frame=frame)
         offset, lift = foot_path(u + spec["phase"])
         target = targets[prefix]
-        target.location = spec["ankle"] + Vector((0, root_distance + offset, lift))
+        p = (u + spec["phase"]) % 1
+        swing = (p - STANCE) / (1 - STANCE) if p >= STANCE else 0
+        recovery = math.sin(math.pi * swing) ** 2
+        side = -1 if prefix.endswith("L") else 1
+        spread = .080 if prefix.startswith("front") else .060
+        target.location = spec["ankle"] + Vector((side * (spread + .025 * recovery), root_distance + offset, lift))
+        # Relax/fold the paw in the air; keep it level through every support
+        # frame. This removes the old flat-paw, mechanical recovery posture.
+        curl = (.45 if prefix.startswith("front") else .28) * recovery
+        target.rotation_quaternion = Quaternion((1, 0, 0), curl) @ armature.bones[prefix + "_paw"].matrix_local.to_quaternion()
         target.keyframe_insert("location", frame=frame)
+        target.keyframe_insert("rotation_quaternion", frame=frame)
 
 # Bake constraints to deform bones, then remove controller objects from the
 # exported character. In the app the animation requires only normal GPU skinning.
@@ -489,11 +525,11 @@ rig.select_set(True)
 bpy.context.view_layer.objects.active = rig
 bpy.ops.object.mode_set(mode="POSE")
 bpy.ops.pose.select_all(action="SELECT")
-bpy.ops.nla.bake(frame_start=1, frame_end=CYCLE + 1, step=1, only_selected=False,
+bpy.ops.nla.bake(frame_start=1, frame_end=CLIP_FRAMES + 1, step=1, only_selected=False,
                  visual_keying=True, clear_constraints=True, clear_parents=False,
                  use_current_action=True, bake_types={"POSE"})
 bpy.ops.object.mode_set(mode="OBJECT")
-rig.animation_data.action.name = "Walk_full_body_root_motion"
+rig.animation_data.action.name = "Playful_stroll_full_body_root_motion"
 for fcurve in rig.animation_data.action.fcurves:
     fcurve.extrapolation = "LINEAR"
     for key in fcurve.keyframe_points:
@@ -509,7 +545,7 @@ for obj in list(bpy.data.objects):
 
 scene = bpy.context.scene
 scene.render.fps = FPS
-scene.frame_start, scene.frame_end = 1, CYCLE + 1
+scene.frame_start, scene.frame_end = 1, CLIP_FRAMES + 1
 scene.frame_set(1)
 bpy.ops.object.select_all(action="DESELECT")
 rig.select_set(True)
@@ -521,10 +557,10 @@ bpy.ops.export_scene.gltf(filepath=str(out / "cat-prototype.glb"), export_format
                           use_selection=True, export_animations=True,
                           export_frame_range=True, export_force_sampling=True,
                           export_animation_mode="ACTIVE_ACTIONS", export_skins=True,
-                          export_morph=False, export_yup=True)
+                          export_morph=False, export_yup=True, export_extras=True)
 
-# Presentation: a soft studio/ground scene. Camera follows root motion, so the
-# paws can be judged against fixed floor markings rather than a treadmill.
+# A fixed camera shows the actual travel across the floor. Following the root
+# made the first preview look like almost-stationary marching.
 floor_material = material("Soft mint ground", (.70, .82, .77), .90)
 bpy.ops.mesh.primitive_plane_add(size=200)
 floor = bpy.context.object
@@ -561,12 +597,12 @@ rim = area_light("Tail rim", (0, 4, 5), 650, 3, (1, .85, .92))
 camera_data = bpy.data.cameras.new("Preview camera")
 camera = bpy.data.objects.new("Preview camera", camera_data)
 bpy.context.collection.objects.link(camera)
-camera.location = (4.3, -6.6, 3.05)
-look_at = Vector((0, .22, 1.46))
+preview_midpoint = Vector((0, -STRIDE * CLIP_CYCLES / 2, 0))
+camera.location = Vector((4.3, -6.6, 3.05)) + preview_midpoint
+look_at = Vector((0, .22, 1.40)) + preview_midpoint
 camera.rotation_euler = (look_at - camera.location).to_track_quat("-Z", "Y").to_euler()
-camera_data.type, camera_data.ortho_scale = "ORTHO", 4.4
+camera_data.type, camera_data.ortho_scale = "ORTHO", 6.0
 scene.camera = camera
-camera.parent = rig
 for light in (key, fill, rim):
     light.parent = rig
 scene.render.engine = "BLENDER_EEVEE_NEXT"
@@ -577,7 +613,7 @@ scene.render.image_settings.file_format = "PNG"
 scene.render.film_transparent = False
 scene.view_settings.view_transform = "AgX"
 scene.view_settings.look = "AgX - Medium High Contrast"
-scene.frame_end = 360
+scene.frame_end = CLIP_FRAMES
 scene.frame_set(1)
 bpy.ops.wm.save_as_mainfile(filepath=str(out / "cat-prototype.blend"))
 
@@ -602,7 +638,10 @@ while remaining:
 assert len(components) == 1, f"External skin disconnected: {components}"
 assert all(vertex.groups for vertex in skin.data.vertices), "Unweighted skin vertices"
 report = {"prototype_only": True, "fps": FPS, "cycle_seconds": CYCLE / FPS,
-          "stride_world_units": STRIDE, "skin_connected_components": len(components),
+          "prototype_revision": 2, "clip_seconds": CLIP_FRAMES / FPS,
+          "clip_cycles": CLIP_CYCLES, "clip_root_motion": STRIDE * CLIP_CYCLES,
+          "stride_world_units": STRIDE, "stance_fraction": STANCE,
+          "skin_connected_components": len(components),
           "skin_vertices": len(skin.data.vertices), "skin_triangles": sum(len(p.vertices) - 2 for p in skin.data.polygons),
           "skeleton_bones": len(armature.bones), "animation": rig.animation_data.action.name}
 (out / "validation.json").write_text(json.dumps(report, indent=2) + "\n")

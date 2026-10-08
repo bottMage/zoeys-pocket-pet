@@ -17,7 +17,7 @@ import bpy
 parser = argparse.ArgumentParser()
 parser.add_argument("--output", type=Path, required=True)
 parser.add_argument("--first", type=int, default=1)
-parser.add_argument("--last", type=int, default=216)
+parser.add_argument("--last", type=int, default=None)
 parser.add_argument("--still", action="store_true")
 args = parser.parse_args(sys.argv[sys.argv.index("--") + 1:])
 out = args.output.resolve()
@@ -53,7 +53,7 @@ scene.world.color = (.18, .20, .25)
 scene.view_settings.view_transform = "Standard"
 scene.view_settings.look = "Medium Low Contrast"
 scene.view_settings.exposure = .6
-scene.frame_start, scene.frame_end = args.first, args.last
+scene.frame_start, scene.frame_end = args.first, args.last or int(bpy.data.objects["Cat_Rig"].get("clip_frames", 216))
 if args.still:
     scene.frame_set(args.first)
     scene.render.filepath = str(out / "review-still.png")

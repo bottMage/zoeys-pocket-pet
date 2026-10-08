@@ -2,6 +2,26 @@
 
 ## True-3D cat prototype — review only (2026-10-08)
 
+### Revision 2 — more lively, still awaiting visual approval
+
+The user liked the genuine 3D movement direction but found the first pass too
+restrained/cramped. The second pass opens paw spacing and increases stride from
+0.72 to 0.98 units with a 1-second gait cycle, allows knee flexion and air-phase
+paw curl, and adds stronger coupled shoulder/pelvis/spine movement. Head glances
+and tail swishes span a 4-second/four-stride clip; total root motion is 3.92 units
+(Blender -Y / glTF +Z). Phase follows root distance so the small speed variation
+does not produce planted-paw sliding. Rig custom properties/exported extras
+record clip/stride/stance parameters for validation and future integration.
+
+The fixed preview camera now shows actual travel. Framing is checked across
+the clip. A tail-tip weight-classification issue exposed by bigger swishes was
+fixed: frontmost tip vertices must bind to the tail, not fall through to head
+weights; tail links blend by adjacent arc position instead of unrelated nearest
+bones. The body mesh/character design is otherwise unchanged. Preserve the
+first `walk-preview.mp4` for comparison; latest is `playful-stroll-preview.mp4`.
+Do not interpret the user's approval of the **direction** as approval to ship.
+The app, updater and local/cloud progress remain untouched.
+
 The user rejected the independent PNG-part rig as rigid and robotic and approved
 a genuine 3D recreation of the purple/cream cat, with a walk preview **before**
 changing or publishing the app. `artwork/cat3d/` contains the editable Blender
@@ -11,7 +31,8 @@ spine, pelvis, chest, scapulae, neck/head, legs/paws and six tail bones. Facial
 features are actual geometry attached to the same skeleton, not PNG billboards.
 The model remains first-pass styling, not user-approved production artwork.
 
-The GLB has a baked 1.2-second walk with 0.72-unit root motion. Extract/consume
+The first GLB had a baked 1.2-second walk with 0.72-unit root motion; revision 2
+supersedes it as described above. Extract/consume
 that motion once when integrating; do not add a separate controller's movement
 on top. No image textures/cutouts are required. GPU skinning uses four normalized
 influences per vertex. `tools/check-cat-3d.py` checks exported skin/animation and
