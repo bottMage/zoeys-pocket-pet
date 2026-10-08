@@ -407,10 +407,23 @@ private class PetGameView(context: Context, private val onPetCreated: () -> Unit
     private fun catRigArtwork(part: String): Bitmap = catRigCache.getOrPut(part) {
         val resourceId = resources.getIdentifier("cat_rig_$part", "drawable", context.packageName)
         check(resourceId != 0) { "Missing cat rig part: $part" }
-        BitmapFactory.decodeResource(resources, resourceId, BitmapFactory.Options().apply {
+        val bitmap = BitmapFactory.decodeResource(resources, resourceId, BitmapFactory.Options().apply {
             inScaled = false
+            inMutable = true
             if (part == "head") inSampleSize = if (dp(320f) * 195f / CAT_RIG_SIZE <= 275f) 4 else 2
         }) ?: error("Unable to decode cat rig part: $part")
+        if (part == "rear_near" || part == "front_near" || part == "tail") {
+            // One-time alpha compositing, not a repaint or per-frame bitmap edit.
+            val pixels = IntArray(bitmap.width * bitmap.height)
+            bitmap.getPixels(pixels, 0, bitmap.width, 0, 0, bitmap.width, bitmap.height)
+            for (y in 0 until bitmap.height) for (x in 0 until bitmap.width) {
+                val index = y * bitmap.width + x
+                val alpha = CatLayers.attachmentAlpha(part, (x + .5) / bitmap.width, (y + .5) / bitmap.height)
+                pixels[index] = (pixels[index] and 0x00ffffff) or ((Color.alpha(pixels[index]) * alpha / 255) shl 24)
+            }
+            bitmap.setPixels(pixels, 0, bitmap.width, 0, 0, bitmap.width, bitmap.height)
+        }
+        bitmap
     }
 
     init {
@@ -808,12 +821,21 @@ private class PetGameView(context: Context, private val onPetCreated: () -> Unit
 
         canvas.translate(left, top)
         canvas.scale(scale, scale)
+        for (index in CatLayers.FAR_LEGS) {
+            val leg = CatRig.LEGS[index]
+            val foot = catMotion.feet[index]
+            CatRig.skin(leg, pose, foot.x, foot.lift)
+            canvas.drawBitmapMesh(catRigArtwork(leg.name), CatRig.COLS, CatRig.ROWS, leg.vertices, 0, null, 0, paint)
+        }
         canvas.save()
         canvas.translate(0f, pose.y.toFloat())
         canvas.rotate(Math.toDegrees(pose.angle).toFloat(), 285f, 333f)
-        drawCatRigPart(canvas, catRigArtwork("tail"), 0f, 0f, 1f, 320f, 70f, 175f, 203f, 330f, 226f, Math.toDegrees(pose.tailAngle).toFloat())
+        drawCatRigPart(canvas, catRigArtwork("body"), 0f, 0f, 1f, 170f, 230f, 235f, 139f, 190f, 330f, 0f)
+        drawCatRigPart(canvas, catRigArtwork("tail"), 0f, 0f, 1f,
+            CatLayers.TAIL_X.toFloat(), CatLayers.TAIL_Y.toFloat(), CatLayers.TAIL_WIDTH.toFloat(), CatLayers.TAIL_HEIGHT.toFloat(),
+            CatLayers.TAIL_PIVOT_X.toFloat(), CatLayers.TAIL_PIVOT_Y.toFloat(), Math.toDegrees(pose.tailAngle).toFloat())
         canvas.restore()
-        for (index in CatRig.LEGS.indices) {
+        for (index in CatLayers.NEAR_LEGS) {
             val leg = CatRig.LEGS[index]
             val foot = catMotion.feet[index]
             CatRig.skin(leg, pose, foot.x, foot.lift)
@@ -821,7 +843,6 @@ private class PetGameView(context: Context, private val onPetCreated: () -> Unit
         }
         canvas.translate(0f, pose.y.toFloat())
         canvas.rotate(Math.toDegrees(pose.angle).toFloat(), 285f, 333f)
-        drawCatRigPart(canvas, catRigArtwork("body"), 0f, 0f, 1f, 170f, 230f, 235f, 139f, 190f, 330f, 0f)
         drawCatRigPart(canvas, catRigArtwork("head"), 0f, 0f, 1f, 45f, 100f, 195f, 253f, 190f, 330f, Math.toDegrees(pose.headAngle).toFloat())
         canvas.restore()
     }

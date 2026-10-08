@@ -5,6 +5,22 @@ prototypes. This candidate keeps every PNG unchanged. It is still a 2D layered
 rig, not a professionally authored 3D character or replacement cel animation.
 Do not claim the animation quality has been approved.
 
+## Depth/attachment revision
+
+Latest review: `depth-connected-preview.mp4`. Keep the first
+`coordinated-walk-preview.mp4` for comparison. The user identified the old
+all-appendages-behind-the-torso order as pasted-on depth.
+
+`CatLayers` now defines far legs behind the torso and near legs in front. The
+tail is above the torso but below the near limbs. Its placement is lowered 25
+authoring pixels and its rotation pivot is at the rump. Cached bitmap copies
+blend only the closed proximal caps into their joins; original source PNGs are
+unchanged. The free tail contour and paws are not faded. Upper limb attachment
+patches inherit the torso transform; exposed limbs still use the original IK.
+No gait, travel, head-motion, clock or save/update behaviour changes are made.
+This is still layered 2D art; subtle paint/pattern differences at joins remain
+possible, and the user has not approved the new visual result.
+
 The controller now keeps supporting paws fixed in world space, including speed
 ramps. Swinging paws finish a smooth recovery when travel stops; feet are not
 pulled toward a neutral pose by a speed-dependent animation-amplitude blend.
@@ -28,7 +44,11 @@ mkdir -p /workspace/artifacts/cat-rig-review/classes
   -d /workspace/artifacts/cat-rig-review/classes \
   app/src/main/java/com/example/shortsgesturecontrol/CatRig.java \
   app/src/main/java/com/example/shortsgesturecontrol/CatMotion.java \
-  tools/CatMotionCheck.java tools/CatGaitCheck.java tools/CatRigPreview.java
+  app/src/main/java/com/example/shortsgesturecontrol/CatLayers.java \
+  tools/CatMotionCheck.java tools/CatGaitCheck.java tools/CatRigPreview.java \
+  tools/CatLayersCheck.java
+/workspace/.toolchains/jdk-21/bin/java \
+  -cp /workspace/artifacts/cat-rig-review/classes CatLayersCheck
 /workspace/.toolchains/jdk-21/bin/java \
   -cp /workspace/artifacts/cat-rig-review/classes CatGaitCheck
 /workspace/.toolchains/jdk-21/bin/java \
@@ -39,7 +59,7 @@ mkdir -p /workspace/artifacts/cat-rig-review/classes
 ffmpeg -hide_banner -loglevel error -framerate 60 \
   -i /workspace/artifacts/cat-rig-review/final/frame-%03d.png \
   -c:v libx264 -crf 18 -pix_fmt yuv420p -movflags +faststart \
-  artwork/cat-rig-review/coordinated-walk-preview.mp4
+  artwork/cat-rig-review/depth-connected-preview.mp4
 ```
 
 Tests check rendered paw height, planted contact drift, reach, recovery speeds,

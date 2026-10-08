@@ -94,6 +94,11 @@ public final class CatRig {
                 double bx=kx+(x-l.kx)*cb-(y-l.ky)*sb;
                 double by=ky+(x-l.kx)*sb+(y-l.ky)*cb;
                 double vx=ax+(bx-ax)*lowerWeight,vy=ay+(by-ay)*lowerWeight;
+                // The attachment patch belongs to the torso, not to a rotating
+                // closed limb cap. Only the exposed limb articulates below it.
+                double rootWeight=1-smooth((y-l.hy-3)/25);
+                vx+=(pose.x(x,y)-vx)*rootWeight;
+                vy+=(pose.y(x,y)-vy)*rootWeight;
                 // Third bone keeps the paw level through contact and recovery.
                 vx+=(fx+x-l.fx-vx)*pawWeight;
                 vy+=(fy+y-l.fy-vy)*pawWeight;

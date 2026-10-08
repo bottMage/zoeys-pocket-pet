@@ -2,6 +2,29 @@
 
 ## Existing-artwork cat polish candidate — not published (2026-10-08)
 
+### Depth/attachment correction after first preview
+
+The user found the improved timing better but correctly identified that every
+limb and the tail were behind the torso. The new render order is far limbs,
+torso, tail, near limbs, head. `CatLayers` shares the depth groups, tail placement
+and proximal alpha masks between Android and the Java2D preview. Simple draw
+order changes alone expose closed black cutout caps, so cached copies open only
+the near-limb and tail attachment ends. PNG source files are not edited, and
+paws, head, torso, far limbs and the free tail contour retain their alpha.
+
+Proximal limb mesh rows bind to the torso transform instead of swinging as a
+closed cap. Tail placement moves down 25 authoring pixels and its pivot is now
+at the rump (348,270), not above the back. Gait/controller/timing and head motion
+are unchanged. Tail and thigh colours remain the original artwork; this is not
+a repainted or genuinely 3D model. Do not promise completely invisible seams.
+
+`CatLayersCheck` checks depth groups, preserved alpha regions, pinned root rows
+and the horizontal animation envelope. Contact, reach and roaming regressions
+still pass at 30/60/120 fps. The latest offline review is
+`artwork/cat-rig-review/depth-connected-preview.mp4`; preserve the previous
+`coordinated-walk-preview.mp4` for comparison. No APK tag or update manifest
+changes; this remains a visual review candidate until the user approves it.
+
 The user rejected revision 2 of the 3D prototype as limping/unconvincing. Be
 candid: technical skin/contact checks are not evidence of professional animation
 quality. The user now says the original cutout cat was the best visual result

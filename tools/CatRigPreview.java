@@ -1,5 +1,6 @@
 import com.example.shortsgesturecontrol.CatRig;
 import com.example.shortsgesturecontrol.CatMotion;
+import com.example.shortsgesturecontrol.CatLayers;
 import java.awt.*;
 import java.awt.geom.*;
 import java.awt.image.BufferedImage;
@@ -11,7 +12,14 @@ public class CatRigPreview {
     static File assets;
     static java.util.Map<String,BufferedImage> cache=new java.util.HashMap<>();
     static BufferedImage load(String name) throws Exception {
-        if(!cache.containsKey(name)) cache.put(name,ImageIO.read(new File(assets,"cat_rig_"+name+".png")));
+        if(!cache.containsKey(name)) {
+            BufferedImage bitmap=ImageIO.read(new File(assets,"cat_rig_"+name+".png"));
+            for(int y=0;y<bitmap.getHeight();y++) for(int x=0;x<bitmap.getWidth();x++) {
+                int p=bitmap.getRGB(x,y),mask=CatLayers.attachmentAlpha(name,(x+.5)/bitmap.getWidth(),(y+.5)/bitmap.getHeight());
+                bitmap.setRGB(x,y,(p&0xffffff)|(((p>>>24)*mask/255)<<24));
+            }
+            cache.put(name,bitmap);
+        }
         return cache.get(name);
     }
     static void part(Graphics2D g,String name,double x,double y,double w,double h,double px,double py,double angle) throws Exception {
@@ -95,8 +103,8 @@ public class CatRigPreview {
                 motion.advance(1.0/60,224,1,false);
                 cycle=motion.cycle;blend=motion.blend;
             }
-            pose.sample(cycle,blend,frame/60.0);
             if(roaming) pose=motion.pose;
+            else pose.sample(cycle,blend,frame/60.0);
             int sceneWidth=roaming?800:640;
             BufferedImage image=new BufferedImage(sceneWidth,540,BufferedImage.TYPE_INT_RGB);
             Graphics2D g=image.createGraphics();
@@ -116,14 +124,21 @@ public class CatRigPreview {
             if(roaming&&motion.facingRight) {g.translate(512,0);g.scale(-1,1);}
             Graphics2D trunk=(Graphics2D)g.create();
             trunk.translate(0,pose.y);trunk.rotate(pose.angle,285,333);
-            part(trunk,"tail",320,70,175,203,330,226,pose.tailAngle);
-            for(int i=0;i<CatRig.LEGS.length;i++) {
+            for(int i:CatLayers.FAR_LEGS) {
                 CatRig.Leg l=CatRig.LEGS[i];
                 double x=roaming?motion.feet[i].x:CatRig.footX(cycle+l.offset);
                 double lift=roaming?motion.feet[i].lift:CatRig.footLift(cycle+l.offset);
                 leg(g,l,pose,x,lift);
             }
             part(trunk,"body",170,230,235,139,190,330,0);
+            part(trunk,"tail",CatLayers.TAIL_X,CatLayers.TAIL_Y,CatLayers.TAIL_WIDTH,CatLayers.TAIL_HEIGHT,
+                CatLayers.TAIL_PIVOT_X,CatLayers.TAIL_PIVOT_Y,pose.tailAngle);
+            for(int i:CatLayers.NEAR_LEGS) {
+                CatRig.Leg l=CatRig.LEGS[i];
+                double x=roaming?motion.feet[i].x:CatRig.footX(cycle+l.offset);
+                double lift=roaming?motion.feet[i].lift:CatRig.footLift(cycle+l.offset);
+                leg(g,l,pose,x,lift);
+            }
             part(trunk,"head",45,100,195,253,190,330,pose.headAngle);
             trunk.dispose();
             g.dispose();ImageIO.write(image,"png",new File(out,String.format("frame-%03d.png",frame)));
