@@ -49,6 +49,8 @@ public final class UpdateCheckerCheck {
         fails(() -> new UpdateChecker.Release(39, "https://other.example/update.apk"));
         require(UpdateChecker.check(38, () -> new UpdateChecker.Release(0, ""), () -> release(39)).version == 39,
                 "Malformed primary metadata must fall back, not report up-to-date");
+        require(UpdateChecker.rawAssetUrl(43).endsWith("/updates/zoeys-pocket-pet-v43.apk"),
+                "Raw fallback asset path is incorrect");
 
         HttpServer server = HttpServer.create(new InetSocketAddress("127.0.0.1", 0), 0);
         Set<String> queries = new HashSet<>();

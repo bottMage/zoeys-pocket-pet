@@ -26,6 +26,7 @@ import android.os.Handler
 import android.os.Looper
 import android.os.SystemClock
 import android.net.Uri
+import android.util.Log
 import android.view.MotionEvent
 import android.view.View
 import android.text.InputType
@@ -220,11 +221,18 @@ private class AppUpdateManager(private val context: Context) {
             .setTitle("An update is ready")
             .setMessage("Version $versionCode is available. Would you like to download it now?")
             .setNegativeButton("NOT NOW", null)
-            .setPositiveButton("DOWNLOAD") { _, _ -> download(url) }
+            .setPositiveButton("DOWNLOAD") { _, _ -> download(versionCode, url) }
             .show()
     }
 
-    private fun download(url: String) {
+    private fun download(versionCode: Int, url: String) {
+        // Keep the release asset first for normal devices, but retry from the
+        // raw repository asset if DownloadManager rejects GitHub's redirect.
+        val fallback = UpdateChecker.rawAssetUrl(versionCode).takeIf { it != url }
+        enqueueDownload(url, fallback)
+    }
+
+    private fun enqueueDownload(url: String, fallbackUrl: String?) {
         val updateFile = updateFile()
         if (updateFile.exists()) updateFile.delete()
         val manager = context.getSystemService(Context.DOWNLOAD_SERVICE) as DownloadManager
@@ -250,11 +258,23 @@ private class AppUpdateManager(private val context: Context) {
         ContextCompat.registerReceiver(context, receiver, filter, ContextCompat.RECEIVER_EXPORTED)
         try {
             downloadId = manager.enqueue(request)
-            updatePrefs.edit().putLong(PENDING_DOWNLOAD_ID, downloadId).apply()
+            updatePrefs.edit().putLong(PENDING_DOWNLOAD_ID, downloadId)
+                .apply {
+                    if (fallbackUrl == null) remove(PENDING_FALLBACK_URL)
+                    else putString(PENDING_FALLBACK_URL, fallbackUrl)
+                }
+                .apply()
             Toast.makeText(context, "Downloading update…", Toast.LENGTH_SHORT).show()
         } catch (error: Exception) {
             try { context.unregisterReceiver(receiver) } catch (_: Exception) { }
-            Toast.makeText(context, "The update download could not start.", Toast.LENGTH_LONG).show()
+            Log.w(TAG, "Could not enqueue update download", error)
+            if (fallbackUrl != null) {
+                Toast.makeText(context, "Trying the backup update download…", Toast.LENGTH_SHORT).show()
+                enqueueDownload(fallbackUrl, null)
+            } else {
+                updatePrefs.edit().remove(PENDING_DOWNLOAD_ID).remove(PENDING_FALLBACK_URL).apply()
+                Toast.makeText(context, "The update download could not start.", Toast.LENGTH_LONG).show()
+            }
         }
     }
 
@@ -280,12 +300,21 @@ private class AppUpdateManager(private val context: Context) {
             if (!cursor.moveToFirst()) return
             when (cursor.getInt(cursor.getColumnIndexOrThrow(DownloadManager.COLUMN_STATUS))) {
                 DownloadManager.STATUS_SUCCESSFUL -> {
-                    updatePrefs.edit().remove(PENDING_DOWNLOAD_ID).apply()
+                    updatePrefs.edit().remove(PENDING_DOWNLOAD_ID).remove(PENDING_FALLBACK_URL).apply()
                     install(updateFile)
                 }
                 DownloadManager.STATUS_FAILED -> {
-                    updatePrefs.edit().remove(PENDING_DOWNLOAD_ID).apply()
-                    Toast.makeText(context, "The update download didn't finish.", Toast.LENGTH_SHORT).show()
+                    val reason = cursor.getInt(cursor.getColumnIndexOrThrow(DownloadManager.COLUMN_REASON))
+                    val fallbackUrl = updatePrefs.getString(PENDING_FALLBACK_URL, null)
+                    Log.w(TAG, "Update download failed: reason=$reason")
+                    if (!fallbackUrl.isNullOrBlank()) {
+                        updatePrefs.edit().remove(PENDING_FALLBACK_URL).apply()
+                        Toast.makeText(context, "Retrying the update download…", Toast.LENGTH_SHORT).show()
+                        enqueueDownload(fallbackUrl, null)
+                    } else {
+                        updatePrefs.edit().remove(PENDING_DOWNLOAD_ID).remove(PENDING_FALLBACK_URL).apply()
+                        Toast.makeText(context, "The update download didn't finish (code $reason).", Toast.LENGTH_LONG).show()
+                    }
                 }
             }
         }
@@ -311,7 +340,9 @@ private class AppUpdateManager(private val context: Context) {
         const val UPDATE_FILE_NAME = "zoeys-pocket-pet-update.apk"
         const val APK_MIME_TYPE = "application/vnd.android.package-archive"
         const val PENDING_DOWNLOAD_ID = "pending_download_id"
+        const val PENDING_FALLBACK_URL = "pending_fallback_url"
         const val PENDING_PERMISSION = "pending_install_permission"
+        const val TAG = "ZoeyPetUpdater"
     }
 }
 

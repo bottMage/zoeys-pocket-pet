@@ -34,6 +34,16 @@ public final class UpdateChecker {
         return REPOSITORY + "/releases/download/v" + version + "/zoeys-pocket-pet-v" + version + ".apk";
     }
 
+    /**
+     * The same signed asset committed to main. This avoids the separate
+     * release-assets host when a device's DownloadManager rejects GitHub's
+     * cross-host redirect.
+     */
+    public static String rawAssetUrl(int version) {
+        return "https://raw.githubusercontent.com/bottMage/zoeys-pocket-pet/main/updates/zoeys-pocket-pet-v"
+                + version + ".apk";
+    }
+
     public static Release check(long installed, Source manifest, Source published) throws Exception {
         Release primary = null;
         try {

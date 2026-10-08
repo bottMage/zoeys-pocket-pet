@@ -1,6 +1,6 @@
 # Zoey's Pocket Pet — cloud handover
 
-## Current work: eggs, visible growth and care lifecycle — v43
+## Current work: eggs, visible growth and care lifecycle — v44
 
 This supersedes earlier rollback-only notes. The user requested moving eggs in
 a twig nest for dragon/straw for others, then the current design as a small
@@ -24,6 +24,10 @@ old evolution percentages, and persists incubation, stage progress and adult age
 Legacy adults receive a full new adult lifespan on upgrade/restore, even if saved
 and reopened before first draw. Eggs/remembered pets remain Google backup eligible.
 Initial restore-before-write protection and updater implementation are retained.
+The updater keeps the GitHub Release asset as its primary download, then retries
+from the matching APK committed on `raw.githubusercontent.com` if a device's
+DownloadManager rejects the Release redirect. Failed downloads log the system
+reason and show it on the final retry failure.
 
 Each action changes only its own need. Eggs show WARM/SOOTHE/TIDY/REST. Old-age
 death archives a complete snapshot once; starting a replacement also preserves
@@ -37,11 +41,11 @@ process-restart migration, egg backup, full archives/history and action wiring.
 `WholePetCheck` passes 148,680 alpha-bound placement cases. Final `assembleDebug`
 and `lintDebug` pass (zero errors, 132 existing/general warnings). The real-model
 save/restore and lifecycle checks also pass against the final compiled classes.
-APK package/version 43.0 and unchanged signing certificate are verified. Its
-SHA-256 is `07e20db5c4ed165c889abbc16f37f89b397cd920ab9f2fdf5ef2e3f6824017c8`.
-The updater is byte-for-byte unchanged from v41. Publish the signed asset first
+APK package/version 44.0 and unchanged signing certificate are verified after
+SHA-256 will be recorded after the v44 release asset is verified.
+Publish the signed asset first
 and only advance `update.json` after its public availability/checksum are checked.
-Release commit `16080b4` was pushed to `main` with annotated `v43`. The public
+Release commit and tag `v44` will be pushed to `main`. The public
 APK returns 200, its downloaded checksum matches the signed build, and latest
 release resolves to v42. Root `update.json` now advertises 42 after verification.
 See `artwork/growth-stages/README.md` for behavior, checks and limitations.
