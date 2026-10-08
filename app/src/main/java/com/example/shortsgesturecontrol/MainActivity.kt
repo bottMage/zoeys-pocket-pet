@@ -40,8 +40,8 @@ import kotlin.math.min
 import kotlin.math.sin
 import kotlin.math.roundToInt
 
-private const val RIG_MESH_COLUMNS = 8
-private const val RIG_MESH_ROWS = 8
+private const val RIG_MESH_COLUMNS = 12
+private const val RIG_MESH_ROWS = 12
 
 class MainActivity : Activity() {
     private lateinit var gameView: PetGameView
@@ -200,6 +200,24 @@ private class AppUpdateManager(private val context: Context) {
         val file = File(pendingPath)
         if (!file.exists()) {
             updatePrefs.edit().remove(PENDING_UPDATE_PATH).apply()
+            return
+        }
+        val pendingInfo = context.packageManager.getPackageArchiveInfo(file.absolutePath, 0)
+        val installedInfo = context.packageManager.getPackageInfo(context.packageName, 0)
+        val installedVersion = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.P) {
+            installedInfo.longVersionCode
+        } else {
+            installedInfo.versionCode.toLong()
+        }
+        val pendingVersion = pendingInfo?.let {
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.P) it.longVersionCode else it.versionCode.toLong()
+        } ?: 0L
+        // If the user manually opened and installed this APK, the file remains
+        // in our private update directory. Do not prompt for that same version
+        // again on the first resume of the newly installed app.
+        if (pendingVersion == 0L || pendingVersion <= installedVersion) {
+            updatePrefs.edit().remove(PENDING_UPDATE_PATH).apply()
+            file.delete()
             return
         }
         tryInstall(file)
@@ -820,6 +838,7 @@ private class PetGameView(context: Context, private val updateManager: AppUpdate
         val left = centerX - artWidth / 2f
         val top = groundY - rigArtworkBottom(kind) * scale
         val twoPi = Math.PI.toFloat() * 2f
+        val animated = if (phase == 0f) 0f else 1f
         var vertex = 0
         for (row in 0..RIG_MESH_ROWS) {
             val ny = row / RIG_MESH_ROWS.toFloat()
@@ -827,30 +846,36 @@ private class PetGameView(context: Context, private val updateManager: AppUpdate
                 val nx = column / RIG_MESH_COLUMNS.toFloat()
                 val sourceX = bitmap.width * nx
                 val sourceY = bitmap.height * ny
-                val upperBody = (1f - ny / .78f).coerceIn(0f, 1f)
+                val upperBody = (1f - ny / .78f).coerceIn(0f, 1f) * animated
                 val groundWeight = ((ny - .56f) / .44f).coerceIn(0f, 1f)
                 val frontWeight = (1f - nx).coerceIn(0f, 1f)
                 val legPhase = phase + if (frontWeight > .5f) 0f else Math.PI.toFloat()
                 val stride = sin(legPhase + nx * .7f)
+                val tailWeight = ((nx - .60f) / .40f).coerceIn(0f, 1f) * animated
                 var x = left + sourceX * scale
                 var y = top + sourceY * scale
 
                 // A very small body settle keeps weight readable without
                 // detaching the paws from the cached ground plane.
-                y += sin(phase * 2f) * 1.8f * upperBody * scale
-                x += sin(phase + ny * twoPi) * 1.2f * upperBody * scale
+                y += sin(phase * 2f) * 5.5f * upperBody * scale
+                x += sin(phase + ny * twoPi) * 4.5f * upperBody * scale
 
                 // Deform only the lower silhouette for a continuous stride.
                 // Different x zones receive opposite motion, so the near and
                 // far legs do not move as one rigid sticker.
-                x += stride * 3.6f * groundWeight * scale
-                y -= max(0f, sin(legPhase)) * 2.2f * groundWeight * scale
+                x += stride * 22f * groundWeight * scale
+                y -= max(0f, sin(legPhase)) * 12f * groundWeight * scale
+                x += sin(phase * .72f + ny * 3f) * 15f * tailWeight * scale
+                y += cos(phase * .72f + nx * twoPi) * 5f * tailWeight * scale
 
                 if (direction > 0f) x = centerX - (x - centerX)
                 rigMeshVertices[vertex++] = x
                 rigMeshVertices[vertex++] = y
             }
         }
+        canvas.save()
+        canvas.rotate(sin(phase) * 1.8f, centerX, groundY)
+        canvas.scale(1f + sin(phase) * .018f, 1f - sin(phase) * .012f, centerX, groundY)
         canvas.drawBitmapMesh(
             bitmap,
             RIG_MESH_COLUMNS,
@@ -861,6 +886,7 @@ private class PetGameView(context: Context, private val updateManager: AppUpdate
             0,
             rigPaint
         )
+        canvas.restore()
     }
 
     private fun drawPet(canvas: Canvas, now: Long) {
@@ -911,7 +937,7 @@ private class PetGameView(context: Context, private val updateManager: AppUpdate
             "EVOLVED" -> 1.08f
             else -> 1f
         }
-        val artWidth = min(width - dp(82f), dp(214f)) * stageScale
+        val artWidth = min(width - dp(72f), dp(246f)) * stageScale
         val groundY = bottom - dp(48f)
         val minCenterX = max(sceneLeft + artWidth / 2f, artWidth / 2f + dp(4f))
         val maxCenterX = min(sceneRight - artWidth / 2f, width - artWidth / 2f - dp(4f))
