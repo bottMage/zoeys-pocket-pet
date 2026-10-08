@@ -973,6 +973,8 @@ private class PetGameView(context: Context, private val updateManager: AppUpdate
         val sheet = rigSheet(kind)
         val unit = artWidth / 220f
         val bodyBob = sin(phase * 2f) * 1.5f
+        val bodyRotation = sin(phase * 2f) * 1.2f
+        val headRotation = sin(phase * 2f) * 1.6f
         val frontStride = sin(phase) * 17f
         val rearStride = sin(phase + Math.PI.toFloat()) * 15f
         canvas.save()
@@ -982,33 +984,40 @@ private class PetGameView(context: Context, private val updateManager: AppUpdate
 
         // Wings and tail are rear bones.
         if (kind == PetKind.DRAGON) {
-            drawBonePart(canvas, sheet.backParts[0], RectF(12f, -170f, 112f, -65f), 20f, -82f, sin(phase * .7f) * 4f)
-            drawBonePart(canvas, sheet.backParts[1], RectF(18f, -157f, 95f, -62f), 24f, -80f, sin(phase * .7f + 1f) * 3f)
+            drawBonePart(canvas, sheet.backParts[0], RectF(12f, -170f, 112f, -65f), 20f, -82f, bodyRotation + sin(phase * .7f) * 4f)
+            drawBonePart(canvas, sheet.backParts[1], RectF(18f, -157f, 95f, -62f), 24f, -80f, bodyRotation + sin(phase * .7f + 1f) * 3f)
         }
-        drawBonePart(canvas, sheet.tail, RectF(48f, -101f, 124f, -18f), 53f, -72f, sin(phase) * 12f)
+        drawBonePart(canvas, sheet.tail, RectF(48f, -101f, 124f, -18f), 53f, -72f, bodyRotation + sin(phase) * 12f)
 
         // Far legs move first and disappear behind the torso.
-        drawBonePart(canvas, sheet.legs[0], RectF(-68f, -77f, -29f, 3f), -50f, -58f, rearStride)
-        drawBonePart(canvas, sheet.legs[1], RectF(23f, -77f, 63f, 3f), 43f, -58f, frontStride)
+        drawBonePart(canvas, sheet.legs[0], RectF(-68f, -77f, -29f, 3f), -50f, -58f, bodyRotation + rearStride)
+        drawBonePart(canvas, sheet.legs[1], RectF(23f, -77f, 63f, 3f), 43f, -58f, bodyRotation + frontStride)
 
-        drawBonePart(canvas, sheet.body, RectF(-67f, -108f, 68f, -26f), 0f, -54f, sin(phase * 2f) * 1.2f)
-        drawBonePart(canvas, sheet.head, RectF(-111f, -186f, -18f, -78f), -64f, -89f, sin(phase * 2f) * 1.6f)
+        drawBonePart(canvas, sheet.body, RectF(-67f, -108f, 68f, -26f), 0f, -54f, bodyRotation)
+
+        // The head and its silhouette details share one parent transform. This
+        // keeps ears and horns locked to the skull instead of visibly sliding
+        // away when the head bobs during a stride.
+        canvas.save()
+        canvas.rotate(headRotation, -64f, -89f)
+        drawBonePart(canvas, sheet.head, RectF(-111f, -186f, -18f, -78f), -64f, -89f, 0f)
 
         // Ears/horns are attached to the head bone.
         when (kind) {
             PetKind.BUNNY -> {
-                drawBonePart(canvas, sheet.backParts[0], RectF(-101f, -222f, -59f, -121f), -72f, -156f, sin(phase * 2f) * 1.6f)
-                drawBonePart(canvas, sheet.backParts[1], RectF(-64f, -224f, -12f, -121f), -40f, -157f, sin(phase * 2f + .4f) * 1.6f)
+                drawBonePart(canvas, sheet.backParts[0], RectF(-101f, -222f, -59f, -121f), -72f, -156f, sin(phase * 2f) * .25f)
+                drawBonePart(canvas, sheet.backParts[1], RectF(-64f, -224f, -12f, -121f), -40f, -157f, sin(phase * 2f + .4f) * .25f)
             }
-            PetKind.CAT -> drawBonePart(canvas, sheet.backParts[0], RectF(-91f, -210f, -5f, -124f), -49f, -148f, sin(phase * 2f) * 1.5f)
-            PetKind.DOG -> drawBonePart(canvas, sheet.backParts[0], RectF(-116f, -198f, -8f, -101f), -64f, -146f, sin(phase * 2f) * 1.5f)
-            PetKind.HAMSTER -> drawBonePart(canvas, sheet.backParts[0], RectF(-102f, -184f, -4f, -115f), -55f, -145f, sin(phase * 2f) * 1.5f)
-            PetKind.DRAGON -> drawBonePart(canvas, sheet.frontParts[0], RectF(-84f, -224f, -5f, -149f), -45f, -166f, sin(phase * 2f) * 1.2f)
+            PetKind.CAT -> drawBonePart(canvas, sheet.backParts[0], RectF(-91f, -210f, -5f, -124f), -49f, -148f, sin(phase * 2f) * .25f)
+            PetKind.DOG -> drawBonePart(canvas, sheet.backParts[0], RectF(-116f, -198f, -8f, -101f), -64f, -146f, sin(phase * 2f) * .25f)
+            PetKind.HAMSTER -> drawBonePart(canvas, sheet.backParts[0], RectF(-102f, -184f, -4f, -115f), -55f, -145f, sin(phase * 2f) * .25f)
+            PetKind.DRAGON -> drawBonePart(canvas, sheet.frontParts[0], RectF(-84f, -224f, -5f, -149f), -45f, -166f, 0f)
         }
+        canvas.restore()
 
         // Near legs are the readable stride and sit above the body.
-        drawBonePart(canvas, sheet.legs[2], RectF(-57f, -78f, -18f, 3f), -41f, -58f, frontStride)
-        drawBonePart(canvas, sheet.legs[3], RectF(39f, -78f, 80f, 3f), 58f, -58f, rearStride)
+        drawBonePart(canvas, sheet.legs[2], RectF(-57f, -78f, -18f, 3f), -41f, -58f, bodyRotation + frontStride)
+        drawBonePart(canvas, sheet.legs[3], RectF(39f, -78f, 80f, 3f), 58f, -58f, bodyRotation + rearStride)
         canvas.restore()
     }
 
