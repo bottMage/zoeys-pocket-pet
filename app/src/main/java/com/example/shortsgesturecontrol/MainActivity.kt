@@ -83,7 +83,9 @@ class MainActivity : Activity() {
         connectivityManager.registerDefaultNetworkCallback(networkCallback)
         gameView.postDelayed({ gameView.checkForUpdates(showNoUpdate = false) }, 650L)
         gameView.postDelayed({
-            if (auth.currentUser != null) gameView.syncCloud() else maybePromptForCloudBackup()
+            if (auth.currentUser != null) gameView.restoreCloudAtStartup()
+            else if (gameView.hasCreatedPet()) maybePromptForCloudBackup()
+            else maybePromptForCloudRestore()
         }, 1800L)
     }
 
@@ -111,8 +113,18 @@ class MainActivity : Activity() {
         if (isFinishing || auth.currentUser != null || googleSignInClient == null || !gameView.hasCreatedPet()) return
         AlertDialog.Builder(this)
             .setTitle("Keep progress safe")
-            .setMessage("Sign in with Google to back up ${gameView.petName()} and restore it on another phone.")
+            .setMessage("Sign in with Google to back up ${gameView.petName()} and restore it on another phone. If a backup already exists, it will be restored instead of replaced.")
             .setNegativeButton("NOT NOW", null)
+            .setPositiveButton("SIGN IN") { _, _ -> startGoogleSignIn() }
+            .show()
+    }
+
+    private fun maybePromptForCloudRestore() {
+        if (isFinishing || auth.currentUser != null || googleSignInClient == null || gameView.hasCreatedPet()) return
+        AlertDialog.Builder(this)
+            .setTitle("Restore your pet?")
+            .setMessage("Sign in with Google to check for your saved pet. If no backup exists, you can create a new one.")
+            .setNegativeButton("NEW PET", null)
             .setPositiveButton("SIGN IN") { _, _ -> startGoogleSignIn() }
             .show()
     }
@@ -138,8 +150,7 @@ class MainActivity : Activity() {
             auth.signInWithCredential(GoogleAuthProvider.getCredential(token, null))
                 .addOnCompleteListener(this) { task ->
                     if (task.isSuccessful) {
-                        gameView.syncCloud()
-                        Toast.makeText(this, "Google backup enabled.", Toast.LENGTH_SHORT).show()
+                        gameView.restoreAfterSignIn()
                     } else {
                         Toast.makeText(this, "Google sign-in failed. Progress is still saved on this phone.", Toast.LENGTH_LONG).show()
                     }
@@ -300,6 +311,10 @@ private class PetGameView(context: Context, private val onPetCreated: () -> Unit
     private var setupMode = !pet.created
     private var setupKind = pet.kind
     private var setupName = pet.name
+    // A clean install can show the setup screen before Google sign-in finishes.
+    // Keep the cloud copy authoritative for that first restore so a new pet
+    // cannot overwrite the existing account backup.
+    private var preferCloudRestore = !pet.created
     private var menuOpen = false
     private var menuAnimationStart = 0L
     private var menuOpening = true
@@ -1096,9 +1111,55 @@ private class PetGameView(context: Context, private val onPetCreated: () -> Unit
     }
 
     fun syncCloud() {
-        cloudSave.restore { restored ->
-            if (restored) invalidate()
-            else Toast.makeText(appContext, "Cloud backup could not sync yet; this phone still has your progress.", Toast.LENGTH_LONG).show()
+        val restoringFreshInstall = preferCloudRestore
+        cloudSave.restore(preferCloud = restoringFreshInstall) { result ->
+            if (restoringFreshInstall) {
+                finishCloudRestore(result)
+            } else {
+                if (result == CloudRestoreResult.RESTORED) invalidate()
+                if (result == CloudRestoreResult.FAILED) {
+                    Toast.makeText(appContext, "Cloud backup could not sync yet; this phone still has your progress.", Toast.LENGTH_LONG).show()
+                }
+            }
+        }
+    }
+
+    fun restoreCloudAtStartup() {
+        cloudSave.restore(preferCloud = preferCloudRestore) { result ->
+            finishCloudRestore(result)
+        }
+    }
+
+    fun restoreAfterSignIn() {
+        cloudSave.restore(preferCloud = preferCloudRestore) { result ->
+            finishCloudRestore(result)
+        }
+    }
+
+    private fun finishCloudRestore(result: CloudRestoreResult) {
+        when (result) {
+            CloudRestoreResult.RESTORED -> {
+                preferCloudRestore = false
+                setupMode = false
+                setupKind = pet.kind
+                setupName = pet.name
+                invalidate()
+                Toast.makeText(appContext, "Cloud progress restored.", Toast.LENGTH_LONG).show()
+            }
+            CloudRestoreResult.NO_CLOUD_BACKUP -> {
+                preferCloudRestore = false
+                if (hasCreatedPet()) {
+                    Toast.makeText(appContext, "Google backup enabled.", Toast.LENGTH_SHORT).show()
+                }
+            }
+            CloudRestoreResult.KEPT_LOCAL -> {
+                preferCloudRestore = false
+                invalidate()
+                Toast.makeText(appContext, "Google backup synced.", Toast.LENGTH_SHORT).show()
+            }
+            CloudRestoreResult.FAILED -> {
+                Toast.makeText(appContext, "Cloud backup could not sync yet; this phone still has its local progress.", Toast.LENGTH_LONG).show()
+            }
         }
     }
 
@@ -1117,6 +1178,13 @@ private class PetGameView(context: Context, private val onPetCreated: () -> Unit
     private data class ActionButton(val action: Action, val rect: RectF)
 
     private enum class Action { FEED, PLAY, BATH, SLEEP }
+
+    private enum class CloudRestoreResult {
+        RESTORED,
+        NO_CLOUD_BACKUP,
+        KEPT_LOCAL,
+        FAILED
+    }
 
     companion object {
         private const val WALK_FRAME_COUNT = 12
@@ -1152,10 +1220,10 @@ private class PetGameView(context: Context, private val onPetCreated: () -> Unit
                 .set(data, SetOptions.merge())
         }
 
-        fun restore(onComplete: (Boolean) -> Unit) {
+        fun restore(preferCloud: Boolean, onComplete: (CloudRestoreResult) -> Unit) {
             val user = auth.currentUser
             if (user == null) {
-                onComplete(false)
+                onComplete(CloudRestoreResult.FAILED)
                 return
             }
             firestore.collection("users").document(user.uid)
@@ -1163,21 +1231,31 @@ private class PetGameView(context: Context, private val onPetCreated: () -> Unit
                 .get()
                 .addOnSuccessListener { snapshot ->
                     if (!snapshot.exists()) {
-                        upload()
+                        if (pet.hasCreatedPet()) upload()
+                        onComplete(CloudRestoreResult.NO_CLOUD_BACKUP)
                     } else {
+                        val cloudHasPet = snapshot.getBoolean("created") == true && snapshot.getBoolean("hatched") == true
                         val cloudSavedAt = snapshot.getLong("savedAt") ?: 0L
                         when {
-                            cloudSavedAt > pet.savedAt -> {
+                            cloudHasPet && (preferCloud || cloudSavedAt > pet.savedAt) -> {
                                 pet.loadCloud(snapshot.data.orEmpty())
                                 pet.save()
-                                upload()
+                                onComplete(CloudRestoreResult.RESTORED)
                             }
-                            pet.savedAt > cloudSavedAt -> upload()
+                            pet.hasCreatedPet() && pet.savedAt > cloudSavedAt -> {
+                                upload()
+                                onComplete(CloudRestoreResult.KEPT_LOCAL)
+                            }
+                            cloudHasPet -> onComplete(CloudRestoreResult.KEPT_LOCAL)
+                            pet.hasCreatedPet() -> {
+                                upload()
+                                onComplete(CloudRestoreResult.NO_CLOUD_BACKUP)
+                            }
+                            else -> onComplete(CloudRestoreResult.NO_CLOUD_BACKUP)
                         }
                     }
-                    onComplete(true)
                 }
-                .addOnFailureListener { onComplete(false) }
+                .addOnFailureListener { onComplete(CloudRestoreResult.FAILED) }
         }
 
         fun delete(onComplete: (Boolean) -> Unit) {
@@ -1383,6 +1461,8 @@ private class PetGameView(context: Context, private val onPetCreated: () -> Unit
             "lastUpdate" to lastUpdate,
             "savedAt" to lastSavedAt
         )
+
+        fun hasCreatedPet(): Boolean = created && hatched
 
         fun loadCloud(data: Map<String, Any>) {
             fun number(key: String, fallback: Float): Float = (data[key] as? Number)?.toFloat() ?: fallback
