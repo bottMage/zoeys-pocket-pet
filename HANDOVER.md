@@ -1,6 +1,16 @@
 # Zoey's Pocket Pet — cloud handover
 
-## Current release candidate: faster ambient flight and safe frog layering — v69
+## Current release candidate: grounded frog hops and reverted distant birds — v70
+
+The v70 candidate keeps the improved frog anatomy but replaces continuous frog
+sliding with explicit hop cycles: a short grounded pause, a smooth launch and
+landing arc, then a grounded pause at the new position. Frogs use two distant
+ground lanes and are clamped around the pet footprint rather than being
+skipped, so they stay visible and cannot pop in/out through the nest. Birds are
+back to the original bendy-stick silhouettes with rounded strokes and a modest
+speed increase. Sleep audio and Z animation are unchanged.
+
+## Previous release: faster ambient flight and safe frog layering — v69
 
 The v69 candidate keeps the v68 creature silhouettes but increases bird travel,
 flap amplitude and flight cadence, and increases frog hop cadence, travel and

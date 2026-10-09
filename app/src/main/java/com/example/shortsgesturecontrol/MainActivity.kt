@@ -1393,79 +1393,54 @@ private class PetGameView(context: Context, private val onPetCreated: () -> Unit
     }
 
     private fun drawBirds(canvas: Canvas, scene: RectF, now: Long) {
-        val birdBody = Color.rgb(73, 83, 98)
-        val birdWing = Color.rgb(105, 119, 132)
-        val birdBelly = Color.rgb(155, 170, 170)
-        paint.style = Paint.Style.FILL
+        // Keep the original simple distant-bird mark, but give it a slightly
+        // quicker, continuously sampled flight path and rounded strokes.
+        paint.color = Color.argb(185, 71, 80, 94)
+        paint.style = Paint.Style.STROKE
+        paint.strokeWidth = dp(1.6f)
+        paint.strokeCap = Paint.Cap.ROUND
         for (index in 0 until 3) {
-            val travelPhase = now / (2850f + index * 280f) + index * 1.7f
-            val flapPhase = now / 235f + index * 1.9f
-            val x = scene.left + scene.width() * (.18f + index * .29f) + sin(travelPhase) * dp(48f)
-            val y = scene.top + dp(133f + index * 22f) + cos(travelPhase * .72f) * dp(16f)
-            val flap = sin(flapPhase).toFloat()
-            canvas.save()
-            canvas.translate(x, y)
-            canvas.rotate(sin(travelPhase * .8f).toFloat() * 4f)
-
-            // A compact silhouette with a body, head, beak, tail and two
-            // overlapping wings reads as a bird instead of two bent lines.
-            paint.color = birdWing
-            val farWing = Path().apply {
-                moveTo(dp(-1f), dp(-1f))
-                cubicTo(dp(-12f), dp(-9f) - flap * dp(4f), dp(-19f), dp(-8f) - flap * dp(4f), dp(-23f), dp(-3f))
-                cubicTo(dp(-14f), dp(1f), dp(-7f), dp(3f), dp(-1f), dp(3f))
-                close()
-            }
-            canvas.drawPath(farWing, paint)
-            paint.color = birdBody
-            canvas.drawOval(RectF(dp(-9f), dp(-4f), dp(8f), dp(5f)), paint)
-            canvas.drawCircle(dp(8f), dp(-5f), dp(5f), paint)
-            val tail = Path().apply {
-                moveTo(dp(-8f), dp(1f))
-                lineTo(dp(-19f), dp(7f))
-                lineTo(dp(-7f), dp(5f))
-                close()
-            }
-            canvas.drawPath(tail, paint)
-            paint.color = birdBelly
-            canvas.drawOval(RectF(dp(-2f), dp(-1f), dp(7f), dp(4f)), paint)
-            paint.color = birdWing
-            val nearWing = Path().apply {
-                moveTo(dp(1f), dp(-2f))
-                cubicTo(dp(-5f), dp(-12f) - flap * dp(10f), dp(3f), dp(-20f) - flap * dp(11f), dp(13f), dp(-10f) - flap * dp(9f))
-                cubicTo(dp(10f), dp(-3f), dp(7f), dp(1f), dp(1f), dp(3f))
-                close()
-            }
-            canvas.drawPath(nearWing, paint)
-            paint.color = Color.rgb(244, 221, 153)
-            val beak = Path().apply {
-                moveTo(dp(12f), dp(-5f))
-                lineTo(dp(19f), dp(-2f))
-                lineTo(dp(12f), dp(0f))
-                close()
-            }
-            canvas.drawPath(beak, paint)
-            paint.color = Color.WHITE
-            canvas.drawCircle(dp(9f), dp(-6f), dp(1.6f), paint)
-            paint.color = Color.rgb(35, 42, 55)
-            canvas.drawCircle(dp(9.4f), dp(-6f), dp(.8f), paint)
-            canvas.restore()
+            val travelPhase = now / (1500f + index * 180f) + index * 1.7f
+            val flapPhase = now / 270f + index * 1.4f
+            val x = scene.left + scene.width() * (.18f + index * .29f) + sin(travelPhase) * dp(31f)
+            val y = scene.top + dp(133f + index * 22f) + cos(travelPhase * .72f) * dp(12f)
+            val wing = sin(flapPhase).toFloat() * dp(5f)
+            canvas.drawArc(RectF(x - dp(9f), y - wing, x, y + dp(5f)), 205f, 135f, false, paint)
+            canvas.drawArc(RectF(x, y + dp(5f), x + dp(9f), y + dp(10f) + wing), 205f, 135f, false, paint)
         }
+        paint.strokeCap = Paint.Cap.BUTT
+        paint.style = Paint.Style.FILL
     }
 
     private fun drawNightCreatures(canvas: Canvas, scene: RectF, now: Long) {
         val frogBody = Color.rgb(72, 123, 87)
         val frogDark = Color.rgb(49, 91, 67)
         val frogLight = Color.rgb(149, 190, 111)
-        val positions = floatArrayOf(.16f, .50f, .84f)
+        val positions = floatArrayOf(.14f, .86f)
         paint.style = Paint.Style.FILL
         for (index in positions.indices) {
-            val phase = now / (1000f + index * 120f) + index * 2.1f
-            val travel = sin(phase).toFloat()
-            val hop = max(0f, sin(phase).toFloat())
-            val candidateX = scene.left + scene.width() * positions[index] + travel * dp(49f)
-            val x = candidateX.coerceIn(scene.left + dp(16f), scene.right - dp(16f))
-            if (abs(x - petCenterX) < dp(92f)) continue
+            val cycleMs = 1750L + index * 190L
+            val clock = now + index * 470L
+            val cycle = clock / cycleMs
+            val cyclePosition = (clock % cycleMs).toFloat()
+            val direction = if (cycle % 2L == 0L) 1f else -1f
+            val center = scene.left + scene.width() * positions[index]
+            val span = dp(31f)
+            val startX = center - direction * span
+            val endX = center + direction * span
+            val jumpStart = 390f
+            val jumpDuration = 620f
+            val rawProgress = ((cyclePosition - jumpStart) / jumpDuration).coerceIn(0f, 1f)
+            val moving = cyclePosition >= jumpStart && cyclePosition <= jumpStart + jumpDuration
+            val easedProgress = rawProgress * rawProgress * (3f - 2f * rawProgress)
+            val rawX = if (moving) startX + (endX - startX) * easedProgress else if (cyclePosition < jumpStart) startX else endX
+            val petGap = dp(98f)
+            val x = when {
+                rawX < petCenterX - petGap || rawX > petCenterX + petGap -> rawX
+                rawX < petCenterX -> petCenterX - petGap
+                else -> petCenterX + petGap
+            }.coerceIn(scene.left + dp(16f), scene.right - dp(16f))
+            val hop = if (moving) sin(rawProgress * Math.PI).toFloat() else 0f
             val ground = scene.bottom - dp(27f)
             val y = ground - hop * dp(22f)
             paint.color = Color.argb((62f - hop * 24f).roundToInt(), 48, 73, 61)
