@@ -1,6 +1,14 @@
 # Zoey's Pocket Pet — cloud handover
 
-## Current release candidate: one-minute sleep and separated audio feedback — v64
+## Current release candidate: approved ambient sleep loop — v65
+
+The v65 candidate keeps the v64 one-minute sleep behavior and separate short
+SLEEP button acknowledgment. The approved user-provided snore clip is now
+stored as `sleep_ambient_snore.wav`, played only while the egg or pet is in the
+sleep action, and looped by MediaPlayer. It stops when the 60-second sleep
+action ends or the view is no longer visible. The old snore remains unused.
+
+## Previous release: one-minute sleep and separated audio feedback — v64
 
 The v64 candidate keeps the v63 lifecycle consent, mapped care controls,
 whole-pet renderer, ambient audio and updater. The SLEEP/REST button now uses

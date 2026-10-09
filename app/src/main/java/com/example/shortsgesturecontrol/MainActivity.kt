@@ -733,7 +733,7 @@ private class PetGameView(context: Context, private val onPetCreated: () -> Unit
     private fun playInteractionSound(action: Action) {
         // Sleep uses the same short tap feedback as every other care action.
         // Ambient sleep audio is intentionally separate and remains disabled
-        // until a replacement snore is approved.
+        // from this tap-feedback path.
         val tone = when (action) {
             Action.FEED -> ToneGenerator.TONE_PROP_ACK
             Action.PLAY -> ToneGenerator.TONE_PROP_BEEP2
@@ -747,6 +747,17 @@ private class PetGameView(context: Context, private val onPetCreated: () -> Unit
             feedbackTone?.release()
             feedbackTone = null
         }, 140L)
+    }
+
+    private fun startSleepAmbient() {
+        stopInteractionSound()
+        interactionPlayer = runCatching {
+            MediaPlayer.create(appContext, R.raw.sleep_ambient_snore)?.apply {
+                isLooping = true
+                setVolume(.42f, .42f)
+                start()
+            }
+        }.getOrNull()
     }
 
     private fun stopInteractionSound() {
@@ -1702,6 +1713,7 @@ private class PetGameView(context: Context, private val onPetCreated: () -> Unit
             return
         }
         if (now >= actionUntil) {
+            if (action == Action.SLEEP) stopInteractionSound()
             activeAction = null
             return
         }
@@ -2204,6 +2216,7 @@ private class PetGameView(context: Context, private val onPetCreated: () -> Unit
         messageColor = result.second
         messageUntil = SystemClock.uptimeMillis() + 3500L
         playInteractionSound(action)
+        if (action == Action.SLEEP) startSleepAmbient() else stopInteractionSound()
         savePet()
     }
 
