@@ -1,6 +1,14 @@
 # Zoey's Pocket Pet — cloud handover
 
-## Current release candidate: dense pointed grass and clear hatch readiness — v74
+## Current release candidate: bottom-anchored taller grass — v75
+
+The v75 candidate keeps v74's dense, pointed grass blades but anchors every
+blade directly to the scenery's bottom edge. The grass bank is taller so there
+is no bare strip beneath it, while the egg or pet remains the foreground layer
+above the grass. Hatching behavior is unchanged; the egg in v74's screenshot
+was correctly at 99%, below the real prompt threshold.
+
+## Previous release: dense pointed grass and clear hatch readiness — v74
 
 The v74 candidate keeps the continuous grass bank from v73 but replaces the
 loose line marks with three tightly packed rows of tapered, pointed blades.

@@ -1381,7 +1381,7 @@ private class PetGameView(context: Context, private val onPetCreated: () -> Unit
         // Build one continuous grass bank across the whole lower strip. The
         // uneven top edge keeps it organic without making it look like a row
         // of detached tufts.
-        val grassTop = scene.bottom - dp(25f)
+        val grassTop = scene.bottom - dp(36f)
         val grassPatch = Path().apply {
             moveTo(scene.left, grassTop + dp(3f))
             cubicTo(
@@ -1416,12 +1416,14 @@ private class PetGameView(context: Context, private val onPetCreated: () -> Unit
         val baseCount = (scene.width() / dp(3.1f)).roundToInt().coerceIn(70, 150)
         for (row in 0..2) {
             val rowCount = baseCount + row * 3
-            val baseInset = dp(12f - row * 4f)
             for (index in 0 until rowCount) {
                 val normalizedX = (index + .5f) / rowCount
                 val baseX = scene.left + scene.width() * normalizedX + dp((row - 1) * .8f)
-                val baseY = scene.bottom - baseInset - dp(((index * 3 + row) % 3).toFloat())
-                val height = dp(12f + row * 1.7f + (index * 5 % 5) * 1.45f)
+                // All rows share the true bottom edge, so there is no bare
+                // strip beneath the blades. Layering comes from their varied
+                // heights and dense spacing instead of raised root lines.
+                val baseY = scene.bottom - dp(1f)
+                val height = dp(17f + row * 2f + (index * 5 % 6) * 1.6f)
                 val wind = sin(now / (760f + (index % 4) * 85f) + index * .67f + row * .9f).toFloat()
                 val sway = wind * dp(2.4f + row * .35f)
                 val halfWidth = dp(1.25f + row * .12f)
