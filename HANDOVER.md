@@ -1,6 +1,19 @@
 # Zoey's Pocket Pet — cloud handover
 
-## Current release candidate: non-blocking care-button feedback — v79
+## Current release candidate: idle rendering and sync optimization — v80
+
+The v80 candidate keeps v79's non-blocking care-button feedback and all
+existing pet, lifecycle, scenery, audio, updater, local-save, and Firebase
+behavior. Idle scenery redraws at 30 Hz while walking, actions, transitions,
+and touch reactions retain the existing display-synchronized cadence. Activity
+pause/resume now stops background animation, ambient audio, and weather polling
+cleanly. Local checkpoints remain every 30 seconds, while background Firestore
+uploads are limited to once every five minutes; explicit care/lifecycle/pause
+checkpoints still sync immediately. The v80 APK is signed with the unchanged
+cloud certificate and has SHA-256
+`58098ec5c04f8b164fcba9cc42809dbb60728aa358aae7e8ec296c361c919e39`.
+
+## Previous release: non-blocking care-button feedback — v79
 
 The v79 candidate keeps v78's full closed-eye sleep mask unchanged. Care
 buttons now use Android's lightweight built-in click effect instead of

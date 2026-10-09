@@ -104,13 +104,17 @@ class MainActivity : Activity() {
     }
 
     override fun onPause() {
+        gameView.pauseForActivity()
         gameView.savePet()
         super.onPause()
     }
 
     override fun onResume() {
         super.onResume()
-        if (::gameView.isInitialized) gameView.resumePendingInstall()
+        if (::gameView.isInitialized) {
+            gameView.resumeForActivity()
+            gameView.resumePendingInstall()
+        }
     }
 
     override fun onDestroy() {
@@ -515,14 +519,17 @@ private class PetGameView(context: Context, private val onPetCreated: () -> Unit
     @Volatile private var weather = WeatherState()
     private var weatherLoading = false
     private var weatherStarted = false
+    private var activityResumed = true
+    private var lastCloudUploadAt = 0L
     private var ambientPlayer: MediaPlayer? = null
     private var ambientMode: AmbientMode? = null
     private var interactionPlayer: MediaPlayer? = null
     private val weatherHandler = Handler(Looper.getMainLooper())
     private val weatherRefresh = object : Runnable {
         override fun run() {
+            if (!activityResumed || windowVisibility != View.VISIBLE) return
             refreshWeather()
-            weatherHandler.postDelayed(this, WEATHER_REFRESH_MS)
+            scheduleWeatherRefresh()
         }
     }
 
@@ -586,10 +593,9 @@ private class PetGameView(context: Context, private val onPetCreated: () -> Unit
      * local clock and uses calm, partly-cloudy fallback scenery.
      */
     fun refreshWeather() {
-        if (!weatherStarted) {
-            weatherStarted = true
-            weatherHandler.postDelayed(weatherRefresh, WEATHER_REFRESH_MS)
-        }
+        weatherStarted = true
+        scheduleWeatherRefresh()
+        if (!activityResumed || windowVisibility != View.VISIBLE) return
         if (weatherLoading) return
         weatherLoading = true
         Thread {
@@ -603,6 +609,27 @@ private class PetGameView(context: Context, private val onPetCreated: () -> Unit
                 invalidate()
             }
         }.start()
+    }
+
+    private fun scheduleWeatherRefresh() {
+        weatherHandler.removeCallbacks(weatherRefresh)
+        if (activityResumed && windowVisibility == View.VISIBLE) {
+            weatherHandler.postDelayed(weatherRefresh, WEATHER_REFRESH_MS)
+        }
+    }
+
+    fun pauseForActivity() {
+        activityResumed = false
+        weatherHandler.removeCallbacks(weatherRefresh)
+        stopAmbientSound()
+        stopInteractionSound()
+    }
+
+    fun resumeForActivity() {
+        activityResumed = true
+        motionLastAt = SystemClock.uptimeMillis()
+        if (weatherStarted) refreshWeather()
+        invalidate()
     }
 
     private fun lastKnownLocation(): Location? {
@@ -680,8 +707,12 @@ private class PetGameView(context: Context, private val onPetCreated: () -> Unit
         if (visibility != View.VISIBLE) {
             stopAmbientSound()
             stopInteractionSound()
+            weatherHandler.removeCallbacks(weatherRefresh)
         }
-        else invalidate()
+        else {
+            if (weatherStarted && activityResumed) refreshWeather()
+            invalidate()
+        }
     }
 
     override fun onDetachedFromWindow() {
@@ -692,6 +723,7 @@ private class PetGameView(context: Context, private val onPetCreated: () -> Unit
     }
 
     private fun updateAmbientSound() {
+        if (!activityResumed) return
         val minutes = LocalTime.now().hour * 60 + LocalTime.now().minute
         val daylight = daylightFactor(minutes, weather)
         val target = when {
@@ -765,7 +797,7 @@ private class PetGameView(context: Context, private val onPetCreated: () -> Unit
         drawBackground(canvas)
         if (setupMode) {
             drawSetup(canvas, now)
-            postInvalidateDelayed(100L)
+            scheduleNextFrame(now)
             return
         }
         drawHeader(canvas)
@@ -776,8 +808,23 @@ private class PetGameView(context: Context, private val onPetCreated: () -> Unit
         drawStats(canvas)
         drawActions(canvas)
         if (menuOpen || menuAnimationStart != 0L) drawMenu(canvas, now)
-        if (now - lastSaved > 30_000L) savePet()
-        postInvalidateOnAnimation()
+        if (now - lastSaved > 30_000L) savePet(uploadCloud = false)
+        scheduleNextFrame(now)
+    }
+
+    private fun scheduleNextFrame(now: Long) {
+        if (!activityResumed || windowVisibility != View.VISIBLE) return
+        if (setupMode) {
+            postInvalidateDelayed(100L)
+            return
+        }
+        val highPriority = activeAction != null ||
+            transitionKind != null ||
+            menuAnimationStart != 0L ||
+            touchReactionUntil > now ||
+            (!pet.dead && motionMode == MotionMode.WALK)
+        if (highPriority) postInvalidateOnAnimation()
+        else postInvalidateDelayed(IDLE_FRAME_DELAY_MS)
     }
 
     private fun maybePromptLifecycle() {
@@ -2145,7 +2192,9 @@ private class PetGameView(context: Context, private val onPetCreated: () -> Unit
         canvas.drawText("SETTINGS", settings.centerX(), settings.centerY() + dp(5f), textPaint)
         canvas.restore()
 
-        if (progress < 1f) postInvalidateOnAnimation()
+        if (progress < 1f && activityResumed && windowVisibility == View.VISIBLE) {
+            postInvalidateOnAnimation()
+        }
         if (!menuOpen && progress >= 1f) menuAnimationStart = 0L
     }
 
@@ -2411,10 +2460,14 @@ private class PetGameView(context: Context, private val onPetCreated: () -> Unit
         savePet()
     }
 
-    fun savePet() {
+    fun savePet(uploadCloud: Boolean = true) {
         pet.save()
-        cloudSave.upload()
-        lastSaved = SystemClock.uptimeMillis()
+        val now = SystemClock.uptimeMillis()
+        if (uploadCloud || now - lastCloudUploadAt >= CLOUD_UPLOAD_INTERVAL_MS) {
+            cloudSave.upload()
+            lastCloudUploadAt = now
+        }
+        lastSaved = now
     }
 
     fun syncCloud() {
@@ -2526,6 +2579,8 @@ private class PetGameView(context: Context, private val onPetCreated: () -> Unit
         private const val WALK_FRAME_DURATION_MS = 105L
         private const val WEATHER_REFRESH_MS = 30 * 60 * 1000L
         private const val LIFECYCLE_REPROMPT_MS = 20_000L
+        private const val IDLE_FRAME_DELAY_MS = 33L
+        private const val CLOUD_UPLOAD_INTERVAL_MS = 5 * 60 * 1000L
     }
 
     private enum class MotionMode { REST, WALK, CURIOUS, STAND }
