@@ -40,10 +40,10 @@ public final class PetLifeCheck {
         legacy.advance(100*DAY,200*DAY);check(!legacy.dead&&legacy.adultAgeMillis==0,"Legacy adult suddenly dies on upgrade/restore");
         legacy.advance(HOUR,200*DAY+HOUR);check(legacy.adultAgeMillis==HOUR,"Legacy death clock never starts");
         PetLife eggOvernight=new PetLife();eggOvernight.createEgg();eggOvernight.advance(9*HOUR,9*HOUR);
-        check(eggOvernight.needs[0]<82-10&&eggOvernight.needs[0]>82-14,"Egg overnight decay is not moderate");
+        check(eggOvernight.needs[0]<82-20&&eggOvernight.needs[0]>82-24,"Egg overnight decay is not moderate");
         check(eggOvernight.eggProgressMillis>8*HOUR&&eggOvernight.eggProgressMillis<10*HOUR,"Egg clock does not catch up offline");
         PetLife schoolDay=new PetLife();schoolDay.createEgg();schoolDay.hatched=true;schoolDay.advance(6*HOUR,6*HOUR);
-        check(schoolDay.needs[0]>55&&schoolDay.needs[0]<60,"Live school-day hunger decay is too fast or slow");
+        check(schoolDay.needs[0]>30&&schoolDay.needs[0]<35,"Live school-day hunger decay is too fast or slow");
         Arrays.fill(schoolDay.needs,0);double slowBefore=schoolDay.evolutionMillis;
         schoolDay.advance(7*DAY,7*DAY);
         check(schoolDay.needsCritical()&&schoolDay.evolutionMillis>slowBefore,"Drained pet must remain alive and grow slowly");
