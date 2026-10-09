@@ -788,6 +788,13 @@ private class PetGameView(context: Context, private val onPetCreated: () -> Unit
         drawHeader(canvas)
         drawPlayground(canvas, now)
         drawPet(canvas, now)
+        val scene = playgroundScene()
+        val minutes = LocalTime.now().hour * 60 + LocalTime.now().minute
+        if (!pet.dead && daylightFactor(minutes, weather) < .2f && !weather.raining) {
+            // Frogs are a foreground ground detail, but avoid the pet's
+            // footprint so they cannot appear to pass behind the nest or egg.
+            drawNightCreatures(canvas, scene, now)
+        }
         drawActionEffects(canvas, now)
         drawMessage(canvas, now)
         drawStats(canvas)
@@ -1242,9 +1249,7 @@ private class PetGameView(context: Context, private val onPetCreated: () -> Unit
     }
 
     private fun drawPlayground(canvas: Canvas, now: Long) {
-        val top = dp(77f)
-        val bottom = statsTop()
-        val scene = RectF(dp(18f), top, width - dp(18f), bottom - dp(10f))
+        val scene = playgroundScene()
         paint.color = Color.argb(35, 56, 44, 82)
         canvas.drawRoundRect(RectF(scene.left, scene.top + dp(5f), scene.right, scene.bottom + dp(5f)), dp(26f), dp(26f), paint)
         paint.color = Color.WHITE
@@ -1318,9 +1323,14 @@ private class PetGameView(context: Context, private val onPetCreated: () -> Unit
         canvas.drawPath(nearHill, paint)
 
         drawGroundDetails(canvas, scene, daylight, now)
-        if (daylight < .2f && !weatherNow.raining) drawNightCreatures(canvas, scene, now)
         if (weatherNow.raining) drawRain(canvas, scene, now, daylight)
         canvas.restore()
+    }
+
+    private fun playgroundScene(): RectF {
+        val top = dp(77f)
+        val bottom = statsTop()
+        return RectF(dp(18f), top, width - dp(18f), bottom - dp(10f))
     }
 
     private fun drawCloud(canvas: Canvas, x: Float, y: Float, scale: Float) {
@@ -1383,15 +1393,15 @@ private class PetGameView(context: Context, private val onPetCreated: () -> Unit
     }
 
     private fun drawBirds(canvas: Canvas, scene: RectF, now: Long) {
-        val birdBody = Color.rgb(65, 75, 91)
-        val birdWing = Color.rgb(88, 103, 119)
-        val birdBelly = Color.rgb(132, 151, 157)
+        val birdBody = Color.rgb(73, 83, 98)
+        val birdWing = Color.rgb(105, 119, 132)
+        val birdBelly = Color.rgb(155, 170, 170)
         paint.style = Paint.Style.FILL
         for (index in 0 until 3) {
-            val travelPhase = now / (5200f + index * 500f) + index * 1.7f
-            val flapPhase = now / 360f + index * 1.9f
-            val x = scene.left + scene.width() * (.18f + index * .29f) + sin(travelPhase) * dp(29f)
-            val y = scene.top + dp(133f + index * 22f) + cos(travelPhase * .72f) * dp(10f)
+            val travelPhase = now / (2850f + index * 280f) + index * 1.7f
+            val flapPhase = now / 235f + index * 1.9f
+            val x = scene.left + scene.width() * (.18f + index * .29f) + sin(travelPhase) * dp(48f)
+            val y = scene.top + dp(133f + index * 22f) + cos(travelPhase * .72f) * dp(16f)
             val flap = sin(flapPhase).toFloat()
             canvas.save()
             canvas.translate(x, y)
@@ -1402,7 +1412,7 @@ private class PetGameView(context: Context, private val onPetCreated: () -> Unit
             paint.color = birdWing
             val farWing = Path().apply {
                 moveTo(dp(-1f), dp(-1f))
-                cubicTo(dp(-12f), dp(-10f) - flap * dp(3f), dp(-18f), dp(-9f) - flap * dp(3f), dp(-22f), dp(-4f))
+                cubicTo(dp(-12f), dp(-9f) - flap * dp(4f), dp(-19f), dp(-8f) - flap * dp(4f), dp(-23f), dp(-3f))
                 cubicTo(dp(-14f), dp(1f), dp(-7f), dp(3f), dp(-1f), dp(3f))
                 close()
             }
@@ -1422,7 +1432,7 @@ private class PetGameView(context: Context, private val onPetCreated: () -> Unit
             paint.color = birdWing
             val nearWing = Path().apply {
                 moveTo(dp(1f), dp(-2f))
-                cubicTo(dp(-5f), dp(-12f) - flap * dp(7f), dp(3f), dp(-18f) - flap * dp(8f), dp(12f), dp(-9f) - flap * dp(6f))
+                cubicTo(dp(-5f), dp(-12f) - flap * dp(10f), dp(3f), dp(-20f) - flap * dp(11f), dp(13f), dp(-10f) - flap * dp(9f))
                 cubicTo(dp(10f), dp(-3f), dp(7f), dp(1f), dp(1f), dp(3f))
                 close()
             }
@@ -1450,12 +1460,14 @@ private class PetGameView(context: Context, private val onPetCreated: () -> Unit
         val positions = floatArrayOf(.16f, .50f, .84f)
         paint.style = Paint.Style.FILL
         for (index in positions.indices) {
-            val phase = now / (1550f + index * 170f) + index * 2.1f
+            val phase = now / (1000f + index * 120f) + index * 2.1f
             val travel = sin(phase).toFloat()
             val hop = max(0f, sin(phase).toFloat())
-            val x = scene.left + scene.width() * positions[index] + travel * dp(30f)
+            val candidateX = scene.left + scene.width() * positions[index] + travel * dp(49f)
+            val x = candidateX.coerceIn(scene.left + dp(16f), scene.right - dp(16f))
+            if (abs(x - petCenterX) < dp(92f)) continue
             val ground = scene.bottom - dp(27f)
-            val y = ground - hop * dp(17f)
+            val y = ground - hop * dp(22f)
             paint.color = Color.argb((62f - hop * 24f).roundToInt(), 48, 73, 61)
             canvas.drawOval(RectF(x - dp(11f) - hop * dp(3f), ground + dp(1f), x + dp(11f) + hop * dp(3f), ground + dp(5f)), paint)
 

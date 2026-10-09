@@ -16,8 +16,8 @@ android {
         applicationId = "com.example.shortsgesturecontrol"
         minSdk = 26
         targetSdk = 35
-        versionCode = 68
-        versionName = "68.0"
+        versionCode = 69
+        versionName = "69.0"
     }
 
     buildTypes {

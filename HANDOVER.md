@@ -1,6 +1,14 @@
 # Zoey's Pocket Pet — cloud handover
 
-## Current release candidate: smoother ambient birds and frogs — v68
+## Current release candidate: faster ambient flight and safe frog layering — v69
+
+The v69 candidate keeps the v68 creature silhouettes but increases bird travel,
+flap amplitude and flight cadence, and increases frog hop cadence, travel and
+arc height. Frogs are now rendered after the pet as foreground scenery while
+skipping the pet footprint, so they cannot disappear behind or clip through an
+egg, nest or live pet. The approved sleep audio and Z animation are unchanged.
+
+## Previous release: smoother ambient birds and frogs — v68
 
 The v68 candidate keeps the v67 Z timing and all approved sleep audio
 unchanged. Daytime birds now use compact filled silhouettes with body, head,
