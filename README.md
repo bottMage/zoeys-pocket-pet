@@ -19,8 +19,9 @@ features.
 - Mochi is Zoey's LCD/pixel-style Tamagotchi pet, drawn locally with chunky sprite blocks and a limited palette.
 - New eggs can hatch into original animal choices: cat, dog, bunny, hamster, or dragon.
 - Feed, play, bath, and sleep buttons change Mochi's needs and mood.
-- Hunger, joy, energy, and cleanliness are saved between launches and gently decay over time.
-- The needs use realtime wall-clock catch-up while the app is closed: roughly 8% hunger, 5% joy, 6% energy, and 3.6% cleanliness per hour.
+- Hunger, joy, energy, and cleanliness are saved between launches and decay over time.
+- The needs use realtime wall-clock catch-up while the app is closed: a six-hour school day costs roughly 25% hunger, 16% joy, 20% energy, and 11% cleanliness for a live pet. Eggs use a gentler rate.
+- Needs stop at zero; neglect does not kill a pet, but zero needs slow growth to the 10% minimum until the matching care actions restore them.
 - Pets grow from baby to young to teen to evolved; good average care makes growth more likely.
 - Evolution is deliberately long-haul: the first form needs about 12 real hours and sustained care; the next form needs about 72 real hours and stronger care conditions.
 - Evolution progress shows age, care history, and the current requirement so the result feels earned rather than instant.

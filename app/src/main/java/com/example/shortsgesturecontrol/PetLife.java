@@ -10,11 +10,18 @@ public final class PetLife {
     private static final long HOUR=60*60*1000L;
     private static final float[] BOOST={18,16,22,25};
     private static final int[] NEED_FOR_ACTION={0,1,3,2};
-    private static final double[] LIVE_DECAY={.13,.08,.10,.06};
-    private static final double[] EGG_DECAY={.015,.008,.010,.006};
+    // Rates are points lost per minute while the app is away. A six-hour
+    // school day costs about 25/16/20/11 points for a live pet, while a
+    // healthy egg loses about 11/6/9/5 points over nine hours.
+    private static final double[] LIVE_DECAY={.07,.045,.055,.030};
+    private static final double[] EGG_DECAY={.022,.013,.016,.009};
 
     public double average() {return (needs[0]+needs[1]+needs[2]+needs[3])/4.0;}
     public double carePercent() {return totalCareMillis==0?0:100.0*goodCareMillis/totalCareMillis;}
+    public boolean needsCritical() {
+        for(float need:needs)if(need<=0.01f)return true;
+        return false;
+    }
 
     public void createEgg() {
         created=true;hatched=false;dead=false;generation=0;

@@ -976,6 +976,7 @@ private class PetGameView(context: Context, private val onPetCreated: () -> Unit
         val displayedMessage = when {
             pet.dead -> "A little friend, always remembered"
             !pet.hatched && now >= messageUntil -> "A little friend is growing inside"
+            pet.needsCritical && now >= messageUntil -> "Needs care — growth is slowed"
             else -> message
         }
         val shortMessage = if (displayedMessage.length > 31) displayedMessage.take(28) + "..." else displayedMessage
@@ -1405,12 +1406,19 @@ private class PetGameView(context: Context, private val onPetCreated: () -> Unit
                 setupMode = false
                 setupKind = pet.kind
                 setupName = pet.name
+                // The cloud snapshot may have been saved before the phone
+                // went offline. Apply elapsed time after restoring it, then
+                // save that caught-up state back to both stores.
+                pet.updateFromClock()
+                savePet()
                 invalidate()
                 Toast.makeText(appContext, "Cloud progress restored.", Toast.LENGTH_LONG).show()
             }
             CloudRestoreResult.NO_CLOUD_BACKUP -> {
                 preferCloudRestore = false
                 cloudSyncReady = true
+                pet.updateFromClock()
+                savePet()
                 if (hasCreatedPet()) {
                     Toast.makeText(appContext, "Google backup enabled.", Toast.LENGTH_SHORT).show()
                 }
@@ -1418,6 +1426,8 @@ private class PetGameView(context: Context, private val onPetCreated: () -> Unit
             CloudRestoreResult.KEPT_LOCAL -> {
                 preferCloudRestore = false
                 cloudSyncReady = true
+                pet.updateFromClock()
+                savePet()
                 invalidate()
                 Toast.makeText(appContext, "Google backup synced.", Toast.LENGTH_SHORT).show()
             }
@@ -1583,6 +1593,7 @@ private class PetGameView(context: Context, private val onPetCreated: () -> Unit
         val created: Boolean get() = life.created
         val hatched: Boolean get() = life.hatched
         val dead: Boolean get() = life.dead
+        val needsCritical: Boolean get() = life.needsCritical()
         var name = prefs.getString("name", "Mochi") ?: "Mochi"
         var kind = prefs.getString("kind", PetKind.BUNNY.name)?.let { value ->
             PetKind.values().firstOrNull { it.name == value }

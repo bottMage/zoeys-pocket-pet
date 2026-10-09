@@ -1,6 +1,6 @@
 # Zoey's Pocket Pet — cloud handover
 
-## Current work: eggs, visible growth and care lifecycle — v44
+## Current work: eggs, visible growth and care lifecycle — v45
 
 This supersedes earlier rollback-only notes. The user requested moving eggs in
 a twig nest for dragon/straw for others, then the current design as a small
@@ -41,13 +41,13 @@ process-restart migration, egg backup, full archives/history and action wiring.
 `WholePetCheck` passes 148,680 alpha-bound placement cases. Final `assembleDebug`
 and `lintDebug` pass (zero errors, 132 existing/general warnings). The real-model
 save/restore and lifecycle checks also pass against the final compiled classes.
-APK package/version 44.0 and unchanged signing certificate are verified after
-SHA-256 is `508937e15a416fa68bc1a697396ebd193f5e4275be4ef78e8556e288ef58d7e6`.
+APK package/version 45.0 and unchanged signing certificate are verified after
+the release build is published; its SHA-256 is recorded below after verification.
 Publish the signed asset first
 and only advance `update.json` after its public availability/checksum are checked.
-Release commit and tag `v44` were pushed to `main`. The public
+Release commit and tag `v45` will be pushed to `main`. The public
 APK returns 200, its downloaded checksum matches the signed build, and latest
-release resolves to v44. Root `update.json` now advertises 44 after verification.
+release resolves to v45. Root `update.json` will advertise 45 after verification.
 See `artwork/growth-stages/README.md` for behavior, checks and limitations.
 
 ## Current request: original whole-pet animation for all pets — v41

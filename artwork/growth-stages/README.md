@@ -25,7 +25,10 @@ about 48h, babies grow after a week, young pets grow after another week, and
 adults live a further week. Current care scales growth speed from 10% to 100%;
 poor care lengthens egg/baby/young time without erasing earned progress. Time is
 simulated on reopening, in bounded hourly chunks; the closed app does not run
-or sync a background service. Care actions affect only their matching metric:
+or sync a background service. A six-hour school day costs a moderate amount of
+live needs; eggs decay more slowly. Needs clamp at zero rather than killing a
+pet, and zero needs reduce growth to the 10% minimum until they are cared for.
+Care actions affect only their matching metric:
 feed/warm -> hunger/warmth, play/soothe -> joy/comfort, bath/tidy -> clean/nest,
 sleep/rest -> energy/rest. They give no direct evolution bonus or cross-effects.
 
