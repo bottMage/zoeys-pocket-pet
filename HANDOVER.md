@@ -1,6 +1,15 @@
 # Zoey's Pocket Pet — cloud handover
 
-## Current release candidate: full closed-eye sleep mask — v78
+## Current release candidate: non-blocking care-button feedback — v79
+
+The v79 candidate keeps v78's full closed-eye sleep mask unchanged. Care
+buttons now use Android's lightweight built-in click effect instead of
+creating and releasing a ToneGenerator on every tap. That removes a
+device-dependent main-thread stall that could build into an Android ANR after
+repeated care actions. Pet rendering, cloud saves, ambient audio, and other
+behavior are unchanged.
+
+## Previous release: full closed-eye sleep mask — v78
 
 The v78 candidate keeps v77's direction-aware sleeping tilt. It enlarges and
 re-centres the per-pet sleep mask so it fully covers the original eye, iris,

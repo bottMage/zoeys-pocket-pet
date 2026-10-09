@@ -18,9 +18,7 @@ import android.graphics.Path
 import android.graphics.RadialGradient
 import android.graphics.RectF
 import android.graphics.Shader
-import android.media.AudioManager
 import android.media.MediaPlayer
-import android.media.ToneGenerator
 import android.os.Bundle
 import android.os.Build
 import android.os.Environment
@@ -520,7 +518,6 @@ private class PetGameView(context: Context, private val onPetCreated: () -> Unit
     private var ambientPlayer: MediaPlayer? = null
     private var ambientMode: AmbientMode? = null
     private var interactionPlayer: MediaPlayer? = null
-    private var feedbackTone: ToneGenerator? = null
     private val weatherHandler = Handler(Looper.getMainLooper())
     private val weatherRefresh = object : Runnable {
         override fun run() {
@@ -731,22 +728,10 @@ private class PetGameView(context: Context, private val onPetCreated: () -> Unit
     }
 
     private fun playInteractionSound(action: Action) {
-        // Sleep uses the same short tap feedback as every other care action.
-        // Ambient sleep audio is intentionally separate and remains disabled
-        // from this tap-feedback path.
-        val tone = when (action) {
-            Action.FEED -> ToneGenerator.TONE_PROP_ACK
-            Action.PLAY -> ToneGenerator.TONE_PROP_BEEP2
-            Action.BATH -> ToneGenerator.TONE_PROP_PROMPT
-            Action.SLEEP -> ToneGenerator.TONE_PROP_ACK
-        }
-        feedbackTone?.release()
-        feedbackTone = runCatching { ToneGenerator(AudioManager.STREAM_MUSIC, 38) }.getOrNull()
-        feedbackTone?.startTone(tone, 90)
-        postDelayed({
-            feedbackTone?.release()
-            feedbackTone = null
-        }, 140L)
+        // Use Android's already-available click effect. Creating and
+        // releasing a ToneGenerator for every tap can block the main thread
+        // on slower phones and cause an ANR after repeated care actions.
+        playSoundEffect(android.view.SoundEffectConstants.CLICK)
     }
 
     private fun startSleepAmbient() {
@@ -768,8 +753,6 @@ private class PetGameView(context: Context, private val onPetCreated: () -> Unit
             }
         }
         interactionPlayer = null
-        feedbackTone?.release()
-        feedbackTone = null
     }
 
     override fun onDraw(canvas: Canvas) {
