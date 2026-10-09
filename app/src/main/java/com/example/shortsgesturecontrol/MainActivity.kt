@@ -24,10 +24,14 @@ import android.os.Looper
 import android.os.SystemClock
 import android.net.Uri
 import android.util.Log
+import android.view.Gravity
 import android.view.MotionEvent
 import android.view.View
 import android.text.InputType
 import android.widget.EditText
+import android.widget.LinearLayout
+import android.widget.ProgressBar
+import android.widget.TextView
 import android.widget.Toast
 import androidx.core.content.FileProvider
 import com.google.android.gms.auth.api.signin.GoogleSignIn
@@ -177,6 +181,9 @@ private class AppUpdateManager(private val context: Context) {
     private var checking = false
     private var showCheckResult = false
     private var updateDialog: AlertDialog? = null
+    private var downloadDialog: AlertDialog? = null
+    private var downloadProgress: ProgressBar? = null
+    private var downloadLabel: TextView? = null
 
     private fun updateFile(): File = File(
         context.getExternalFilesDir(Environment.DIRECTORY_DOWNLOADS),
@@ -232,13 +239,16 @@ private class AppUpdateManager(private val context: Context) {
         val sources = listOf(url, UpdateChecker.rawAssetUrl(versionCode)).distinct()
         val updateFile = updateFile()
         if (updateFile.exists()) updateFile.delete()
-        Toast.makeText(context, "Downloading update…", Toast.LENGTH_SHORT).show()
+        showDownloadProgress()
         Thread {
             var lastError: Exception? = null
             var downloaded = false
-            for (source in sources) {
+            for ((index, source) in sources.withIndex()) {
                 try {
-                    downloadToFile(source, updateFile)
+                    mainHandler.post { beginDownloadAttempt(index) }
+                    downloadToFile(source, updateFile) { bytes, total ->
+                        mainHandler.post { updateDownloadProgress(bytes, total) }
+                    }
                     downloaded = true
                     break
                 } catch (error: Exception) {
@@ -247,9 +257,13 @@ private class AppUpdateManager(private val context: Context) {
                 }
             }
             if (downloaded) {
-                mainHandler.post { install(updateFile) }
+                mainHandler.post {
+                    dismissDownloadProgress()
+                    install(updateFile)
+                }
             } else {
                 mainHandler.post {
+                    dismissDownloadProgress()
                     Toast.makeText(context, "Update download failed. Please try again.", Toast.LENGTH_LONG).show()
                 }
                 Log.w(TAG, "All update sources failed", lastError)
@@ -257,7 +271,66 @@ private class AppUpdateManager(private val context: Context) {
         }.start()
     }
 
-    private fun downloadToFile(source: String, destination: File) {
+    private fun showDownloadProgress() {
+        val activity = context as? Activity ?: return
+        if (activity.isFinishing || activity.isDestroyed) return
+        val label = TextView(activity).apply {
+            gravity = Gravity.CENTER
+            text = "Connecting…"
+            setPadding(0, 0, 0, dp(10f).toInt())
+        }
+        val progress = ProgressBar(activity, null, android.R.attr.progressBarStyleHorizontal).apply {
+            isIndeterminate = true
+            max = 100
+        }
+        val content = LinearLayout(activity).apply {
+            orientation = LinearLayout.VERTICAL
+            setPadding(dp(24f).toInt(), dp(4f).toInt(), dp(24f).toInt(), dp(8f).toInt())
+            addView(label, LinearLayout.LayoutParams(-1, -2))
+            addView(progress, LinearLayout.LayoutParams(-1, dp(8f).toInt()))
+        }
+        downloadLabel = label
+        downloadProgress = progress
+        downloadDialog = AlertDialog.Builder(activity)
+            .setTitle("Downloading update")
+            .setView(content)
+            .setCancelable(false)
+            .create()
+        downloadDialog?.show()
+    }
+
+    private fun beginDownloadAttempt(index: Int) {
+        downloadProgress?.isIndeterminate = true
+        downloadProgress?.progress = 0
+        downloadLabel?.text = if (index == 0) "Connecting…" else "Trying backup source…"
+    }
+
+    private fun updateDownloadProgress(bytes: Long, total: Long) {
+        val progress = downloadProgress ?: return
+        if (total > 0) {
+            progress.isIndeterminate = false
+            progress.progress = ((bytes * 100L) / total).coerceIn(0L, 100L).toInt()
+            downloadLabel?.text = "${progress.progress}%  •  ${formatBytes(bytes)} / ${formatBytes(total)}"
+        } else {
+            progress.isIndeterminate = true
+            downloadLabel?.text = "${formatBytes(bytes)} downloaded"
+        }
+    }
+
+    private fun dismissDownloadProgress() {
+        downloadDialog?.dismiss()
+        downloadDialog = null
+        downloadProgress = null
+        downloadLabel = null
+    }
+
+    private fun formatBytes(bytes: Long): String = String.format(
+        java.util.Locale.US, "%.1f MB", bytes.toDouble() / (1024.0 * 1024.0)
+    )
+
+    private fun dp(value: Float): Float = value * context.resources.displayMetrics.density
+
+    private fun downloadToFile(source: String, destination: File, onProgress: (Long, Long) -> Unit) {
         val freshSource = source + (if (source.contains("?")) "&" else "?") + "update_download=" + System.currentTimeMillis()
         val connection = (URL(freshSource).openConnection() as HttpURLConnection).apply {
             instanceFollowRedirects = true
@@ -272,13 +345,20 @@ private class AppUpdateManager(private val context: Context) {
         partial.delete()
         try {
             if (connection.responseCode !in 200..299) throw IOException("HTTP ${connection.responseCode}")
+            val total = connection.contentLengthLong
+            var downloaded = 0L
             connection.inputStream.use { input ->
                 FileOutputStream(partial).use { output ->
                     val buffer = ByteArray(64 * 1024)
                     var count: Int
-                    while (input.read(buffer).also { count = it } != -1) output.write(buffer, 0, count)
+                    while (input.read(buffer).also { count = it } != -1) {
+                        output.write(buffer, 0, count)
+                        downloaded += count
+                        onProgress(downloaded, total)
+                    }
                 }
             }
+            onProgress(downloaded, total)
             if (partial.length() < 1024L * 1024L || !partial.renameTo(destination)) {
                 throw IOException("Downloaded APK was incomplete")
             }
