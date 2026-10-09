@@ -1408,30 +1408,53 @@ private class PetGameView(context: Context, private val onPetCreated: () -> Unit
         paint.color = if (daylight < .2f) Color.rgb(55, 99, 82) else Color.rgb(136, 198, 151)
         canvas.drawPath(grassPatch, paint)
 
-        // Grass is rooted in the continuous patch. Keep every blade's base at
-        // a stable position and animate only the tips, so the scene never
-        // looks like a scrolling texture with blades disappearing off one
-        // edge.
-        paint.style = Paint.Style.STROKE
-        paint.strokeCap = Paint.Cap.ROUND
-        paint.strokeWidth = dp(1.25f)
-        val opacity = (78f + daylight * 78f).roundToInt()
-        val bladeCount = (scene.width() / dp(5f)).roundToInt().coerceIn(34, 100)
-        for (index in 0 until bladeCount) {
-            val normalizedX = if (bladeCount == 1) .5f else index.toFloat() / (bladeCount - 1f)
-            val baseX = scene.left + scene.width() * normalizedX
-            val baseY = scene.bottom - dp(3f + (index * 7 % 12))
-            val height = dp(5f + (index * 5 % 5) * 1.7f)
-            val wind = sin(now / (760f + (index % 4) * 85f) + index * .67f).toFloat()
-            val sway = wind * dp(2.3f)
-            paint.color = if (index % 3 == 0) {
-                Color.argb(opacity, 55, 126, 84)
-            } else {
-                Color.argb(opacity, 69, 143, 94)
+        // Use several tightly packed rows of tapered, pointed blades. Each
+        // blade stays rooted and only its tip moves, creating a thick patch
+        // instead of a few rounded line marks.
+        paint.style = Paint.Style.FILL
+        val bladePath = Path()
+        val baseCount = (scene.width() / dp(3.1f)).roundToInt().coerceIn(70, 150)
+        for (row in 0..2) {
+            val rowCount = baseCount + row * 3
+            val baseInset = dp(12f - row * 4f)
+            for (index in 0 until rowCount) {
+                val normalizedX = (index + .5f) / rowCount
+                val baseX = scene.left + scene.width() * normalizedX + dp((row - 1) * .8f)
+                val baseY = scene.bottom - baseInset - dp(((index * 3 + row) % 3).toFloat())
+                val height = dp(12f + row * 1.7f + (index * 5 % 5) * 1.45f)
+                val wind = sin(now / (760f + (index % 4) * 85f) + index * .67f + row * .9f).toFloat()
+                val sway = wind * dp(2.4f + row * .35f)
+                val halfWidth = dp(1.25f + row * .12f)
+                val tipX = baseX + sway
+                val tipY = baseY - height
+                paint.color = when {
+                    daylight < .2f -> Color.rgb(43 + row * 5, 83 + row * 8, 68 + row * 6)
+                    row == 0 -> Color.rgb(79, 155, 101)
+                    row == 1 -> Color.rgb(64, 143, 90)
+                    else -> Color.rgb(53, 130, 80)
+                }
+                bladePath.reset()
+                bladePath.moveTo(baseX - halfWidth, baseY)
+                bladePath.cubicTo(
+                    baseX - halfWidth * .7f,
+                    baseY - height * .38f,
+                    tipX - halfWidth * .24f,
+                    tipY + height * .20f,
+                    tipX,
+                    tipY
+                )
+                bladePath.cubicTo(
+                    tipX + halfWidth * .24f,
+                    tipY + height * .20f,
+                    baseX + halfWidth * .7f,
+                    baseY - height * .38f,
+                    baseX + halfWidth,
+                    baseY
+                )
+                bladePath.close()
+                canvas.drawPath(bladePath, paint)
             }
-            canvas.drawLine(baseX, baseY, baseX + sway, baseY - height, paint)
         }
-        paint.strokeCap = Paint.Cap.BUTT
         paint.style = Paint.Style.FILL
     }
 
@@ -1952,7 +1975,11 @@ private class PetGameView(context: Context, private val onPetCreated: () -> Unit
         textPaint.typeface = PaintTypeface.bold()
         textPaint.color = Color.rgb(105, 78, 116)
         val progressLabel = if (pet.hatched) "EVOLUTION" else "HATCHING"
-        val evolutionText = "$progressLabel ${pet.evolutionProgress.roundToInt()}% • ${pet.evolutionHint}"
+        // Do not display 100% while the readiness threshold is still just
+        // below complete; that made the hatch prompt appear to be missing.
+        val progress = pet.evolutionProgress
+        val progressPercent = if (progress >= 100f) 100 else progress.toInt()
+        val evolutionText = "$progressLabel $progressPercent% • ${pet.evolutionHint}"
         textPaint.textSize = min(dp(11f), dp(11f) * (width - dp(44f)) / textPaint.measureText(evolutionText))
         canvas.drawText(evolutionText, dp(22f), top + dp(61f), textPaint)
 

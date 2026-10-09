@@ -1,6 +1,14 @@
 # Zoey's Pocket Pet — cloud handover
 
-## Current release candidate: continuous grass bank — v73
+## Current release candidate: dense pointed grass and clear hatch readiness — v74
+
+The v74 candidate keeps the continuous grass bank from v73 but replaces the
+loose line marks with three tightly packed rows of tapered, pointed blades.
+They remain planted and only sway at their tips. The hatch progress label no
+longer rounds a nearly-complete egg up to 100% before the hatch prompt is
+actually ready. Pet, creature, sleep, and audio behavior are unchanged.
+
+## Previous release: continuous grass bank — v73
 
 The v73 candidate keeps v72's fixed, locally swaying grass motion but groups
 the ground detail into one continuous grass bank across the full lower strip.
