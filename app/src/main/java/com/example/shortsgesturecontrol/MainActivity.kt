@@ -18,7 +18,9 @@ import android.graphics.Path
 import android.graphics.RadialGradient
 import android.graphics.RectF
 import android.graphics.Shader
+import android.media.AudioManager
 import android.media.MediaPlayer
+import android.media.ToneGenerator
 import android.os.Bundle
 import android.os.Build
 import android.os.Environment
@@ -510,6 +512,8 @@ private class PetGameView(context: Context, private val onPetCreated: () -> Unit
     private var weatherStarted = false
     private var ambientPlayer: MediaPlayer? = null
     private var ambientMode: AmbientMode? = null
+    private var interactionPlayer: MediaPlayer? = null
+    private var feedbackTone: ToneGenerator? = null
     private val weatherHandler = Handler(Looper.getMainLooper())
     private val weatherRefresh = object : Runnable {
         override fun run() {
@@ -669,12 +673,16 @@ private class PetGameView(context: Context, private val onPetCreated: () -> Unit
         super.onWindowVisibilityChanged(visibility)
         // Background time belongs to progress simulation, not missed walk poses.
         motionLastAt = SystemClock.uptimeMillis()
-        if (visibility != View.VISIBLE) stopAmbientSound()
+        if (visibility != View.VISIBLE) {
+            stopAmbientSound()
+            stopInteractionSound()
+        }
         else invalidate()
     }
 
     override fun onDetachedFromWindow() {
         stopAmbientSound()
+        stopInteractionSound()
         weatherHandler.removeCallbacks(weatherRefresh)
         super.onDetachedFromWindow()
     }
@@ -713,6 +721,48 @@ private class PetGameView(context: Context, private val onPetCreated: () -> Unit
         }
         ambientPlayer = null
         ambientMode = null
+    }
+
+    private fun playInteractionSound(action: Action) {
+        if (action == Action.SLEEP) {
+            interactionPlayer?.release()
+            interactionPlayer = runCatching {
+                MediaPlayer.create(appContext, R.raw.sleep_snore)?.apply {
+                    setVolume(.42f, .42f)
+                    setOnCompletionListener { player ->
+                        player.release()
+                        if (interactionPlayer === player) interactionPlayer = null
+                    }
+                    start()
+                }
+            }.getOrNull()
+            return
+        }
+        val tone = when (action) {
+            Action.FEED -> ToneGenerator.TONE_PROP_ACK
+            Action.PLAY -> ToneGenerator.TONE_PROP_BEEP2
+            Action.BATH -> ToneGenerator.TONE_PROP_PROMPT
+            Action.SLEEP -> ToneGenerator.TONE_PROP_ACK
+        }
+        feedbackTone?.release()
+        feedbackTone = runCatching { ToneGenerator(AudioManager.STREAM_MUSIC, 38) }.getOrNull()
+        feedbackTone?.startTone(tone, 90)
+        postDelayed({
+            feedbackTone?.release()
+            feedbackTone = null
+        }, 140L)
+    }
+
+    private fun stopInteractionSound() {
+        interactionPlayer?.let { player ->
+            runCatching {
+                if (player.isPlaying) player.stop()
+                player.release()
+            }
+        }
+        interactionPlayer = null
+        feedbackTone?.release()
+        feedbackTone = null
     }
 
     override fun onDraw(canvas: Canvas) {
@@ -938,11 +988,12 @@ private class PetGameView(context: Context, private val onPetCreated: () -> Unit
         canvas.save()
         val actionWave = sin(reactionProgress * Math.PI.toFloat())
         val touchWave = sin(touchProgress * Math.PI.toFloat())
+        val sleepEase = ((1f - cos(reactionProgress * Math.PI.toFloat())) * .5f)
         val actionLift = when (reactionAction) {
             Action.FEED -> -abs(sin(reactionProgress * Math.PI.toFloat() * 2f)) * 7f
             Action.PLAY -> -abs(sin(reactionProgress * Math.PI.toFloat() * 3f)) * 12f
             Action.BATH -> -abs(sin(reactionProgress * Math.PI.toFloat() * 2f)) * 5f
-            Action.SLEEP -> -actionWave * 2f
+            Action.SLEEP -> -actionWave * 1.5f
             null -> 0f
         }
         val touchLift = -abs(touchWave) * 8f
@@ -950,7 +1001,7 @@ private class PetGameView(context: Context, private val onPetCreated: () -> Unit
             Action.FEED -> sin(reactionProgress * Math.PI.toFloat() * 4f) * 4f
             Action.PLAY -> sin(reactionProgress * Math.PI.toFloat() * 6f) * 7f
             Action.BATH -> sin(reactionProgress * Math.PI.toFloat() * 8f) * 3f
-            Action.SLEEP -> sin(reactionProgress * Math.PI.toFloat() * 2f) * 1.5f
+            Action.SLEEP -> -sleepEase * 32f
             null -> 0f
         }
         val touchTilt = sin(touchProgress * Math.PI.toFloat() * 5f) * 4f
@@ -1308,15 +1359,19 @@ private class PetGameView(context: Context, private val onPetCreated: () -> Unit
         val reactionProgress = interactionProgress(now)
         val touchProgress = touchProgress(now)
         val reactionWave = sin(reactionProgress * Math.PI.toFloat())
+        val sleepEase = if (activeAction == Action.SLEEP) {
+            (1f - cos(reactionProgress * Math.PI.toFloat())) * .5f
+        } else 0f
         val reactionBob = when (activeAction) {
             Action.FEED -> -abs(sin(reactionProgress * Math.PI.toFloat() * 2f)) * dp(3f)
             Action.PLAY -> -abs(sin(reactionProgress * Math.PI.toFloat() * 3f)) * dp(9f)
-            Action.SLEEP -> -reactionWave * dp(1.5f)
+            Action.SLEEP -> dp(7f) * sleepEase - reactionWave * dp(1.5f)
             else -> 0f
         }
         val reactionShiftX = if (activeAction == Action.BATH) sin(reactionProgress * Math.PI.toFloat() * 8f) * dp(2f) else 0f
         val touchShiftX = sin(touchProgress * Math.PI.toFloat() * 5f) * dp(2f)
         val reactionScale = if (activeAction == Action.PLAY) 1f + reactionWave * .025f else 1f + sin(touchProgress * Math.PI.toFloat()) * .012f
+        val reactionScaleY = reactionScale * (1f - sleepEase * .035f)
         val touchBob = -abs(sin(touchProgress * Math.PI.toFloat())) * dp(4f)
         val rootY = groundY + idleBob + reactionBob + touchBob
 
@@ -1341,15 +1396,45 @@ private class PetGameView(context: Context, private val onPetCreated: () -> Unit
         val artRect = RectF(centerX - artWidth / 2f, artTop, centerX + artWidth / 2f, artBottom)
         canvas.save()
         canvas.translate(reactionShiftX + touchShiftX, 0f)
-        if (reactionScale != 1f) canvas.scale(reactionScale, reactionScale, centerX, rootY)
+        if (reactionScale != 1f || reactionScaleY != 1f) canvas.scale(reactionScale, reactionScaleY, centerX, rootY)
+        if (sleepEase > 0f) canvas.rotate(-9f * sleepEase, centerX, rootY)
         // The artwork faces left by default.  Mirror it only while travelling
         // right; the old condition reversed that relationship.
         if (motionDirection > 0f) canvas.scale(-1f, 1f, centerX, rootY)
         canvas.drawBitmap(bitmap, null, artRect, paint)
+        if (activeAction == Action.SLEEP) drawSleepEyes(canvas, artRect)
         canvas.restore()
         paint.colorFilter = null
 
         drawPetName(canvas, centerX, groundY)
+    }
+
+    private fun drawSleepEyes(canvas: Canvas, artRect: RectF) {
+        val eyePosition = when (pet.kind) {
+            PetKind.CAT -> .29f to .49f
+            PetKind.DOG -> .35f to .46f
+            PetKind.BUNNY -> .35f to .52f
+            PetKind.HAMSTER -> .35f to .48f
+            PetKind.DRAGON -> .285f to .51f
+        }
+        val eyeX = artRect.left + artRect.width() * eyePosition.first
+        val eyeY = artRect.top + artRect.height() * eyePosition.second
+        val eyeWidth = artRect.width() * .105f
+        val eyeHeight = eyeWidth * .62f
+        paint.colorFilter = null
+        paint.style = Paint.Style.STROKE
+        paint.strokeWidth = dp(2.2f)
+        paint.strokeCap = Paint.Cap.ROUND
+        paint.color = Color.rgb(73, 48, 74)
+        canvas.drawArc(
+            RectF(eyeX - eyeWidth / 2f, eyeY - eyeHeight / 2f, eyeX + eyeWidth / 2f, eyeY + eyeHeight / 2f),
+            200f,
+            140f,
+            false,
+            paint
+        )
+        paint.strokeCap = Paint.Cap.BUTT
+        paint.style = Paint.Style.FILL
     }
 
     private fun drawPetName(canvas: Canvas, centerX: Float, groundY: Float) {
@@ -1395,6 +1480,7 @@ private class PetGameView(context: Context, private val onPetCreated: () -> Unit
         message = if (pet.hatched) "That tickles!" else "A gentle touch makes the egg wobble."
         messageColor = if (pet.hatched) pet.kind.dark else Color.rgb(66, 92, 126)
         messageUntil = now + 2200L
+        playInteractionSound(Action.PLAY)
         invalidate()
     }
 
@@ -1478,9 +1564,14 @@ private class PetGameView(context: Context, private val onPetCreated: () -> Unit
                 drawReactionLabel(canvas, if (egg) "NEST TIDY!" else "SPARKLY!", cx, cy - dp(142f), labelColor)
             }
             Action.SLEEP -> {
-                textPaint.textSize = dp(22f)
+                val rise = progress * dp(42f)
                 textPaint.color = Color.rgb(239, 237, 255)
-                canvas.drawText("Z  Z", cx + dp(70f), cy - dp(90f) - seconds * dp(5f), textPaint)
+                textPaint.textSize = dp(23f)
+                canvas.drawText("Z", cx + dp(56f), cy - dp(76f) - rise, textPaint)
+                textPaint.textSize = dp(17f)
+                canvas.drawText("Z", cx + dp(78f), cy - dp(105f) - rise * .55f, textPaint)
+                textPaint.textSize = dp(13f)
+                canvas.drawText("z", cx + dp(95f), cy - dp(127f) - rise * .25f, textPaint)
                 drawReactionLabel(canvas, if (egg) "SAFE & SLEEPY" else "SWEET DREAMS", cx, cy - dp(132f), labelColor)
             }
         }
@@ -1928,12 +2019,13 @@ private class PetGameView(context: Context, private val onPetCreated: () -> Unit
         if (pet.dead) { savePet(); invalidate(); return }
         activeAction = action
         actionStartedAt = SystemClock.uptimeMillis()
-        actionUntil = actionStartedAt + 1600L
+        actionUntil = actionStartedAt + if (action == Action.SLEEP) 5200L else 1600L
         touchReactionStartedAt = 0L
         touchReactionUntil = 0L
         message = result.first
         messageColor = result.second
         messageUntil = SystemClock.uptimeMillis() + 3500L
+        playInteractionSound(action)
         savePet()
     }
 

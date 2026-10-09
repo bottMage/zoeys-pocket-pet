@@ -13,3 +13,5 @@ the prepared clips as stereo 44.1 kHz WAV files for Android playback.
   by greysound, [CC0 1.0](https://creativecommons.org/publicdomain/zero/1.0/).
   A 30-second section containing the pond frogs and crickets is used and
   looped with short fades.
+- **Sleep snore:** [single_cat_snore.wav](https://github.com/NewDEV-github/Foxy-Adventure/blob/ac1218debf92a6276f2ece61669edc2fa5f83250/assets/sounds/single_cat_snore.wav)
+  from NewDEV-github's Foxy-Adventure project, used under its [MIT License](https://github.com/NewDEV-github/Foxy-Adventure/blob/ac1218debf92a6276f2ece61669edc2fa5f83250/LICENSE).
