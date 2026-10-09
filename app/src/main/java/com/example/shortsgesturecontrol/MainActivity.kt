@@ -445,14 +445,17 @@ private class PetGameView(context: Context, private val onPetCreated: () -> Unit
         PetKind.DRAGON to R.drawable.companion_dragon
     )
     private val buttons = ArrayList<ActionButton>()
-    private var message = "Hi Zoey! I'm so happy to see you!"
+    private var message = "Hi ${pet.playerName}! I'm so happy to see you!"
     private var messageUntil = 0L
     private var messageColor = Color.WHITE
     private var animationStart = SystemClock.uptimeMillis()
     private var lastSaved = animationStart
     private var pressedAction: Action? = null
     private var activeAction: Action? = null
+    private var actionStartedAt = 0L
     private var actionUntil = 0L
+    private var petCenterX = 0f
+    private var petGroundY = 0f
     private var motionX = .5f
     private var motionDirection = 1f
     private var motionMode = MotionMode.REST
@@ -462,6 +465,7 @@ private class PetGameView(context: Context, private val onPetCreated: () -> Unit
     private var setupMode = !pet.created
     private var setupKind = pet.kind
     private var setupName = pet.name
+    private var setupPlayerName = pet.playerName
     // A clean install can show the setup screen before Google sign-in finishes.
     // Keep the cloud copy authoritative for that first restore so a new pet
     // cannot overwrite the existing account backup.
@@ -541,6 +545,7 @@ private class PetGameView(context: Context, private val onPetCreated: () -> Unit
             message = "${pet.name} has hatched! Hello, little one!"
             messageUntil = now + 6000L
             activeAction = Action.PLAY
+            actionStartedAt = now
             actionUntil = now + 1600L
             savePet()
         }
@@ -550,6 +555,7 @@ private class PetGameView(context: Context, private val onPetCreated: () -> Unit
         }
         if (!setupMode && !pet.dead && pet.consumeEvolutionEvent()) {
             activeAction = Action.PLAY
+            actionStartedAt = now
             actionUntil = now + 2400L
             message = "Amazing! ${pet.name} evolved!"
             messageColor = Color.rgb(130, 82, 185)
@@ -652,23 +658,33 @@ private class PetGameView(context: Context, private val onPetCreated: () -> Unit
         textPaint.textSize = dp(13f)
         textPaint.typeface = PaintTypeface.rounded()
         textPaint.color = Color.argb(225, 255, 255, 255)
-        canvas.drawText("Choose your egg and give it a name", width / 2f, dp(66f), textPaint)
+        canvas.drawText("Choose your name, egg, and pet", width / 2f, dp(66f), textPaint)
 
         val cx = width / 2f
         drawEgg(canvas, cx, dp(275f), setupKind, (now - animationStart) / 1000.0, 0.0, dp(1f))
 
-        val nameRect = RectF(dp(28f), dp(305f), width - dp(28f), dp(357f))
+        val nameRect = RectF(dp(28f), dp(305f), width - dp(28f), dp(383f))
         paint.color = Color.argb(70, 54, 30, 92)
         canvas.drawRoundRect(nameRect, dp(18f), dp(18f), paint)
+        paint.color = Color.argb(75, 255, 255, 255)
+        canvas.drawRect(nameRect.left + dp(16f), dp(343f), nameRect.right - dp(16f), dp(344f), paint)
         textPaint.textAlign = Paint.Align.LEFT
         textPaint.typeface = PaintTypeface.rounded()
-        textPaint.textSize = dp(11f)
+        textPaint.textSize = dp(10f)
         textPaint.color = Color.argb(210, 255, 255, 255)
-        canvas.drawText("PET NAME  •  TAP TO EDIT", nameRect.left + dp(18f), nameRect.top + dp(18f), textPaint)
-        textPaint.textSize = dp(19f)
+        canvas.drawText("YOUR NAME  •  TAP TO EDIT", nameRect.left + dp(18f), nameRect.top + dp(16f), textPaint)
+        textPaint.textSize = dp(16f)
         textPaint.typeface = PaintTypeface.bold()
         textPaint.color = Color.WHITE
-        canvas.drawText(setupName, nameRect.left + dp(18f), nameRect.top + dp(41f), textPaint)
+        canvas.drawText(setupPlayerName, nameRect.left + dp(18f), nameRect.top + dp(33f), textPaint)
+        textPaint.textSize = dp(10f)
+        textPaint.typeface = PaintTypeface.rounded()
+        textPaint.color = Color.argb(210, 255, 255, 255)
+        canvas.drawText("PET NAME  •  TAP TO EDIT", nameRect.left + dp(18f), dp(360f), textPaint)
+        textPaint.textSize = dp(16f)
+        textPaint.typeface = PaintTypeface.bold()
+        textPaint.color = Color.WHITE
+        canvas.drawText(setupName, nameRect.left + dp(18f), dp(377f), textPaint)
 
         textPaint.textAlign = Paint.Align.CENTER
         textPaint.textSize = dp(13f)
@@ -840,6 +856,8 @@ private class PetGameView(context: Context, private val onPetCreated: () -> Unit
             drawEgg(canvas, width / 2f, ground, pet.kind, (now - animationStart) / 1000.0, pet.hatchProgress.toDouble(), eggScale)
             motionLastAt = now
             motionX = .5f
+            petCenterX = width / 2f
+            petGroundY = ground
             drawPetName(canvas, width / 2f, ground + dp(12f))
             return
         }
@@ -879,7 +897,6 @@ private class PetGameView(context: Context, private val onPetCreated: () -> Unit
 
         val requestedWidth = min(width - dp(42f), dp(296f))
         val groundY = bottom - dp(42f)
-        val seconds = (now - animationStart) / 1000f
         val walking = motionMode == MotionMode.WALK && activeAction == null
         val frameCount = PetSpriteLayout.frameCount(pet.kind.name.lowercase())
         val frame = if (walking || activeAction == Action.PLAY) (((now - animationStart) / WALK_FRAME_DURATION_MS) % frameCount).toInt() else 0
@@ -897,13 +914,26 @@ private class PetGameView(context: Context, private val onPetCreated: () -> Unit
         val leftCenter = sceneLeft + dp(6f) + reach
         val rightCenter = sceneRight - dp(6f) - reach
         val centerX = (leftCenter + motionX * (rightCenter - leftCenter)).toFloat()
+        petCenterX = centerX
+        petGroundY = groundY
         val bitmap = walkFrameArtwork(pet.kind, frame)
         val artScale = artWidth / bitmap.width
         // Keep the feet planted while resting.  A whole-body vertical bob reads
         // as hovering, especially against the simple ground in this scene.
         val idleBob = 0f
-        val playBounce = if (activeAction == Action.PLAY) -abs(sin(seconds * 12f)) * dp(9f) else 0f
-        val rootY = groundY + idleBob + playBounce
+        val reactionProgress = if (activeAction != null && actionUntil > actionStartedAt) {
+            ((now - actionStartedAt).toFloat() / (actionUntil - actionStartedAt).toFloat()).coerceIn(0f, 1f)
+        } else 0f
+        val reactionWave = sin(reactionProgress * Math.PI.toFloat())
+        val reactionBob = when (activeAction) {
+            Action.FEED -> -abs(sin(reactionProgress * Math.PI.toFloat() * 2f)) * dp(3f)
+            Action.PLAY -> -abs(sin(reactionProgress * Math.PI.toFloat() * 3f)) * dp(9f)
+            Action.SLEEP -> -reactionWave * dp(1.5f)
+            else -> 0f
+        }
+        val reactionShiftX = if (activeAction == Action.BATH) sin(reactionProgress * Math.PI.toFloat() * 8f) * dp(2f) else 0f
+        val reactionScale = if (activeAction == Action.PLAY) 1f + reactionWave * .025f else 1f
+        val rootY = groundY + idleBob + reactionBob
 
         // A tight, dark contact shadow anchors every paw to the grass.
         paint.color = Color.argb(58, 67, 57, 82)
@@ -925,6 +955,8 @@ private class PetGameView(context: Context, private val onPetCreated: () -> Unit
         val artBottom = artTop + bitmap.height * artScale
         val artRect = RectF(centerX - artWidth / 2f, artTop, centerX + artWidth / 2f, artBottom)
         canvas.save()
+        canvas.translate(reactionShiftX, 0f)
+        if (reactionScale != 1f) canvas.scale(reactionScale, reactionScale, centerX, rootY)
         // The artwork faces left by default.  Mirror it only while travelling
         // right; the old condition reversed that relationship.
         if (motionDirection > 0f) canvas.scale(-1f, 1f, centerX, rootY)
@@ -988,9 +1020,12 @@ private class PetGameView(context: Context, private val onPetCreated: () -> Unit
             activeAction = null
             return
         }
-        val seconds = (now - (actionUntil - 1600L)) / 1000f
-        val cx = dp(32f) + motionX * (width - dp(64f))
-        val cy = (dp(77f) + statsTop()) * .54f
+        val progress = if (actionUntil > actionStartedAt) {
+            ((now - actionStartedAt).toFloat() / (actionUntil - actionStartedAt).toFloat()).coerceIn(0f, 1f)
+        } else 0f
+        val seconds = progress * 1.6f
+        val cx = petCenterX
+        val cy = petGroundY - dp(8f)
         textPaint.textAlign = Paint.Align.CENTER
         textPaint.typeface = PaintTypeface.bold()
         when (action) {
@@ -1219,7 +1254,7 @@ private class PetGameView(context: Context, private val onPetCreated: () -> Unit
             .setTitle("Settings")
             .setMessage(if (cloudSave.isSignedIn()) "Google backup is connected." else "Google backup is not connected yet.")
             .setNegativeButton("CLOSE", null)
-            .setNeutralButton("MEMORIES") { _, _ -> showMemories() }
+            .setNeutralButton("CHANGE NAME") { _, _ -> editPlayerName() }
             .setPositiveButton("RESET DATA") { _, _ -> showResetChoices() }
             .show()
     }
@@ -1261,6 +1296,7 @@ private class PetGameView(context: Context, private val onPetCreated: () -> Unit
         setupMode = true
         setupKind = pet.kind
         setupName = pet.name
+        setupPlayerName = pet.playerName
         pressedAction = null
         activeAction = null
         if (showToast) Toast.makeText(appContext, "Local pet data reset. Cloud backup was kept.", Toast.LENGTH_LONG).show()
@@ -1341,9 +1377,12 @@ private class PetGameView(context: Context, private val onPetCreated: () -> Unit
 
     private fun handleSetupTouch(event: MotionEvent): Boolean {
         if (event.actionMasked != MotionEvent.ACTION_UP) return true
-        val nameRect = RectF(dp(28f), dp(305f), width - dp(28f), dp(357f))
-        if (nameRect.contains(event.x, event.y)) {
-            editName()
+        if (setupPlayerNameRect().contains(event.x, event.y)) {
+            editPlayerName()
+            return true
+        }
+        if (setupPetNameRect().contains(event.x, event.y)) {
+            editPetName()
             return true
         }
         val gap = dp(9f)
@@ -1361,7 +1400,7 @@ private class PetGameView(context: Context, private val onPetCreated: () -> Unit
         }
         val hatch = RectF(dp(34f), height - dp(86f), width - dp(34f), height - dp(25f))
         if (hatch.contains(event.x, event.y)) {
-            pet.createEgg(setupName, setupKind)
+            pet.createEgg(setupName, setupKind, setupPlayerName)
             setupMode = false
             message = "${pet.name}'s egg is settling in!"
             messageUntil = SystemClock.uptimeMillis() + 5000L
@@ -1374,6 +1413,10 @@ private class PetGameView(context: Context, private val onPetCreated: () -> Unit
 
     private fun newPetRect(): RectF = RectF(width - dp(94f), statsTop() + dp(14f), width - dp(18f), statsTop() + dp(46f))
 
+    private fun setupPlayerNameRect(): RectF = RectF(dp(28f), dp(305f), width - dp(28f), dp(343f))
+
+    private fun setupPetNameRect(): RectF = RectF(dp(28f), dp(344f), width - dp(28f), dp(383f))
+
     private fun menuButtonRect(): RectF = RectF(dp(12f), dp(18f), dp(54f), dp(57f))
 
     private fun menuSettingsRect(): RectF = RectF(dp(24f), dp(112f), dp(258f), dp(164f))
@@ -1382,7 +1425,30 @@ private class PetGameView(context: Context, private val onPetCreated: () -> Unit
 
     private fun headerUpdateRect(): RectF = RectF(width - dp(214f), dp(21f), width - dp(121f), dp(54f))
 
-    private fun editName() {
+    private fun editPlayerName() {
+        val input = EditText(appContext).apply {
+            setText(pet.playerName)
+            setSelection(text.length)
+            inputType = InputType.TYPE_CLASS_TEXT or InputType.TYPE_TEXT_FLAG_CAP_SENTENCES
+            hint = "Your name"
+        }
+        AlertDialog.Builder(appContext)
+            .setTitle("What should I call you?")
+            .setView(input)
+            .setNegativeButton("CANCEL", null)
+            .setPositiveButton("SAVE") { _, _ ->
+                val newName = input.text.toString().trim().take(20).ifBlank { "Zoey" }
+                pet.playerName = newName
+                setupPlayerName = newName
+                message = "Hi $newName! I'm so happy to see you!"
+                messageUntil = 0L
+                savePet()
+                invalidate()
+            }
+            .show()
+    }
+
+    private fun editPetName() {
         val input = EditText(appContext).apply {
             setText(setupName)
             setSelection(text.length)
@@ -1409,6 +1475,7 @@ private class PetGameView(context: Context, private val onPetCreated: () -> Unit
                 // Keep the current pet/save until a replacement egg is chosen.
                 setupKind = PetKind.BUNNY
                 setupName = "Mochi"
+                setupPlayerName = pet.playerName
                 setupMode = true
                 invalidate()
             }
@@ -1420,7 +1487,8 @@ private class PetGameView(context: Context, private val onPetCreated: () -> Unit
         val result = pet.apply(action)
         if (pet.dead) { savePet(); invalidate(); return }
         activeAction = action
-        actionUntil = SystemClock.uptimeMillis() + 1600L
+        actionStartedAt = SystemClock.uptimeMillis()
+        actionUntil = actionStartedAt + 1600L
         message = result.first
         messageColor = result.second
         messageUntil = SystemClock.uptimeMillis() + 3500L
@@ -1467,6 +1535,7 @@ private class PetGameView(context: Context, private val onPetCreated: () -> Unit
                 setupMode = false
                 setupKind = pet.kind
                 setupName = pet.name
+                setupPlayerName = pet.playerName
                 // The cloud snapshot may have been saved before the phone
                 // went offline. Apply elapsed time after restoring it, then
                 // save that caught-up state back to both stores.
@@ -1656,6 +1725,7 @@ private class PetGameView(context: Context, private val onPetCreated: () -> Unit
         val dead: Boolean get() = life.dead
         val needsCritical: Boolean get() = life.needsCritical()
         var name = prefs.getString("name", "Mochi") ?: "Mochi"
+        var playerName = prefs.getString("player_name", "Zoey") ?: "Zoey"
         var kind = prefs.getString("kind", PetKind.BUNNY.name)?.let { value ->
             PetKind.values().firstOrNull { it.name == value }
         } ?: PetKind.BUNNY
@@ -1713,9 +1783,11 @@ private class PetGameView(context: Context, private val onPetCreated: () -> Unit
             }
         }
 
-        fun createEgg(newName: String, newKind: PetKind) {
+        fun createEgg(newName: String, newKind: PetKind, newPlayerName: String = playerName) {
             if (created) archiveCurrent(if (dead) "old_age" else "retired")
-            name = newName.ifBlank { "Mochi" };kind = newKind
+            name = newName.ifBlank { "Mochi" }
+            playerName = newPlayerName.trim().take(20).ifBlank { "Zoey" }
+            kind = newKind
             life.createEgg()
             growth = 0f
             petId = java.util.UUID.randomUUID().toString()
@@ -1727,7 +1799,7 @@ private class PetGameView(context: Context, private val onPetCreated: () -> Unit
             prefs.edit().clear().apply()
             life.createEgg();life.created = false
             life.needs[0] = 78f;life.needs[1] = 82f;life.needs[2] = 74f;life.needs[3] = 88f
-            name = "Mochi";kind = PetKind.BUNNY;growth = 0f
+            name = "Mochi";playerName = "Zoey";kind = PetKind.BUNNY;growth = 0f
             historyJson = "[]";petId = java.util.UUID.randomUUID().toString()
             lastUpdate = System.currentTimeMillis();createdAt = lastUpdate;lastSavedAt = 0L
         }
@@ -1787,7 +1859,7 @@ private class PetGameView(context: Context, private val onPetCreated: () -> Unit
             "hunger" to hunger.toDouble(), "joy" to joy.toDouble(), "energy" to energy.toDouble(), "clean" to clean.toDouble(),
             "growth" to growth.toDouble(), "generation" to generation.toLong(), "ageMillis" to life.ageMillis,
             "goodCareMillis" to life.goodCareMillis, "totalCareMillis" to life.totalCareMillis,
-            "name" to name, "kind" to kind.name, "created" to created, "hatched" to hatched,
+            "name" to name, "playerName" to playerName, "kind" to kind.name, "created" to created, "hatched" to hatched,
             "lastUpdate" to lastUpdate, "savedAt" to lastSavedAt,
             "eggAgeMillis" to life.eggAgeMillis, "eggProgressMillis" to life.eggProgressMillis.toLong(),
             "evolutionMillis" to life.evolutionMillis.toLong(), "adultAgeMillis" to life.adultAgeMillis,
@@ -1810,6 +1882,7 @@ private class PetGameView(context: Context, private val onPetCreated: () -> Unit
             life.goodCareMillis = long("goodCareMillis", life.goodCareMillis).coerceAtLeast(0)
             life.totalCareMillis = long("totalCareMillis", life.totalCareMillis).coerceAtLeast(life.goodCareMillis)
             name = (data["name"] as? String)?.take(14)?.ifBlank { name } ?: name
+            playerName = (data["playerName"] as? String)?.take(20)?.ifBlank { playerName } ?: playerName
             (data["kind"] as? String)?.let { value -> kind = PetKind.values().firstOrNull { it.name == value } ?: kind }
             life.created = data["created"] as? Boolean ?: created
             life.hatched = data["hatched"] as? Boolean ?: hatched
@@ -1837,7 +1910,7 @@ private class PetGameView(context: Context, private val onPetCreated: () -> Unit
                 .putFloat("hunger", hunger).putFloat("joy", joy).putFloat("energy", energy).putFloat("clean", clean)
                 .putFloat("growth", growth).putInt("generation", generation)
                 .putLong("age_millis", life.ageMillis).putLong("good_care_millis", life.goodCareMillis).putLong("total_care_millis", life.totalCareMillis)
-                .putString("name", name).putString("kind", kind.name).putBoolean("created", created).putBoolean("hatched", hatched)
+                .putString("name", name).putString("player_name", playerName).putString("kind", kind.name).putBoolean("created", created).putBoolean("hatched", hatched)
                 .putLong("last_update", lastUpdate).putLong("saved_at", lastSavedAt)
                 .putLong("egg_age_millis", life.eggAgeMillis).putLong("egg_progress_millis", life.eggProgressMillis.toLong())
                 .putLong("evolution_millis", life.evolutionMillis.toLong()).putLong("adult_age_millis", life.adultAgeMillis)
