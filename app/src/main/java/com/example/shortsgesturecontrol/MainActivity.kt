@@ -1732,22 +1732,22 @@ private class PetGameView(context: Context, private val onPetCreated: () -> Unit
 
     private fun drawSleepEyes(canvas: Canvas, artRect: RectF) {
         val eyePosition = when (pet.kind) {
-            PetKind.CAT -> .29f to .49f
-            PetKind.DOG -> .32f to .46f
-            PetKind.BUNNY -> .34f to .46f
-            PetKind.HAMSTER -> .32f to .45f
-            PetKind.DRAGON -> .245f to .51f
+            PetKind.CAT -> .285f to .49f
+            PetKind.DOG -> .31f to .455f
+            PetKind.BUNNY -> .34f to .455f
+            PetKind.HAMSTER -> .31f to .445f
+            PetKind.DRAGON -> .24f to .505f
         }
         val eyeX = artRect.left + artRect.width() * eyePosition.first
         val eyeY = artRect.top + artRect.height() * eyePosition.second
         val eyeWidth = artRect.width() * when (pet.kind) {
-            PetKind.DRAGON -> .145f
-            PetKind.CAT -> .135f
-            else -> .13f
+            PetKind.DRAGON -> .19f
+            PetKind.CAT -> .17f
+            else -> .16f
         }
         val eyeHeight = artRect.height() * when (pet.kind) {
-            PetKind.DRAGON -> .145f
-            else -> .13f
+            PetKind.DRAGON -> .19f
+            else -> .17f
         }
         paint.colorFilter = null
         // First cover the open eye with a small face-coloured almond. A line
@@ -1773,20 +1773,21 @@ private class PetGameView(context: Context, private val onPetCreated: () -> Unit
         paint.color = faceColor
         canvas.drawPath(cover, paint)
 
-        // Add a single relaxed, downward-curved eyelid over the cover.
+        // Add a single relaxed, downward-curved eyelid inside the full cover.
         paint.style = Paint.Style.STROKE
-        paint.strokeWidth = dp(2.4f)
+        paint.strokeWidth = dp(2.8f)
         paint.strokeCap = Paint.Cap.ROUND
         paint.color = Color.rgb(73, 48, 74)
         val lid = Path().apply {
-            moveTo(left + eyeWidth * .05f, eyeY)
+            val lidY = eyeY + eyeHeight * .03f
+            moveTo(left + eyeWidth * .13f, lidY)
             cubicTo(
-                eyeX - eyeWidth * .24f,
+                eyeX - eyeWidth * .25f,
                 eyeY + eyeHeight * .42f,
-                eyeX + eyeWidth * .24f,
+                eyeX + eyeWidth * .25f,
                 eyeY + eyeHeight * .42f,
-                right - eyeWidth * .05f,
-                eyeY
+                right - eyeWidth * .13f,
+                lidY
             )
         }
         canvas.drawPath(lid, paint)

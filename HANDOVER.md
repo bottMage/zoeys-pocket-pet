@@ -1,6 +1,14 @@
 # Zoey's Pocket Pet — cloud handover
 
-## Current release candidate: directional sleeping tilt — v77
+## Current release candidate: full closed-eye sleep mask — v78
+
+The v78 candidate keeps v77's direction-aware sleeping tilt. It enlarges and
+re-centres the per-pet sleep mask so it fully covers the original eye, iris,
+and eye border before drawing the curved closed lid inside it. This removes
+the half-open-eye and misplaced-eyelid appearance. Hatching, walking, grass,
+audio, and other interactions are unchanged.
+
+## Previous release: directional sleeping tilt — v77
 
 The v77 candidate keeps v76's per-pet closed-eye overlays and lower compressed
 sleep pose. It corrects the remaining sleep posture issue by tilting the head
