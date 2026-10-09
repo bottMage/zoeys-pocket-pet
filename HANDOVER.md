@@ -1,6 +1,15 @@
 # Zoey's Pocket Pet — cloud handover
 
-## Current release candidate: lifecycle consent and mapped care controls — v63
+## Current release candidate: one-minute sleep and separated audio feedback — v64
+
+The v64 candidate keeps the v63 lifecycle consent, mapped care controls,
+whole-pet renderer, ambient audio and updater. The SLEEP/REST button now uses
+the same short tap acknowledgment as the other care buttons; the previous
+snore is no longer played as button feedback. Sleep settles into its pose in
+about 1.2 seconds and remains active for 60 seconds. Replacement cartoon-snore
+previews are being reviewed separately and are not yet included in the app.
+
+## Previous release: lifecycle consent and mapped care controls — v63
 
 The v63 candidate keeps the v62 whole-pet renderer, ambient audio and updater.
 Care controls now match the stat grid: FEED/WARM is top-left, PLAY/SOOTHE is

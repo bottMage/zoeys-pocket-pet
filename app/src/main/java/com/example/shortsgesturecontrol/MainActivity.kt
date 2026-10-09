@@ -731,20 +731,9 @@ private class PetGameView(context: Context, private val onPetCreated: () -> Unit
     }
 
     private fun playInteractionSound(action: Action) {
-        if (action == Action.SLEEP) {
-            interactionPlayer?.release()
-            interactionPlayer = runCatching {
-                MediaPlayer.create(appContext, R.raw.sleep_snore)?.apply {
-                    setVolume(.42f, .42f)
-                    setOnCompletionListener { player ->
-                        player.release()
-                        if (interactionPlayer === player) interactionPlayer = null
-                    }
-                    start()
-                }
-            }.getOrNull()
-            return
-        }
+        // Sleep uses the same short tap feedback as every other care action.
+        // Ambient sleep audio is intentionally separate and remains disabled
+        // until a replacement snore is approved.
         val tone = when (action) {
             Action.FEED -> ToneGenerator.TONE_PROP_ACK
             Action.PLAY -> ToneGenerator.TONE_PROP_BEEP2
@@ -1447,7 +1436,7 @@ private class PetGameView(context: Context, private val onPetCreated: () -> Unit
         if (!pet.hatched) {
             val ground = statsTop() - dp(64f)
             val eggScale = min(dp(1f), min((width - dp(64f)) / 240f, ((ground - dp(125f)) / 166f).coerceAtLeast(0f)))
-            val actionProgress = interactionProgress(now)
+            val actionProgress = if (activeAction == Action.SLEEP) sleepPoseProgress(now) else interactionProgress(now)
             val touchProgress = touchProgress(now)
             drawEgg(
                 canvas,
@@ -1531,10 +1520,11 @@ private class PetGameView(context: Context, private val onPetCreated: () -> Unit
         // as hovering, especially against the simple ground in this scene.
         val idleBob = 0f
         val reactionProgress = interactionProgress(now)
+        val sleepProgress = sleepPoseProgress(now)
         val touchProgress = touchProgress(now)
-        val reactionWave = sin(reactionProgress * Math.PI.toFloat())
+        val reactionWave = sin((if (activeAction == Action.SLEEP) sleepProgress else reactionProgress) * Math.PI.toFloat())
         val sleepEase = if (activeAction == Action.SLEEP) {
-            (1f - cos(reactionProgress * Math.PI.toFloat())) * .5f
+            (1f - cos(sleepProgress * Math.PI.toFloat())) * .5f
         } else 0f
         val reactionBob = when (activeAction) {
             Action.FEED -> -abs(sin(reactionProgress * Math.PI.toFloat() * 2f)) * dp(3f)
@@ -1634,6 +1624,12 @@ private class PetGameView(context: Context, private val onPetCreated: () -> Unit
         } else 0f
     }
 
+    private fun sleepPoseProgress(now: Long): Float {
+        return if (activeAction == Action.SLEEP && actionUntil > actionStartedAt) {
+            ((now - actionStartedAt).toFloat() / 1200f).coerceIn(0f, 1f)
+        } else 0f
+    }
+
     private fun touchProgress(now: Long): Float {
         return if (touchReactionUntil > touchReactionStartedAt && now < touchReactionUntil) {
             ((now - touchReactionStartedAt).toFloat() / (touchReactionUntil - touchReactionStartedAt).toFloat()).coerceIn(0f, 1f)
@@ -1709,7 +1705,13 @@ private class PetGameView(context: Context, private val onPetCreated: () -> Unit
             activeAction = null
             return
         }
-        val progress = interactionProgress(now)
+        val progress = if (action == Action.SLEEP) {
+            // Keep the sleeping feedback alive without making the pose take a
+            // full minute to settle. The next sleep cycle starts seamlessly.
+            (((now - actionStartedAt).coerceAtLeast(0L) % 2400L).toFloat() / 2400f)
+        } else {
+            interactionProgress(now)
+        }
         val seconds = progress * 1.6f
         val cx = petCenterX
         val cy = petGroundY - dp(8f)
@@ -2195,7 +2197,7 @@ private class PetGameView(context: Context, private val onPetCreated: () -> Unit
         if (pet.dead) { savePet(); invalidate(); return }
         activeAction = action
         actionStartedAt = SystemClock.uptimeMillis()
-        actionUntil = actionStartedAt + if (action == Action.SLEEP) 5200L else 1600L
+        actionUntil = actionStartedAt + if (action == Action.SLEEP) 60_000L else 1600L
         touchReactionStartedAt = 0L
         touchReactionUntil = 0L
         message = result.first
