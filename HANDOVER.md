@@ -9,6 +9,93 @@ device-dependent main-thread stall that could build into an Android ANR after
 repeated care actions. Pet rendering, cloud saves, ambient audio, and other
 behavior are unchanged.
 
+## Long-term project context
+
+This handover is a consolidated record of the project from its beginning, not
+just a release note for the latest build. The sections below preserve the
+important product decisions and rejected approaches so a new chat does not
+restart an old experiment or mistake historical notes for current behavior.
+
+### Product and visual direction
+
+The app began as a small Tamagotchi-style Android pet for the user's daughter,
+originally using a retro/pixel dragon. That direction was abandoned because
+the pets were not recognizable. The project then moved to the current cute,
+full-body illustrated pets: cat, dog, bunny, hamster, and dragon. The original
+pet designs and their visual style are the source of truth; do not replace
+them with a green cartoon squirrel, generic silhouettes, or unrelated artwork.
+The app is now named **MochiGotchi**, supports a custom player name and custom
+pet name, and uses the approved purple egg-and-paw Android icon artwork with
+transparent/round-icon-safe treatment.
+
+Animation went through several failed experiments: frame swapping that looked
+like a GIF, independently warped limb cutouts that looked pasted on, procedural
+rigs with detached paws/tails, and a separate 3D-rendering prototype. Those
+approaches were rejected. The retained runtime approach is coherent whole-pet
+animation cels with per-pet anatomy and grounded alpha bounds. Do not revive
+the rejected limb warping or claim that timing tweaks alone make the motion
+professional. The user values smooth, weighty, connected movement, but the
+current cels remain a known limitation and require visual validation on a
+device.
+
+### Gameplay and lifecycle decisions
+
+The lifecycle is egg, baby, young, and adult. Dragon eggs use a nest; other
+eggs use the appropriate straw/hay setting. Eggs rock or breathe subtly, show
+a crack near hatch readiness, and hatch through a visible transition. The
+current live-pet artwork is the baby stage, with larger and subtly recoloured
+young/adult variants. Incubation is intended to be about two days; each live
+stage is about a week, with poor care lengthening growth rather than erasing
+earned progress. Care actions affect only their own need and do not directly
+change the other stats. Adults eventually reach old age, but the player is
+offered the choice to let the pet go or keep playing indefinitely.
+
+Hatching, evolution, and old age are consent-based pending states. A player
+can choose “not yet”; the prompt returns later. Hatching and growth use a
+staged transition rather than an unexplained instant replacement. Reset and
+data-loss behavior must remain conservative because the app is intended for
+real use by the user's daughter.
+
+### Scene, interaction, and audio decisions
+
+The scene has a time-of-day sun/moon cycle and weather-responsive scenery,
+with mountains and enlarged trees behind the foreground subject. The pet or
+egg is always the foreground subject; birds and frogs are background ambience
+and may disappear naturally behind it, but must never visibly clip through it.
+Grass is one continuous, dense, pointed bank anchored to the absolute bottom
+of the scene; blades stay planted and sway locally rather than scrolling.
+
+Daytime uses the approved isolated bird-chirp clip. Rain uses the approved
+first 50-second section loop. Night uses the approved cricket/frog section.
+The user-provided cartoon snore is a separate ambient sleep loop, not button
+feedback. Sleep lasts about one minute, with a distinct care-button click
+acknowledgment, staggered visible Zs, and an upright breathing egg or a
+lowered live-pet sleep pose. The live-pet closed-eye treatment is per-pet and
+must fully cover the original eye rather than leaving a visible iris or making
+an eyebrow-like line.
+
+Care controls map spatially to the stats: FEED/WARM top-left, PLAY/SOOTHE
+top-right, SLEEP/REST bottom-left, and BATH/TIDY bottom-right. Action feedback,
+visible reactions, readable contrast, centered labels, and non-overlapping UI
+are part of the product requirement.
+
+### Persistence, sign-in, and updating
+
+The app is local-first and must continue working offline. Google sign-in and
+Firestore back up progress per account. Local state is restored before any new
+pet/setup flow is allowed to overwrite it; a reinstall must never replace
+cloud progress with a default pet. Changes made offline are queued locally and
+synced when connectivity returns, including when the app is reopened or
+connectivity changes while it is open. Settings provide separate reset choices
+for local data, cloud data, or both.
+
+The updater checks the public GitHub release/manifest, downloads the signed APK
+inside the app, shows blocking progress while downloading, and hands the file
+to Android's package installer. Android still requires the final user approval
+for a normal APK; it cannot be silently installed by this app. Earlier v4/v5
+installer and cache problems are historical. The current release pipeline and
+v79 updater state are documented below.
+
 ## Previous release: full closed-eye sleep mask — v78
 
 The v78 candidate keeps v77's direction-aware sleeping tilt. It enlarges and
@@ -550,18 +637,33 @@ do not claim measured device frame rates or final user-approved visual quality.
 
 ## What the user wants now
 
-Continue improving the Android pet app, especially the creature animation. The user is unhappy with the current movement: pets look as if they float, are rigid/glitchy, and may appear to run backward or slide rather than interact with the ground. Treat this as the main product problem; do not claim it is solved without visual validation on a device/screenshot.
+The current priority is safe continuation from the published v79 app. Preserve
+the working whole-pet renderer, persistence, lifecycle, scenery, audio, and
+updater while making only well-validated improvements. The user remains
+unhappy with the underlying walk-cel quality: pets can look floaty, rigid,
+glitchy, or insufficiently connected to the ground. Do not claim animation is
+solved without a device screenshot/video or another direct visual check.
 
-They also asked for a complete handover because this cloud conversation cannot be placed in a Codex Project folder. This document is intended for the next chat.
+This document is the complete project handover for a new chat. Historical
+experiments are retained above for context; the current implementation and
+release facts are the sections below.
 
 ## Repository and current state
 
 - Repository: `https://github.com/bottMage/zoeys-pocket-pet` (public).
 - Cloud checkout: `/workspace/zoeys-pocket-pet`.
 - Local branch name is `work`; completed changes are pushed to remote `main` using `git push origin HEAD:main`.
-- Latest pushed commit: `450771c Open Android installer after update download`.
-- Latest public release/tag: `v5`.
-- Current Android version: `versionCode = 5`, `versionName = "5.0"` in `app/build.gradle.kts`.
+- Latest pushed app commit: `1e93919 Point updater to v79 release`.
+- Latest public release/tag: `v79`.
+- Current Android version: `versionCode = 79`, `versionName = "79.0"` in `app/build.gradle.kts`.
+- The v79 release APK is published at
+  `https://github.com/bottMage/zoeys-pocket-pet/releases/download/v79/zoeys-pocket-pet-v79.apk?download=79`.
+- The v79 APK SHA-256 is
+  `7b0232de66de5859475c8ac6f9c09f21e853fd87054beacaae4de933157b8d83`.
+- The v79 care-button change was tested by the user on Zoey's phone and
+  removed the repeated-OK-button freeze/ANR: it uses Android's built-in click
+  effect rather than constructing a `ToneGenerator` on every tap. v79 did not
+  change pet rendering, cloud saves, ambient audio, or lifecycle behavior.
 - Do not rewrite or discard existing changes. Check `git status --short` before edits.
 
 ## Build environment
@@ -607,7 +709,7 @@ The workflow `.github/workflows/publish-release.yml` publishes an already cloud-
 5. Commit the app changes and the versioned APK.
 6. Push the commit to remote `main`.
 7. Create and push annotated tag `vN`.
-8. Confirm the GitHub Release asset is available, for example:
+8. Wait for the GitHub Release asset and confirm it is available, for example:
 
 ```bash
 curl -I -L https://github.com/bottMage/zoeys-pocket-pet/releases/download/vN/zoeys-pocket-pet-vN.apk
@@ -615,17 +717,30 @@ curl -I -L https://github.com/bottMage/zoeys-pocket-pet/releases/download/vN/zoe
 
 The tag triggers GitHub Actions, which attaches the committed cloud-signed asset. GitHub API access from this cloud may be blocked, but public GitHub pages and normal `git push` work. The Actions page can be read publicly if diagnostics are needed.
 
+The repository also contains `update.json`, which must point to the public APK
+asset only after that asset returns HTTP 200. Commit and push the manifest
+after the release asset exists, then verify the raw manifest with a unique
+cache-busting query. GitHub can temporarily cache or return 404 for a release
+URL without a query string; the published `?download=N` URL and a cache-busted
+manifest check avoid treating that transient state as “up to date.”
+
 ## In-app updater implementation
 
 `MainActivity.kt` contains `AppUpdateManager`.
 
 - It checks on app launch (silent when no update), and via the **UPDATES** pill next to Reset.
-- It uses the GitHub `/releases/latest` API.
+- It reads the raw `update.json` manifest with cache-busting/no-cache headers
+  and independently falls back to the public `/releases/latest` redirect when
+  the manifest does not offer a newer build.
 - Updates are optional: a dialog offers Download or Not Now.
 - Android cannot silently install a normal app. The final Android package-installer approval is mandatory.
-- v5 changes the completed-download handoff: it sets the APK MIME type and returns the installer launch to the app's main/UI thread. This should open Android's installer after Download instead of making the user browse Downloads. The user reported that v4 left only a file in Downloads. Ask them to test v5 before assuming the fix works.
-- If v4 cannot hand off to v5, direct download is:
-  `https://github.com/bottMage/zoeys-pocket-pet/releases/download/v5/zoeys-pocket-pet-v5.apk`
+- The completed download is handed to Android's package installer with the APK
+  MIME type on the app's main/UI thread. This should open the installer instead
+  of leaving a file that the user must browse to manually, but Android's final
+  approval remains mandatory.
+- The in-app download retries the public committed APK when the primary release
+  asset fails. A failed check/download must remain an error, not be reported as
+  “up to date.”
 
 Android may require the one-time “Allow from this source” permission for Zoey's Pocket Pet before it can hand off to the installer.
 
@@ -642,7 +757,7 @@ The app draws a whole-body animation cel, not separately moving body parts:
 - The earlier individual limb/rig assets were removed. Do not reintroduce them as “animation”; the user explicitly rejected image-part warping/independent layers and wants genuine whole-body animation.
 - The pet selector uses `companion_<kind>.png` assets.
 
-Recent motion fixes in v3:
+Historical mechanical motion fixes in v3:
 
 - Corrected a mirror-direction bug. The art faces left by default, so it is mirrored only when travelling right.
 - Reduced scene travel speed from `.22f` to `.070f`.
@@ -650,7 +765,15 @@ Recent motion fixes in v3:
 - Removed resting whole-body bob.
 - Added alpha-bound scanning per cel and anchors the lowest non-transparent pixel to `groundY`, rather than the PNG's transparent 512px border.
 
-These are mechanical improvements, but the user still sees the animation as cheap, rigid, floating, and disconnected from the ground. The underlying cels themselves are likely not a coherent walk cycle / have inadequate foot contacts. More timing tweaks alone will not create convincing animation. A real fix requires replacement coherent animation cels (or a proper skeletal animation authoring/rendering pipeline) designed for each creature, with consistent anatomy, stance, direction, contact poses, and body weight. Keep the user’s requested cute Pokémon-inspired *general feel*, but do not copy Pokémon characters or artwork.
+These are mechanical improvements, but the user still sees the animation as
+cheap, rigid, floating, and disconnected from the ground. The underlying cels
+themselves are likely not a coherent walk cycle / have inadequate foot
+contacts. More timing tweaks alone will not create convincing animation. A
+real fix requires replacement coherent animation cels (or a proper skeletal
+animation authoring/rendering pipeline) designed for each creature, with
+consistent anatomy, stance, direction, contact poses, and body weight. Keep
+the user's requested cute creature feel, but do not copy Pokémon characters
+or artwork.
 
 The user’s reported visual history:
 
