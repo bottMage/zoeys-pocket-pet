@@ -1,6 +1,14 @@
 # Zoey's Pocket Pet — cloud handover
 
-## Current release candidate: natural background creature layering — v71
+## Current release candidate: rooted wind-swaying grass — v72
+
+The v72 candidate keeps the v71 natural background creature layering and
+replaces scrolling ground marks with denser, deterministic grass tufts. Each
+tuft stays planted at a fixed ground position and only its blades sway locally
+with the wind, so grass no longer slides off one edge and reappears at the
+other. Pet, creature, sleep, and audio behavior are unchanged.
+
+## Previous release: natural background creature layering — v71
 
 The v71 candidate keeps the v70 grounded frog hop timing and reverted distant
 bird marks, but restores the correct scene draw order. Birds and frogs are

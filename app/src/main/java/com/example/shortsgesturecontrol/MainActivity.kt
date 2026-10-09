@@ -1378,12 +1378,40 @@ private class PetGameView(context: Context, private val onPetCreated: () -> Unit
     }
 
     private fun drawGroundDetails(canvas: Canvas, scene: RectF, daylight: Float, now: Long) {
-        paint.color = Color.argb((70f + daylight * 80f).roundToInt(), 64, 135, 93)
-        for (index in 0 until 18) {
-            val x = scene.left + ((index * 47 + (now / 50L).toInt()) % scene.width().toInt()).toFloat()
-            val y = scene.bottom - dp(8f + (index % 4) * 4f)
-            canvas.drawLine(x.toFloat(), y, x + dp(2f), y - dp(7f), paint)
+        // Grass is rooted in the ground. Keep every tuft's base at a stable
+        // position and animate only the tips, so the scene never looks like a
+        // scrolling texture with blades disappearing off one edge.
+        paint.style = Paint.Style.STROKE
+        paint.strokeCap = Paint.Cap.ROUND
+        paint.strokeWidth = dp(1.25f)
+        val opacity = (78f + daylight * 78f).roundToInt()
+        for (index in 0 until 42) {
+            val normalizedX = ((index * 29 + 11) % 101) / 100f
+            val baseX = scene.left + scene.width() * normalizedX
+            val baseY = scene.bottom - dp(6f + (index % 5) * 3f)
+            val height = dp(5f + (index % 4) * 1.8f)
+            val wind = sin(now / (760f + (index % 4) * 85f) + index * .67f).toFloat()
+            val sway = wind * dp(2.3f)
+            paint.color = if (index % 3 == 0) {
+                Color.argb(opacity, 55, 126, 84)
+            } else {
+                Color.argb(opacity, 69, 143, 94)
+            }
+            for (blade in -1..1) {
+                val offset = dp(blade * 2.1f)
+                val bladeSway = sway + dp(blade * .8f)
+                val bladeHeight = height * (if (blade == 0) 1f else .78f)
+                canvas.drawLine(
+                    baseX + offset,
+                    baseY,
+                    baseX + offset + bladeSway,
+                    baseY - bladeHeight,
+                    paint
+                )
+            }
         }
+        paint.strokeCap = Paint.Cap.BUTT
+        paint.style = Paint.Style.FILL
     }
 
     private fun drawBirds(canvas: Canvas, scene: RectF, now: Long) {
