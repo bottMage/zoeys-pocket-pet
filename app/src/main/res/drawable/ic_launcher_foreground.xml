@@ -4,41 +4,44 @@
     android:viewportWidth="108"
     android:viewportHeight="108">
 
+    <!-- Keep the complete illustration inside the adaptive-icon safe zone. -->
     <path
-        android:fillColor="#F6E8FF"
-        android:strokeColor="#6B4B91"
-        android:strokeWidth="2.5"
-        android:pathData="M54,14 C35,14 23,31 23,54 C23,78 35,94 54,94 C73,94 85,78 85,54 C85,31 73,14 54,14 Z" />
+        android:fillColor="#FFF1D8"
+        android:strokeColor="#72558F"
+        android:strokeWidth="2.2"
+        android:strokeLineJoin="round"
+        android:pathData="M54,23 C40,23 31,36 31,53 C31,71 40,85 54,85 C68,85 77,71 77,53 C77,36 68,23 54,23 Z" />
 
     <path
-        android:fillColor="#D5B8F2"
-        android:pathData="M35,39 C41,32 47,29 54,28 C61,29 68,32 73,39 C67,37 61,38 54,43 C47,38 41,37 35,39 Z" />
+        android:fillColor="#D9C0F2"
+        android:pathData="M34,48 C39,42 46,39 54,39 C62,39 69,42 74,48 C68,46 62,47 54,51 C46,47 40,46 34,48 Z" />
 
+    <!-- Mint paw clearly peeking over the lower front of the egg. -->
     <path
         android:fillColor="#8FE0C0"
-        android:pathData="M54,45 C48,45 44,50 44,56 C44,63 48,67 54,67 C60,67 64,63 64,56 C64,50 60,45 54,45 Z" />
+        android:strokeColor="#5B9E8B"
+        android:strokeWidth="1.4"
+        android:strokeLineJoin="round"
+        android:pathData="M54,54 C47,54 42,60 42,69 C42,78 47,83 54,83 C61,83 66,78 66,69 C66,60 61,54 54,54 Z" />
+    <path
+        android:fillColor="#70C9AA"
+        android:pathData="M54,62 C50,62 47,65 47,69 C47,73 50,76 54,76 C58,76 61,73 61,69 C61,65 58,62 54,62 Z" />
     <path
         android:fillColor="#8FE0C0"
-        android:pathData="M40,48 C36,45 33,47 34,51 C35,54 38,55 42,54 Z" />
-    <path
-        android:fillColor="#8FE0C0"
-        android:pathData="M68,48 C72,45 75,47 74,51 C73,54 70,55 66,54 Z" />
-    <path
-        android:fillColor="#8FE0C0"
-        android:pathData="M45,40 C42,36 44,33 47,35 C50,37 50,40 49,43 Z" />
-    <path
-        android:fillColor="#8FE0C0"
-        android:pathData="M63,40 C66,36 64,33 61,35 C58,37 58,40 59,43 Z" />
+        android:strokeColor="#5B9E8B"
+        android:strokeWidth="1.1"
+        android:pathData="M44,59 C40,55 37,57 38,61 C39,64 42,65 45,63 Z M49,56 C46,51 49,49 52,52 C54,55 53,58 51,60 Z M57,56 C56,52 59,50 62,53 C64,56 62,59 59,60 Z M64,59 C67,55 70,57 69,61 C68,64 65,65 63,63 Z" />
 
+    <!-- A small, contained crack leaves the shell intact instead of splitting it. -->
     <path
         android:fillColor="@android:color/transparent"
-        android:strokeColor="#6B4B91"
-        android:strokeWidth="2.5"
+        android:strokeColor="#72558F"
+        android:strokeWidth="2.2"
         android:strokeLineCap="round"
         android:strokeLineJoin="round"
-        android:pathData="M54,17 L49,29 L55,38 L49,48 L56,56 L52,68" />
+        android:pathData="M53,25 L58,35 L52,44 L58,53" />
 
     <path
         android:fillColor="#FFFFFF"
-        android:pathData="M80,19 L82,24 L87,26 L82,28 L80,33 L78,28 L73,26 L78,24 Z" />
+        android:pathData="M75,27 L77,32 L82,34 L77,36 L75,41 L73,36 L68,34 L73,32 Z" />
 </vector>
