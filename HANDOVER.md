@@ -650,7 +650,7 @@ do not claim measured device frame rates or final user-approved visual quality.
 
 ## What the user wants now
 
-The current priority is safe continuation from the published v79 app. Preserve
+The current priority is safe continuation from the published v80 app. Preserve
 the working whole-pet renderer, persistence, lifecycle, scenery, audio, and
 updater while making only well-validated improvements. The user remains
 unhappy with the underlying walk-cel quality: pets can look floaty, rigid,
@@ -666,13 +666,13 @@ release facts are the sections below.
 - Repository: `https://github.com/bottMage/zoeys-pocket-pet` (public).
 - Cloud checkout: `/workspace/zoeys-pocket-pet`.
 - Local branch name is `work`; completed changes are pushed to remote `main` using `git push origin HEAD:main`.
-- Latest pushed app commit: `1e93919 Point updater to v79 release`.
-- Latest public release/tag: `v79`.
-- Current Android version: `versionCode = 79`, `versionName = "79.0"` in `app/build.gradle.kts`.
-- The v79 release APK is published at
-  `https://github.com/bottMage/zoeys-pocket-pet/releases/download/v79/zoeys-pocket-pet-v79.apk?download=79`.
-- The v79 APK SHA-256 is
-  `7b0232de66de5859475c8ac6f9c09f21e853fd87054beacaae4de933157b8d83`.
+- Latest pushed app commit: `948435e Optimize idle rendering and publish v80`.
+- Latest public release/tag: `v80`.
+- Current Android version: `versionCode = 80`, `versionName = "80.0"` in `app/build.gradle.kts`.
+- The v80 release APK is published at
+  `https://github.com/bottMage/zoeys-pocket-pet/releases/download/v80/zoeys-pocket-pet-v80.apk?download=80`.
+- The v80 APK SHA-256 is
+  `58098ec5c04f8b164fcba9cc42809dbb60728aa358aae7e8ec296c361c919e39`.
 - The v79 care-button change was tested by the user on Zoey's phone and
   removed the repeated-OK-button freeze/ANR: it uses Android's built-in click
   effect rather than constructing a `ToneGenerator` on every tap. v79 did not
