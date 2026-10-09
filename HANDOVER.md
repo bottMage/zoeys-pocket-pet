@@ -1,6 +1,13 @@
 # Zoey's Pocket Pet — cloud handover
 
-## Current release candidate: rooted wind-swaying grass — v72
+## Current release candidate: continuous grass bank — v73
+
+The v73 candidate keeps v72's fixed, locally swaying grass motion but groups
+the ground detail into one continuous grass bank across the full lower strip.
+Its top edge is gently uneven and the dense blades remain planted while their
+tips sway. Pet, creature, sleep, and audio behavior are unchanged.
+
+## Previous release: rooted wind-swaying grass — v72
 
 The v72 candidate keeps the v71 natural background creature layering and
 replaces scrolling ground marks with denser, deterministic grass tufts. Each

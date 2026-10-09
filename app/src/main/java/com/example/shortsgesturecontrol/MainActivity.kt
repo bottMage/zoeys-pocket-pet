@@ -1378,18 +1378,50 @@ private class PetGameView(context: Context, private val onPetCreated: () -> Unit
     }
 
     private fun drawGroundDetails(canvas: Canvas, scene: RectF, daylight: Float, now: Long) {
-        // Grass is rooted in the ground. Keep every tuft's base at a stable
-        // position and animate only the tips, so the scene never looks like a
-        // scrolling texture with blades disappearing off one edge.
+        // Build one continuous grass bank across the whole lower strip. The
+        // uneven top edge keeps it organic without making it look like a row
+        // of detached tufts.
+        val grassTop = scene.bottom - dp(25f)
+        val grassPatch = Path().apply {
+            moveTo(scene.left, grassTop + dp(3f))
+            cubicTo(
+                scene.left + scene.width() * .18f,
+                grassTop - dp(1f),
+                scene.left + scene.width() * .34f,
+                grassTop + dp(3f),
+                scene.left + scene.width() * .50f,
+                grassTop
+            )
+            cubicTo(
+                scene.left + scene.width() * .67f,
+                grassTop - dp(3f),
+                scene.left + scene.width() * .84f,
+                grassTop + dp(3f),
+                scene.right,
+                grassTop + dp(1f)
+            )
+            lineTo(scene.right, scene.bottom)
+            lineTo(scene.left, scene.bottom)
+            close()
+        }
+        paint.style = Paint.Style.FILL
+        paint.color = if (daylight < .2f) Color.rgb(55, 99, 82) else Color.rgb(136, 198, 151)
+        canvas.drawPath(grassPatch, paint)
+
+        // Grass is rooted in the continuous patch. Keep every blade's base at
+        // a stable position and animate only the tips, so the scene never
+        // looks like a scrolling texture with blades disappearing off one
+        // edge.
         paint.style = Paint.Style.STROKE
         paint.strokeCap = Paint.Cap.ROUND
         paint.strokeWidth = dp(1.25f)
         val opacity = (78f + daylight * 78f).roundToInt()
-        for (index in 0 until 42) {
-            val normalizedX = ((index * 29 + 11) % 101) / 100f
+        val bladeCount = (scene.width() / dp(5f)).roundToInt().coerceIn(34, 100)
+        for (index in 0 until bladeCount) {
+            val normalizedX = if (bladeCount == 1) .5f else index.toFloat() / (bladeCount - 1f)
             val baseX = scene.left + scene.width() * normalizedX
-            val baseY = scene.bottom - dp(6f + (index % 5) * 3f)
-            val height = dp(5f + (index % 4) * 1.8f)
+            val baseY = scene.bottom - dp(3f + (index * 7 % 12))
+            val height = dp(5f + (index * 5 % 5) * 1.7f)
             val wind = sin(now / (760f + (index % 4) * 85f) + index * .67f).toFloat()
             val sway = wind * dp(2.3f)
             paint.color = if (index % 3 == 0) {
@@ -1397,18 +1429,7 @@ private class PetGameView(context: Context, private val onPetCreated: () -> Unit
             } else {
                 Color.argb(opacity, 69, 143, 94)
             }
-            for (blade in -1..1) {
-                val offset = dp(blade * 2.1f)
-                val bladeSway = sway + dp(blade * .8f)
-                val bladeHeight = height * (if (blade == 0) 1f else .78f)
-                canvas.drawLine(
-                    baseX + offset,
-                    baseY,
-                    baseX + offset + bladeSway,
-                    baseY - bladeHeight,
-                    paint
-                )
-            }
+            canvas.drawLine(baseX, baseY, baseX + sway, baseY - height, paint)
         }
         paint.strokeCap = Paint.Cap.BUTT
         paint.style = Paint.Style.FILL
