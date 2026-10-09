@@ -3,10 +3,7 @@ package com.example.shortsgesturecontrol
 import android.app.Activity
 import android.app.AlertDialog
 import android.content.Context
-import android.content.BroadcastReceiver
 import android.content.Intent
-import android.content.IntentFilter
-import android.app.DownloadManager
 import android.net.ConnectivityManager
 import android.net.Network
 import android.graphics.Bitmap
@@ -33,7 +30,6 @@ import android.text.InputType
 import android.widget.EditText
 import android.widget.Toast
 import androidx.core.content.FileProvider
-import androidx.core.content.ContextCompat
 import com.google.android.gms.auth.api.signin.GoogleSignIn
 import com.google.android.gms.auth.api.signin.GoogleSignInClient
 import com.google.android.gms.auth.api.signin.GoogleSignInOptions
@@ -45,6 +41,10 @@ import com.google.firebase.firestore.FirebaseFirestore
 import com.google.firebase.firestore.SetOptions
 import org.json.JSONObject
 import java.io.File
+import java.io.FileOutputStream
+import java.io.IOException
+import java.net.HttpURLConnection
+import java.net.URL
 import kotlin.math.abs
 import kotlin.math.cos
 import kotlin.math.max
@@ -226,55 +226,65 @@ private class AppUpdateManager(private val context: Context) {
     }
 
     private fun download(versionCode: Int, url: String) {
-        // Keep the release asset first for normal devices, but retry from the
-        // raw repository asset if DownloadManager rejects GitHub's redirect.
-        val fallback = UpdateChecker.rawAssetUrl(versionCode).takeIf { it != url }
-        enqueueDownload(url, fallback)
-    }
-
-    private fun enqueueDownload(url: String, fallbackUrl: String?) {
+        // Some phones reject both GitHub hosts in DownloadManager. Download
+        // through the app instead, following redirects ourselves, then hand
+        // the completed private file to the normal package installer.
+        val sources = listOf(url, UpdateChecker.rawAssetUrl(versionCode)).distinct()
         val updateFile = updateFile()
         if (updateFile.exists()) updateFile.delete()
-        val manager = context.getSystemService(Context.DOWNLOAD_SERVICE) as DownloadManager
-        val request = DownloadManager.Request(Uri.parse(url))
-            .setTitle("Zoey's Pocket Pet update")
-            .setDescription("Downloading, then opening the installer")
-            // Without an APK MIME type Android treats the completed download as
-            // a generic file and sends the user to the Downloads app.
-            .setMimeType(APK_MIME_TYPE)
-            .setNotificationVisibility(DownloadManager.Request.VISIBILITY_VISIBLE_NOTIFY_COMPLETED)
-            .setDestinationInExternalFilesDir(context, Environment.DIRECTORY_DOWNLOADS, UPDATE_FILE_NAME)
-        var downloadId = -1L
-        val receiver = object : BroadcastReceiver() {
-            override fun onReceive(receiverContext: Context, intent: Intent) {
-                if (intent.getLongExtra(DownloadManager.EXTRA_DOWNLOAD_ID, -1L) != downloadId) return
-                try { receiverContext.unregisterReceiver(this) } catch (_: Exception) { }
-                mainHandler.post { finishDownload(manager, downloadId) }
-            }
-        }
-        val filter = IntentFilter(DownloadManager.ACTION_DOWNLOAD_COMPLETE)
-        // DownloadManager is a system sender. NOT_EXPORTED can silently miss
-        // this broadcast on newer Android versions.
-        ContextCompat.registerReceiver(context, receiver, filter, ContextCompat.RECEIVER_EXPORTED)
-        try {
-            downloadId = manager.enqueue(request)
-            updatePrefs.edit().putLong(PENDING_DOWNLOAD_ID, downloadId)
-                .apply {
-                    if (fallbackUrl == null) remove(PENDING_FALLBACK_URL)
-                    else putString(PENDING_FALLBACK_URL, fallbackUrl)
+        Toast.makeText(context, "Downloading update…", Toast.LENGTH_SHORT).show()
+        Thread {
+            var lastError: Exception? = null
+            var downloaded = false
+            for (source in sources) {
+                try {
+                    downloadToFile(source, updateFile)
+                    downloaded = true
+                    break
+                } catch (error: Exception) {
+                    lastError = error
+                    Log.w(TAG, "Update source failed: $source", error)
                 }
-                .apply()
-            Toast.makeText(context, "Downloading update…", Toast.LENGTH_SHORT).show()
-        } catch (error: Exception) {
-            try { context.unregisterReceiver(receiver) } catch (_: Exception) { }
-            Log.w(TAG, "Could not enqueue update download", error)
-            if (fallbackUrl != null) {
-                Toast.makeText(context, "Trying the backup update download…", Toast.LENGTH_SHORT).show()
-                enqueueDownload(fallbackUrl, null)
-            } else {
-                updatePrefs.edit().remove(PENDING_DOWNLOAD_ID).remove(PENDING_FALLBACK_URL).apply()
-                Toast.makeText(context, "The update download could not start.", Toast.LENGTH_LONG).show()
             }
+            if (downloaded) {
+                mainHandler.post { install(updateFile) }
+            } else {
+                mainHandler.post {
+                    Toast.makeText(context, "Update download failed. Please try again.", Toast.LENGTH_LONG).show()
+                }
+                Log.w(TAG, "All update sources failed", lastError)
+            }
+        }.start()
+    }
+
+    private fun downloadToFile(source: String, destination: File) {
+        val freshSource = source + (if (source.contains("?")) "&" else "?") + "update_download=" + System.currentTimeMillis()
+        val connection = (URL(freshSource).openConnection() as HttpURLConnection).apply {
+            instanceFollowRedirects = true
+            connectTimeout = 15000
+            readTimeout = 30000
+            requestMethod = "GET"
+            setRequestProperty("User-Agent", "ZoeysPocketPet-Updater")
+            setRequestProperty("Accept", APK_MIME_TYPE)
+            setRequestProperty("Cache-Control", "no-cache, no-store, max-age=0")
+        }
+        val partial = File(destination.parentFile, "$UPDATE_FILE_NAME.part")
+        partial.delete()
+        try {
+            if (connection.responseCode !in 200..299) throw IOException("HTTP ${connection.responseCode}")
+            connection.inputStream.use { input ->
+                FileOutputStream(partial).use { output ->
+                    val buffer = ByteArray(64 * 1024)
+                    var count: Int
+                    while (input.read(buffer).also { count = it } != -1) output.write(buffer, 0, count)
+                }
+            }
+            if (partial.length() < 1024L * 1024L || !partial.renameTo(destination)) {
+                throw IOException("Downloaded APK was incomplete")
+            }
+        } finally {
+            connection.disconnect()
+            if (partial.exists()) partial.delete()
         }
     }
 
@@ -288,36 +298,6 @@ private class AppUpdateManager(private val context: Context) {
             return
         }
 
-        val downloadId = updatePrefs.getLong(PENDING_DOWNLOAD_ID, -1L)
-        if (downloadId == -1L) return
-        val manager = context.getSystemService(Context.DOWNLOAD_SERVICE) as DownloadManager
-        finishDownload(manager, downloadId)
-    }
-
-    private fun finishDownload(manager: DownloadManager, downloadId: Long) {
-        val updateFile = updateFile()
-        manager.query(DownloadManager.Query().setFilterById(downloadId)).use { cursor ->
-            if (!cursor.moveToFirst()) return
-            when (cursor.getInt(cursor.getColumnIndexOrThrow(DownloadManager.COLUMN_STATUS))) {
-                DownloadManager.STATUS_SUCCESSFUL -> {
-                    updatePrefs.edit().remove(PENDING_DOWNLOAD_ID).remove(PENDING_FALLBACK_URL).apply()
-                    install(updateFile)
-                }
-                DownloadManager.STATUS_FAILED -> {
-                    val reason = cursor.getInt(cursor.getColumnIndexOrThrow(DownloadManager.COLUMN_REASON))
-                    val fallbackUrl = updatePrefs.getString(PENDING_FALLBACK_URL, null)
-                    Log.w(TAG, "Update download failed: reason=$reason")
-                    if (!fallbackUrl.isNullOrBlank()) {
-                        updatePrefs.edit().remove(PENDING_FALLBACK_URL).apply()
-                        Toast.makeText(context, "Retrying the update download…", Toast.LENGTH_SHORT).show()
-                        enqueueDownload(fallbackUrl, null)
-                    } else {
-                        updatePrefs.edit().remove(PENDING_DOWNLOAD_ID).remove(PENDING_FALLBACK_URL).apply()
-                        Toast.makeText(context, "The update download didn't finish (code $reason).", Toast.LENGTH_LONG).show()
-                    }
-                }
-            }
-        }
     }
 
     private fun install(file: File) {
@@ -339,8 +319,6 @@ private class AppUpdateManager(private val context: Context) {
     private companion object {
         const val UPDATE_FILE_NAME = "zoeys-pocket-pet-update.apk"
         const val APK_MIME_TYPE = "application/vnd.android.package-archive"
-        const val PENDING_DOWNLOAD_ID = "pending_download_id"
-        const val PENDING_FALLBACK_URL = "pending_fallback_url"
         const val PENDING_PERMISSION = "pending_install_permission"
         const val TAG = "ZoeyPetUpdater"
     }
