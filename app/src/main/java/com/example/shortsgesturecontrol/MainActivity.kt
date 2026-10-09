@@ -477,9 +477,12 @@ private class PetGameView(context: Context, private val onPetCreated: () -> Unit
     private var animationStart = SystemClock.uptimeMillis()
     private var lastSaved = animationStart
     private var pressedAction: Action? = null
+    private var pressedPetTouch = false
     private var activeAction: Action? = null
     private var actionStartedAt = 0L
     private var actionUntil = 0L
+    private var touchReactionStartedAt = 0L
+    private var touchReactionUntil = 0L
     private var petCenterX = 0f
     private var petGroundY = 0f
     private var motionX = .5f
@@ -900,7 +903,18 @@ private class PetGameView(context: Context, private val onPetCreated: () -> Unit
         canvas.drawText(welcome, hatch.centerX(), hatch.centerY() + dp(6f), textPaint)
     }
 
-    private fun drawEgg(canvas: Canvas, cx: Float, ground: Float, kind: PetKind, seconds: Double, progress: Double, scale: Float) {
+    private fun drawEgg(
+        canvas: Canvas,
+        cx: Float,
+        ground: Float,
+        kind: PetKind,
+        seconds: Double,
+        progress: Double,
+        scale: Float,
+        reactionAction: Action? = null,
+        reactionProgress: Float = 0f,
+        touchProgress: Float = 0f
+    ) {
         canvas.save()
         canvas.translate(cx, ground)
         canvas.scale(scale, scale)
@@ -922,8 +936,33 @@ private class PetGameView(context: Context, private val onPetCreated: () -> Unit
             canvas.drawPath(eggBackStrands[strand], paint)
         }
         canvas.save()
-        canvas.translate(0f, PetGrowth.eggLift(seconds).toFloat())
-        canvas.rotate(PetGrowth.eggAngle(seconds, progress).toFloat(), 0f, 0f)
+        val actionWave = sin(reactionProgress * Math.PI.toFloat())
+        val touchWave = sin(touchProgress * Math.PI.toFloat())
+        val actionLift = when (reactionAction) {
+            Action.FEED -> -abs(sin(reactionProgress * Math.PI.toFloat() * 2f)) * 7f
+            Action.PLAY -> -abs(sin(reactionProgress * Math.PI.toFloat() * 3f)) * 12f
+            Action.BATH -> -abs(sin(reactionProgress * Math.PI.toFloat() * 2f)) * 5f
+            Action.SLEEP -> -actionWave * 2f
+            null -> 0f
+        }
+        val touchLift = -abs(touchWave) * 8f
+        val actionTilt = when (reactionAction) {
+            Action.FEED -> sin(reactionProgress * Math.PI.toFloat() * 4f) * 4f
+            Action.PLAY -> sin(reactionProgress * Math.PI.toFloat() * 6f) * 7f
+            Action.BATH -> sin(reactionProgress * Math.PI.toFloat() * 8f) * 3f
+            Action.SLEEP -> sin(reactionProgress * Math.PI.toFloat() * 2f) * 1.5f
+            null -> 0f
+        }
+        val touchTilt = sin(touchProgress * Math.PI.toFloat() * 5f) * 4f
+        canvas.translate(
+            sin(touchProgress * Math.PI.toFloat() * 3f) * 2f,
+            PetGrowth.eggLift(seconds).toFloat() + actionLift + touchLift
+        )
+        canvas.rotate(
+            PetGrowth.eggAngle(seconds, progress).toFloat() + actionTilt + touchTilt,
+            0f,
+            0f
+        )
         val shell = when (kind) {
             PetKind.CAT -> Color.rgb(221, 199, 240)
             PetKind.DOG -> Color.rgb(255, 220, 163)
@@ -1185,7 +1224,20 @@ private class PetGameView(context: Context, private val onPetCreated: () -> Unit
         if (!pet.hatched) {
             val ground = statsTop() - dp(64f)
             val eggScale = min(dp(1f), min((width - dp(64f)) / 240f, ((ground - dp(125f)) / 166f).coerceAtLeast(0f)))
-            drawEgg(canvas, width / 2f, ground, pet.kind, (now - animationStart) / 1000.0, pet.hatchProgress.toDouble(), eggScale)
+            val actionProgress = interactionProgress(now)
+            val touchProgress = touchProgress(now)
+            drawEgg(
+                canvas,
+                width / 2f,
+                ground,
+                pet.kind,
+                (now - animationStart) / 1000.0,
+                pet.hatchProgress.toDouble(),
+                eggScale,
+                activeAction,
+                actionProgress,
+                touchProgress
+            )
             motionLastAt = now
             motionX = .5f
             petCenterX = width / 2f
@@ -1253,9 +1305,8 @@ private class PetGameView(context: Context, private val onPetCreated: () -> Unit
         // Keep the feet planted while resting.  A whole-body vertical bob reads
         // as hovering, especially against the simple ground in this scene.
         val idleBob = 0f
-        val reactionProgress = if (activeAction != null && actionUntil > actionStartedAt) {
-            ((now - actionStartedAt).toFloat() / (actionUntil - actionStartedAt).toFloat()).coerceIn(0f, 1f)
-        } else 0f
+        val reactionProgress = interactionProgress(now)
+        val touchProgress = touchProgress(now)
         val reactionWave = sin(reactionProgress * Math.PI.toFloat())
         val reactionBob = when (activeAction) {
             Action.FEED -> -abs(sin(reactionProgress * Math.PI.toFloat() * 2f)) * dp(3f)
@@ -1264,8 +1315,10 @@ private class PetGameView(context: Context, private val onPetCreated: () -> Unit
             else -> 0f
         }
         val reactionShiftX = if (activeAction == Action.BATH) sin(reactionProgress * Math.PI.toFloat() * 8f) * dp(2f) else 0f
-        val reactionScale = if (activeAction == Action.PLAY) 1f + reactionWave * .025f else 1f
-        val rootY = groundY + idleBob + reactionBob
+        val touchShiftX = sin(touchProgress * Math.PI.toFloat() * 5f) * dp(2f)
+        val reactionScale = if (activeAction == Action.PLAY) 1f + reactionWave * .025f else 1f + sin(touchProgress * Math.PI.toFloat()) * .012f
+        val touchBob = -abs(sin(touchProgress * Math.PI.toFloat())) * dp(4f)
+        val rootY = groundY + idleBob + reactionBob + touchBob
 
         // A tight, dark contact shadow anchors every paw to the grass.
         paint.color = Color.argb(58, 67, 57, 82)
@@ -1287,7 +1340,7 @@ private class PetGameView(context: Context, private val onPetCreated: () -> Unit
         val artBottom = artTop + bitmap.height * artScale
         val artRect = RectF(centerX - artWidth / 2f, artTop, centerX + artWidth / 2f, artBottom)
         canvas.save()
-        canvas.translate(reactionShiftX, 0f)
+        canvas.translate(reactionShiftX + touchShiftX, 0f)
         if (reactionScale != 1f) canvas.scale(reactionScale, reactionScale, centerX, rootY)
         // The artwork faces left by default.  Mirror it only while travelling
         // right; the old condition reversed that relationship.
@@ -1314,6 +1367,35 @@ private class PetGameView(context: Context, private val onPetCreated: () -> Unit
         )
         textPaint.color = pet.kind.dark
         canvas.drawText(name, centerX, nameBaseline, textPaint)
+    }
+
+    private fun interactionProgress(now: Long): Float {
+        return if (activeAction != null && actionUntil > actionStartedAt) {
+            ((now - actionStartedAt).toFloat() / (actionUntil - actionStartedAt).toFloat()).coerceIn(0f, 1f)
+        } else 0f
+    }
+
+    private fun touchProgress(now: Long): Float {
+        return if (touchReactionUntil > touchReactionStartedAt && now < touchReactionUntil) {
+            ((now - touchReactionStartedAt).toFloat() / (touchReactionUntil - touchReactionStartedAt).toFloat()).coerceIn(0f, 1f)
+        } else 0f
+    }
+
+    private fun petHitRect(): RectF {
+        val halfWidth = if (pet.hatched) dp(132f) else dp(86f)
+        val top = if (pet.hatched) petGroundY - dp(190f) else petGroundY - dp(165f)
+        return RectF(petCenterX - halfWidth, top, petCenterX + halfWidth, petGroundY + dp(12f))
+    }
+
+    private fun touchPet() {
+        if (pet.dead) return
+        val now = SystemClock.uptimeMillis()
+        touchReactionStartedAt = now
+        touchReactionUntil = now + 900L
+        message = if (pet.hatched) "That tickles!" else "A gentle touch makes the egg wobble."
+        messageColor = if (pet.hatched) pet.kind.dark else Color.rgb(66, 92, 126)
+        messageUntil = now + 2200L
+        invalidate()
     }
 
     private fun drawMemorial(canvas: Canvas) {
@@ -1347,68 +1429,90 @@ private class PetGameView(context: Context, private val onPetCreated: () -> Unit
 
     private fun drawActionEffects(canvas: Canvas, now: Long) {
         if (pet.dead) return
-        val action = activeAction ?: return
+        val action = activeAction
+        if (action == null) {
+            val progress = touchProgress(now)
+            if (progress <= 0f) return
+            val cx = petCenterX
+            val cy = petGroundY - dp(8f)
+            val wave = sin(progress * Math.PI.toFloat())
+            textPaint.textAlign = Paint.Align.CENTER
+            textPaint.typeface = PaintTypeface.bold()
+            textPaint.textSize = dp(22f)
+            textPaint.color = Color.rgb(255, 232, 165)
+            canvas.drawText("✦", cx - dp(62f), cy - dp(72f) - wave * dp(9f), textPaint)
+            canvas.drawText("✦", cx + dp(62f), cy - dp(92f) + wave * dp(9f), textPaint)
+            drawReactionLabel(canvas, if (pet.hatched) "HI!" else "WOBBLE!", cx, cy - dp(126f), if (pet.hatched) pet.kind.dark else Color.rgb(66, 92, 126))
+            return
+        }
         if (now >= actionUntil) {
             activeAction = null
             return
         }
-        val progress = if (actionUntil > actionStartedAt) {
-            ((now - actionStartedAt).toFloat() / (actionUntil - actionStartedAt).toFloat()).coerceIn(0f, 1f)
-        } else 0f
+        val progress = interactionProgress(now)
         val seconds = progress * 1.6f
         val cx = petCenterX
         val cy = petGroundY - dp(8f)
         textPaint.textAlign = Paint.Align.CENTER
         textPaint.typeface = PaintTypeface.bold()
+        val egg = !pet.hatched
+        val labelColor = if (egg) Color.rgb(66, 92, 126) else pet.kind.dark
         when (action) {
             Action.FEED -> {
                 textPaint.textSize = dp(28f)
-                textPaint.color = Color.rgb(255, 238, 190)
-                canvas.drawText("●", cx + sin(seconds * 5f) * dp(20f), cy - dp(104f) - seconds * dp(7f), textPaint)
-                textPaint.textSize = dp(15f)
-                canvas.drawText("YUM!", cx, cy - dp(132f), textPaint)
+                textPaint.color = if (egg) Color.rgb(255, 231, 159) else Color.rgb(255, 238, 190)
+                canvas.drawText(if (egg) "♥" else "●", cx + sin(seconds * 5f) * dp(20f), cy - dp(104f) - seconds * dp(7f), textPaint)
+                drawReactionLabel(canvas, if (egg) "TOASTY!" else "YUM!", cx, cy - dp(132f), labelColor)
             }
             Action.PLAY -> {
                 textPaint.textSize = dp(24f)
                 textPaint.color = Color.rgb(255, 244, 166)
                 canvas.drawText("★", cx - dp(94f), cy - dp(25f) + sin(seconds * 6f) * dp(10f), textPaint)
                 canvas.drawText("★", cx + dp(94f), cy - dp(43f) + cos(seconds * 5f) * dp(10f), textPaint)
-                textPaint.textSize = dp(15f)
-                canvas.drawText("WHEEE!", cx, cy - dp(132f), textPaint)
+                drawReactionLabel(canvas, if (egg) "WIGGLE!" else "WHEEE!", cx, cy - dp(132f), labelColor)
             }
             Action.BATH -> {
                 textPaint.textSize = dp(24f)
                 textPaint.color = Color.argb(220, 255, 255, 255)
                 canvas.drawText("○  ○  ○", cx, cy - dp(118f) - sin(seconds * 4f) * dp(8f), textPaint)
-                textPaint.textSize = dp(15f)
-                canvas.drawText("SPARKLY!", cx, cy - dp(142f), textPaint)
+                drawReactionLabel(canvas, if (egg) "NEST TIDY!" else "SPARKLY!", cx, cy - dp(142f), labelColor)
             }
             Action.SLEEP -> {
                 textPaint.textSize = dp(22f)
                 textPaint.color = Color.rgb(239, 237, 255)
                 canvas.drawText("Z  Z", cx + dp(70f), cy - dp(90f) - seconds * dp(5f), textPaint)
-                textPaint.textSize = dp(15f)
-                canvas.drawText("SWEET DREAMS", cx, cy - dp(132f), textPaint)
+                drawReactionLabel(canvas, if (egg) "SAFE & SLEEPY" else "SWEET DREAMS", cx, cy - dp(132f), labelColor)
             }
         }
+    }
+
+    private fun drawReactionLabel(canvas: Canvas, label: String, centerX: Float, baseline: Float, color: Int) {
+        textPaint.textSize = dp(14f)
+        textPaint.typeface = PaintTypeface.bold()
+        textPaint.color = Color.argb(125, 255, 255, 255)
+        canvas.drawText(label, centerX + dp(1f), baseline + dp(2f), textPaint)
+        textPaint.color = color
+        canvas.drawText(label, centerX, baseline, textPaint)
     }
 
     private fun drawMessage(canvas: Canvas, now: Long) {
         textPaint.textAlign = Paint.Align.CENTER
         textPaint.typeface = PaintTypeface.rounded()
-        textPaint.textSize = dp(12f)
-        textPaint.color = if (now < messageUntil) Color.rgb(47, 57, 45) else Color.rgb(87, 96, 75)
         val displayedMessage = when {
             pet.dead -> "A little friend, always remembered"
             !pet.hatched && now >= messageUntil -> "A little friend is growing inside"
             pet.needsCritical && now >= messageUntil -> "Needs care — growth is slowed"
             else -> message
         }
-        // Keep the greeting complete. The previous character-count crop made
-        // it look like the message was broken by the pet window itself.
-        val messageMaxWidth = width - dp(34f)
-        textPaint.textSize = min(dp(12f), dp(12f) * messageMaxWidth / textPaint.measureText(displayedMessage))
-        canvas.drawText(displayedMessage, width / 2f, dp(101f), textPaint)
+        val messageMaxWidth = width - dp(78f)
+        textPaint.textSize = min(dp(14f), dp(14f) * messageMaxWidth / textPaint.measureText(displayedMessage))
+        val messageRect = RectF(dp(28f), dp(83f), width - dp(28f), dp(119f))
+        paint.color = if (now < messageUntil) Color.argb(238, 255, 255, 255) else Color.argb(205, 255, 255, 255)
+        canvas.drawRoundRect(messageRect, dp(18f), dp(18f), paint)
+        paint.color = Color.argb(220, Color.red(messageColor), Color.green(messageColor), Color.blue(messageColor))
+        canvas.drawCircle(messageRect.left + dp(13f), messageRect.centerY(), dp(4f), paint)
+        textPaint.color = if (now < messageUntil) Color.rgb(54, 63, 55) else Color.rgb(81, 73, 88)
+        canvas.drawText(displayedMessage, messageRect.centerX() + dp(4f), dp(106f), textPaint)
     }
 
     private fun drawStats(canvas: Canvas) {
@@ -1670,6 +1774,7 @@ private class PetGameView(context: Context, private val onPetCreated: () -> Unit
                     return true
                 }
                 pressedAction = buttons.firstOrNull { it.rect.contains(event.x, event.y) }?.action
+                pressedPetTouch = pressedAction == null && petHitRect().contains(event.x, event.y)
                 if (newPetRect().contains(event.x, event.y) || headerResetRect().contains(event.x, event.y) || headerUpdateRect().contains(event.x, event.y)) pressedAction = null
                 invalidate()
                 return true
@@ -1681,14 +1786,17 @@ private class PetGameView(context: Context, private val onPetCreated: () -> Unit
                 }
                 val action = buttons.firstOrNull { it.rect.contains(event.x, event.y) }?.action
                 if (action != null && action == pressedAction) perform(action)
+                if (pressedPetTouch && action == null && petHitRect().contains(event.x, event.y)) touchPet()
                 if (newPetRect().contains(event.x, event.y) || headerResetRect().contains(event.x, event.y)) confirmNewPet()
                 if (headerUpdateRect().contains(event.x, event.y)) checkForUpdates(showNoUpdate = true)
                 pressedAction = null
+                pressedPetTouch = false
                 invalidate()
                 return true
             }
             MotionEvent.ACTION_CANCEL -> {
                 pressedAction = null
+                pressedPetTouch = false
                 invalidate()
                 return true
             }
@@ -1821,6 +1929,8 @@ private class PetGameView(context: Context, private val onPetCreated: () -> Unit
         activeAction = action
         actionStartedAt = SystemClock.uptimeMillis()
         actionUntil = actionStartedAt + 1600L
+        touchReactionStartedAt = 0L
+        touchReactionUntil = 0L
         message = result.first
         messageColor = result.second
         messageUntil = SystemClock.uptimeMillis() + 3500L
@@ -2121,10 +2231,10 @@ private class PetGameView(context: Context, private val onPetCreated: () -> Unit
             updateFromClock()
             life.care(action.ordinal)
             return when (action) {
-                Action.FEED -> (if (hatched) "Nom nom! Tasty treats!" else "Warm and cosy.") to Color.rgb(172, 86, 40)
-                Action.PLAY -> (if (hatched) "Wheee! That was fun!" else "Your egg feels comforted.") to Color.rgb(191, 54, 112)
-                Action.BATH -> (if (hatched) "Sparkly clean!" else "Fresh, tidy bedding.") to Color.rgb(39, 135, 119)
-                Action.SLEEP -> (if (hatched) "Sweet dreams, little one." else "A peaceful rest.") to Color.rgb(75, 78, 173)
+                Action.FEED -> (if (hatched) "Nom nom! Tasty treats!" else "Toasty and warm!") to Color.rgb(172, 86, 40)
+                Action.PLAY -> (if (hatched) "Wheee! That was fun!" else "That made me wiggle!") to Color.rgb(191, 54, 112)
+                Action.BATH -> (if (hatched) "Sparkly clean!" else "Nest is nice and tidy!") to Color.rgb(39, 135, 119)
+                Action.SLEEP -> (if (hatched) "Sweet dreams, little one." else "Sleepy and safe.") to Color.rgb(75, 78, 173)
             }
         }
 
