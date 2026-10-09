@@ -1,6 +1,14 @@
 # Zoey's Pocket Pet — cloud handover
 
-## Current release candidate: grounded frog hops and reverted distant birds — v70
+## Current release candidate: natural background creature layering — v71
+
+The v71 candidate keeps the v70 grounded frog hop timing and reverted distant
+bird marks, but restores the correct scene draw order. Birds and frogs are
+drawn inside the clipped scenery pass before the egg or pet. The egg/pet is
+always the foreground subject, so ambient creatures can naturally disappear
+behind it without skip/clamp pop-in or visible clipping.
+
+## Previous release: grounded frog hops and reverted distant birds — v70
 
 The v70 candidate keeps the improved frog anatomy but replaces continuous frog
 sliding with explicit hop cycles: a short grounded pause, a smooth launch and

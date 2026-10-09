@@ -788,13 +788,6 @@ private class PetGameView(context: Context, private val onPetCreated: () -> Unit
         drawHeader(canvas)
         drawPlayground(canvas, now)
         drawPet(canvas, now)
-        val scene = playgroundScene()
-        val minutes = LocalTime.now().hour * 60 + LocalTime.now().minute
-        if (!pet.dead && daylightFactor(minutes, weather) < .2f && !weather.raining) {
-            // Frogs are a foreground ground detail, but avoid the pet's
-            // footprint so they cannot appear to pass behind the nest or egg.
-            drawNightCreatures(canvas, scene, now)
-        }
         drawActionEffects(canvas, now)
         drawMessage(canvas, now)
         drawStats(canvas)
@@ -1323,6 +1316,7 @@ private class PetGameView(context: Context, private val onPetCreated: () -> Unit
         canvas.drawPath(nearHill, paint)
 
         drawGroundDetails(canvas, scene, daylight, now)
+        if (daylight < .2f && !weatherNow.raining) drawNightCreatures(canvas, scene, now)
         if (weatherNow.raining) drawRain(canvas, scene, now, daylight)
         canvas.restore()
     }
@@ -1434,12 +1428,10 @@ private class PetGameView(context: Context, private val onPetCreated: () -> Unit
             val moving = cyclePosition >= jumpStart && cyclePosition <= jumpStart + jumpDuration
             val easedProgress = rawProgress * rawProgress * (3f - 2f * rawProgress)
             val rawX = if (moving) startX + (endX - startX) * easedProgress else if (cyclePosition < jumpStart) startX else endX
-            val petGap = dp(98f)
-            val x = when {
-                rawX < petCenterX - petGap || rawX > petCenterX + petGap -> rawX
-                rawX < petCenterX -> petCenterX - petGap
-                else -> petCenterX + petGap
-            }.coerceIn(scene.left + dp(16f), scene.right - dp(16f))
+            // This is scenery, so the pet/egg is deliberately drawn over it
+            // afterward. Do not skip or clamp around the pet: natural
+            // occlusion is what prevents clipping and pop-in.
+            val x = rawX.coerceIn(scene.left + dp(16f), scene.right - dp(16f))
             val hop = if (moving) sin(rawProgress * Math.PI).toFloat() else 0f
             val ground = scene.bottom - dp(27f)
             val y = ground - hop * dp(22f)
