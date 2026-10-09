@@ -18,6 +18,7 @@ import android.graphics.Path
 import android.graphics.RadialGradient
 import android.graphics.RectF
 import android.graphics.Shader
+import android.media.MediaPlayer
 import android.os.Bundle
 import android.os.Build
 import android.os.Environment
@@ -53,7 +54,6 @@ import java.io.FileOutputStream
 import java.io.IOException
 import java.net.HttpURLConnection
 import java.net.URL
-import java.time.LocalDateTime
 import java.time.LocalTime
 import kotlin.math.abs
 import kotlin.math.cos
@@ -70,7 +70,10 @@ class MainActivity : Activity() {
     private val networkCallback = object : ConnectivityManager.NetworkCallback() {
         override fun onAvailable(network: Network) {
             runOnUiThread {
-                if (::gameView.isInitialized && gameView.hasCloudAccount()) gameView.syncCloud()
+                if (::gameView.isInitialized) {
+                    gameView.refreshWeather()
+                    if (gameView.hasCloudAccount()) gameView.syncCloud()
+                }
             }
         }
     }
@@ -502,6 +505,8 @@ private class PetGameView(context: Context, private val onPetCreated: () -> Unit
     @Volatile private var weather = WeatherState()
     private var weatherLoading = false
     private var weatherStarted = false
+    private var ambientPlayer: MediaPlayer? = null
+    private var ambientMode: AmbientMode? = null
     private val weatherHandler = Handler(Looper.getMainLooper())
     private val weatherRefresh = object : Runnable {
         override fun run() {
@@ -661,11 +666,56 @@ private class PetGameView(context: Context, private val onPetCreated: () -> Unit
         super.onWindowVisibilityChanged(visibility)
         // Background time belongs to progress simulation, not missed walk poses.
         motionLastAt = SystemClock.uptimeMillis()
+        if (visibility != View.VISIBLE) stopAmbientSound()
+        else invalidate()
+    }
+
+    override fun onDetachedFromWindow() {
+        stopAmbientSound()
+        weatherHandler.removeCallbacks(weatherRefresh)
+        super.onDetachedFromWindow()
+    }
+
+    private fun updateAmbientSound() {
+        val minutes = LocalTime.now().hour * 60 + LocalTime.now().minute
+        val daylight = daylightFactor(minutes, weather)
+        val target = when {
+            weather.raining -> AmbientMode.RAIN
+            daylight < .2f -> AmbientMode.NIGHT
+            else -> AmbientMode.DAY
+        }
+        if (target == ambientMode || windowVisibility != View.VISIBLE) return
+        stopAmbientSound()
+        val resource = when (target) {
+            AmbientMode.DAY -> R.raw.ambient_birds
+            AmbientMode.RAIN -> R.raw.ambient_rain
+            AmbientMode.NIGHT -> R.raw.ambient_night
+        }
+        ambientPlayer = runCatching {
+            MediaPlayer.create(appContext, resource)?.apply {
+                isLooping = true
+                setVolume(.18f, .18f)
+                start()
+            }
+        }.getOrNull()
+        ambientMode = target
+    }
+
+    private fun stopAmbientSound() {
+        ambientPlayer?.let { player ->
+            runCatching {
+                if (player.isPlaying) player.stop()
+                player.release()
+            }
+        }
+        ambientPlayer = null
+        ambientMode = null
     }
 
     override fun onDraw(canvas: Canvas) {
         super.onDraw(canvas)
         val now = SystemClock.uptimeMillis()
+        updateAmbientSound()
         pet.updateFromClock()
         if (!setupMode && pet.consumeHatchEvent()) {
             message = "${pet.name} has hatched! Hello, little one!"
@@ -973,6 +1023,11 @@ private class PetGameView(context: Context, private val onPetCreated: () -> Unit
         paint.color = if (daylight < .2f) Color.rgb(67, 78, 112) else Color.rgb(174, 213, 216)
         canvas.drawPath(distantMountains, paint)
 
+        // Trees sit in the distant layer, behind the hills and always behind
+        // the pet, so a hatchling never appears to walk over them.
+        drawTrees(canvas, scene, daylight)
+        if (daylight > .2f && !weatherNow.raining) drawBirds(canvas, scene, now)
+
         val farHill = Path().apply {
             moveTo(scene.left, scene.bottom - dp(67f))
             cubicTo(scene.left + dp(85f), scene.bottom - dp(100f), scene.right - dp(110f), scene.bottom - dp(20f), scene.right, scene.bottom - dp(73f))
@@ -992,7 +1047,8 @@ private class PetGameView(context: Context, private val onPetCreated: () -> Unit
         paint.color = Color.rgb(184, 225, 194)
         canvas.drawPath(nearHill, paint)
 
-        drawHorizonDetails(canvas, scene, daylight, now)
+        drawGroundDetails(canvas, scene, daylight, now)
+        if (daylight < .2f && !weatherNow.raining) drawNightCreatures(canvas, scene, now)
         if (weatherNow.raining) drawRain(canvas, scene, now, daylight)
         canvas.restore()
     }
@@ -1032,24 +1088,59 @@ private class PetGameView(context: Context, private val onPetCreated: () -> Unit
         }
     }
 
-    private fun drawHorizonDetails(canvas: Canvas, scene: RectF, daylight: Float, now: Long) {
+    private fun drawTrees(canvas: Canvas, scene: RectF, daylight: Float) {
         val treeColor = if (daylight < .2f) Color.rgb(51, 77, 77) else Color.rgb(101, 168, 127)
         paint.color = treeColor
         val positions = floatArrayOf(.12f, .31f, .70f, .88f)
         for (index in positions.indices) {
             val x = scene.left + scene.width() * positions[index]
-            val base = scene.bottom - dp(36f + (index % 2) * 9f)
-            val size = dp(18f + (index % 3) * 4f)
+            val base = scene.bottom - dp(31f + (index % 2) * 8f)
+            val size = dp(29f + (index % 3) * 6f)
             canvas.drawRect(RectF(x - dp(2f), base - size * .55f, x + dp(2f), base), paint)
             canvas.drawCircle(x, base - size * .8f, size * .55f, paint)
             canvas.drawCircle(x - size * .34f, base - size * .58f, size * .42f, paint)
             canvas.drawCircle(x + size * .34f, base - size * .58f, size * .42f, paint)
         }
+    }
+
+    private fun drawGroundDetails(canvas: Canvas, scene: RectF, daylight: Float, now: Long) {
         paint.color = Color.argb((70f + daylight * 80f).roundToInt(), 64, 135, 93)
         for (index in 0 until 18) {
             val x = scene.left + ((index * 47 + (now / 50L).toInt()) % scene.width().toInt()).toFloat()
             val y = scene.bottom - dp(8f + (index % 4) * 4f)
             canvas.drawLine(x.toFloat(), y, x + dp(2f), y - dp(7f), paint)
+        }
+    }
+
+    private fun drawBirds(canvas: Canvas, scene: RectF, now: Long) {
+        paint.color = Color.argb(185, 71, 80, 94)
+        paint.style = Paint.Style.STROKE
+        paint.strokeWidth = dp(1.5f)
+        for (index in 0 until 3) {
+            val phase = now / (1800f + index * 300f) + index * 1.7f
+            val x = scene.left + scene.width() * (.18f + index * .29f) + sin(phase) * dp(26f)
+            val y = scene.top + dp(137f + index * 22f) + cos(phase * .7f) * dp(12f)
+            val wing = sin(phase * 5f) * dp(4f)
+            canvas.drawArc(RectF(x - dp(9f), y - wing, x, y + dp(5f)), 205f, 135f, false, paint)
+            canvas.drawArc(RectF(x, y + dp(5f), x + dp(9f), y + dp(10f) + wing), 205f, 135f, false, paint)
+        }
+        paint.style = Paint.Style.FILL
+    }
+
+    private fun drawNightCreatures(canvas: Canvas, scene: RectF, now: Long) {
+        paint.color = Color.rgb(74, 111, 83)
+        val hop = abs(sin(now / 1100f))
+        val positions = floatArrayOf(.17f, .84f)
+        for (index in positions.indices) {
+            val x = scene.left + scene.width() * positions[index]
+            val y = scene.bottom - dp(27f) - hop * dp(7f)
+            canvas.drawOval(RectF(x - dp(7f), y - dp(5f), x + dp(7f), y + dp(5f)), paint)
+            canvas.drawCircle(x - dp(5f), y - dp(6f), dp(4f), paint)
+            canvas.drawCircle(x + dp(5f), y - dp(6f), dp(4f), paint)
+            paint.color = Color.rgb(210, 231, 153)
+            canvas.drawCircle(x - dp(6f), y - dp(7f), dp(1.2f), paint)
+            canvas.drawCircle(x + dp(6f), y - dp(7f), dp(1.2f), paint)
+            paint.color = Color.rgb(74, 111, 83)
         }
     }
 
@@ -1851,6 +1942,8 @@ private class PetGameView(context: Context, private val onPetCreated: () -> Unit
     }
 
     private enum class MotionMode { REST, WALK, CURIOUS, STAND }
+
+    private enum class AmbientMode { DAY, RAIN, NIGHT }
 
     private enum class PetKind(val label: String, val light: Int, val primary: Int, val dark: Int) {
         CAT("CAT", Color.rgb(239, 220, 190), Color.rgb(189, 139, 105), Color.rgb(108, 74, 75)),
