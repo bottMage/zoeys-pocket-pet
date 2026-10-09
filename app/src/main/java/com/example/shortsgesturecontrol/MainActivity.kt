@@ -1677,13 +1677,16 @@ private class PetGameView(context: Context, private val onPetCreated: () -> Unit
         val reactionBob = when (activeAction) {
             Action.FEED -> -abs(sin(reactionProgress * Math.PI.toFloat() * 2f)) * dp(3f)
             Action.PLAY -> -abs(sin(reactionProgress * Math.PI.toFloat() * 3f)) * dp(9f)
-            Action.SLEEP -> dp(7f) * sleepEase - reactionWave * dp(1.5f)
+            // Lower the whole body into the ground rather than tipping it up
+            // like a standing pose. The feet remain anchored while the body
+            // settles into a clear resting position.
+            Action.SLEEP -> dp(14f) * sleepEase - reactionWave * dp(1.5f)
             else -> 0f
         }
         val reactionShiftX = if (activeAction == Action.BATH) sin(reactionProgress * Math.PI.toFloat() * 8f) * dp(2f) else 0f
         val touchShiftX = sin(touchProgress * Math.PI.toFloat() * 5f) * dp(2f)
         val reactionScale = if (activeAction == Action.PLAY) 1f + reactionWave * .025f else 1f + sin(touchProgress * Math.PI.toFloat()) * .012f
-        val reactionScaleY = reactionScale * (1f - sleepEase * .035f)
+        val reactionScaleY = reactionScale * (1f - sleepEase * .12f)
         val touchBob = -abs(sin(touchProgress * Math.PI.toFloat())) * dp(4f)
         val rootY = groundY + idleBob + reactionBob + touchBob
 
@@ -1709,7 +1712,7 @@ private class PetGameView(context: Context, private val onPetCreated: () -> Unit
         canvas.save()
         canvas.translate(reactionShiftX + touchShiftX, 0f)
         if (reactionScale != 1f || reactionScaleY != 1f) canvas.scale(reactionScale, reactionScaleY, centerX, rootY)
-        if (sleepEase > 0f) canvas.rotate(-9f * sleepEase, centerX, rootY)
+        if (sleepEase > 0f) canvas.rotate(-4f * sleepEase, centerX, rootY)
         // The artwork faces left by default.  Mirror it only while travelling
         // right; the old condition reversed that relationship.
         if (motionDirection > 0f) canvas.scale(-1f, 1f, centerX, rootY)
@@ -1724,28 +1727,63 @@ private class PetGameView(context: Context, private val onPetCreated: () -> Unit
     private fun drawSleepEyes(canvas: Canvas, artRect: RectF) {
         val eyePosition = when (pet.kind) {
             PetKind.CAT -> .29f to .49f
-            PetKind.DOG -> .35f to .46f
-            PetKind.BUNNY -> .35f to .52f
-            PetKind.HAMSTER -> .35f to .48f
-            PetKind.DRAGON -> .285f to .51f
+            PetKind.DOG -> .32f to .46f
+            PetKind.BUNNY -> .34f to .46f
+            PetKind.HAMSTER -> .32f to .45f
+            PetKind.DRAGON -> .245f to .51f
         }
         val eyeX = artRect.left + artRect.width() * eyePosition.first
         val eyeY = artRect.top + artRect.height() * eyePosition.second
-        val eyeWidth = artRect.width() * .105f
-        val eyeHeight = eyeWidth * .62f
+        val eyeWidth = artRect.width() * when (pet.kind) {
+            PetKind.DRAGON -> .145f
+            PetKind.CAT -> .135f
+            else -> .13f
+        }
+        val eyeHeight = artRect.height() * when (pet.kind) {
+            PetKind.DRAGON -> .145f
+            else -> .13f
+        }
         paint.colorFilter = null
+        // First cover the open eye with a small face-coloured almond. A line
+        // alone leaves the original iris visible and reads like an eyebrow.
+        val faceColor = when (pet.kind) {
+            PetKind.CAT -> Color.rgb(181, 148, 229)
+            PetKind.DOG -> Color.rgb(226, 151, 78)
+            PetKind.BUNNY -> Color.rgb(159, 221, 181)
+            PetKind.HAMSTER -> Color.rgb(235, 174, 75)
+            PetKind.DRAGON -> Color.rgb(23, 194, 201)
+        }
+        val left = eyeX - eyeWidth / 2f
+        val right = eyeX + eyeWidth / 2f
+        val top = eyeY - eyeHeight / 2f
+        val bottom = eyeY + eyeHeight / 2f
+        val cover = Path().apply {
+            moveTo(left, eyeY)
+            quadTo(eyeX, top, right, eyeY)
+            quadTo(eyeX, bottom, left, eyeY)
+            close()
+        }
+        paint.style = Paint.Style.FILL
+        paint.color = faceColor
+        canvas.drawPath(cover, paint)
+
+        // Add a single relaxed, downward-curved eyelid over the cover.
         paint.style = Paint.Style.STROKE
-        paint.strokeWidth = dp(2.2f)
+        paint.strokeWidth = dp(2.4f)
         paint.strokeCap = Paint.Cap.ROUND
         paint.color = Color.rgb(73, 48, 74)
-        canvas.drawArc(
-            RectF(eyeX - eyeWidth / 2f, eyeY - eyeHeight / 2f, eyeX + eyeWidth / 2f, eyeY + eyeHeight / 2f),
-            200f,
-            140f,
-            false,
-            paint
-        )
-        paint.strokeCap = Paint.Cap.BUTT
+        val lid = Path().apply {
+            moveTo(left + eyeWidth * .05f, eyeY)
+            cubicTo(
+                eyeX - eyeWidth * .24f,
+                eyeY + eyeHeight * .42f,
+                eyeX + eyeWidth * .24f,
+                eyeY + eyeHeight * .42f,
+                right - eyeWidth * .05f,
+                eyeY
+            )
+        }
+        canvas.drawPath(lid, paint)
         paint.style = Paint.Style.FILL
     }
 

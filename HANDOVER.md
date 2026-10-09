@@ -1,6 +1,15 @@
 # Zoey's Pocket Pet — cloud handover
 
-## Current release candidate: bottom-anchored taller grass — v75
+## Current release candidate: clearer live-pet sleep pose — v76
+
+The v76 candidate keeps v75's bottom-anchored taller grass unchanged. Live
+pet sleep now settles the whole body lower with a gentler tilt and stronger
+vertical compression, so it reads as resting rather than standing upright.
+The closed-eye overlay is positioned per pet and covers the open iris with a
+face-coloured almond before drawing a curved eyelid, avoiding stray eyebrow
+marks. Hatching, walking, audio, and other interactions are unchanged.
+
+## Previous release: bottom-anchored taller grass — v75
 
 The v75 candidate keeps v74's dense, pointed grass blades but anchors every
 blade directly to the scenery's bottom edge. The grass bank is taller so there
