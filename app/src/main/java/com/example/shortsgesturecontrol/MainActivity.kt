@@ -1760,14 +1760,36 @@ private class PetGameView(context: Context, private val onPetCreated: () -> Unit
                 drawReactionLabel(canvas, if (egg) "NEST TIDY!" else "SPARKLY!", cx, cy - dp(142f), labelColor)
             }
             Action.SLEEP -> {
-                val rise = progress * dp(42f)
-                textPaint.color = Color.rgb(239, 237, 255)
-                textPaint.textSize = dp(23f)
-                canvas.drawText("Z", cx + dp(56f), cy - dp(76f) - rise, textPaint)
-                textPaint.textSize = dp(17f)
-                canvas.drawText("Z", cx + dp(78f), cy - dp(105f) - rise * .55f, textPaint)
-                textPaint.textSize = dp(13f)
-                canvas.drawText("z", cx + dp(95f), cy - dp(127f) - rise * .25f, textPaint)
+                val elapsed = (now - actionStartedAt).coerceAtLeast(0L)
+                val cycleMs = 3600L
+                val zDurationMs = 1550L
+                val cyclePosition = elapsed % cycleMs
+                val daylight = daylightFactor(LocalTime.now().hour * 60 + LocalTime.now().minute, weather)
+                val zColor = blendColor(Color.rgb(235, 232, 255), Color.rgb(84, 67, 126), daylight)
+                val zShadow = blendColor(Color.rgb(61, 48, 88), Color.WHITE, daylight)
+                val xOffsets = floatArrayOf(54f, 78f, 98f)
+                val baseHeights = floatArrayOf(76f, 103f, 125f)
+                val sizes = floatArrayOf(23f, 17f, 13f)
+                val offsets = longArrayOf(0L, 1150L, 2300L)
+                for (index in offsets.indices) {
+                    val age = cyclePosition - offsets[index]
+                    if (age !in 0L until zDurationMs) continue
+                    val raw = age.toFloat() / zDurationMs.toFloat()
+                    val eased = raw * raw * (3f - 2f * raw)
+                    val alpha = when {
+                        raw < .18f -> raw / .18f
+                        raw > .78f -> (1f - raw) / .22f
+                        else -> 1f
+                    }.coerceIn(0f, 1f)
+                    val drift = sin(eased * Math.PI).toFloat() * dp(9f)
+                    val x = cx + dp(xOffsets[index]) + drift
+                    val y = cy - dp(baseHeights[index]) - dp(48f) * eased
+                    textPaint.textSize = dp(sizes[index])
+                    textPaint.color = Color.argb((alpha * 82f).roundToInt(), Color.red(zShadow), Color.green(zShadow), Color.blue(zShadow))
+                    canvas.drawText(if (index == 2) "z" else "Z", x + dp(1f), y + dp(1f), textPaint)
+                    textPaint.color = Color.argb((alpha * 235f).roundToInt(), Color.red(zColor), Color.green(zColor), Color.blue(zColor))
+                    canvas.drawText(if (index == 2) "z" else "Z", x, y, textPaint)
+                }
                 drawReactionLabel(canvas, if (egg) "SAFE & SLEEPY" else "SWEET DREAMS", cx, cy - dp(132f), labelColor)
             }
         }

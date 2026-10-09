@@ -1,6 +1,14 @@
 # Zoey's Pocket Pet — cloud handover
 
-## Current release candidate: upright breathing egg sleep — v66
+## Current release candidate: natural sleep Z timing — v67
+
+The v67 candidate keeps the v66 approved snore audio and upright breathing egg
+sleep exactly unchanged. Sleep Zs now spawn one at a time with staggered
+timing, eased upward motion, fade-in/fade-out, a small drift, and dynamic
+day/night contrast. The Z cycle no longer pops three white letters in and out
+at the same instant.
+
+## Previous release: upright breathing egg sleep — v66
 
 The v66 candidate keeps the v65 approved ambient sleep loop and one-minute
 sleep behavior. During egg sleep, the egg remains upright and uses a slow
