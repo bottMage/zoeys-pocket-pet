@@ -1,8 +1,10 @@
 package com.example.shortsgesturecontrol
 
+import android.Manifest
 import android.app.Activity
 import android.app.AlertDialog
 import android.content.Context
+import android.content.pm.PackageManager
 import android.content.Intent
 import android.net.ConnectivityManager
 import android.net.Network
@@ -23,6 +25,8 @@ import android.os.Handler
 import android.os.Looper
 import android.os.SystemClock
 import android.net.Uri
+import android.location.Location
+import android.location.LocationManager
 import android.util.Log
 import android.view.Gravity
 import android.view.MotionEvent
@@ -49,6 +53,8 @@ import java.io.FileOutputStream
 import java.io.IOException
 import java.net.HttpURLConnection
 import java.net.URL
+import java.time.LocalDateTime
+import java.time.LocalTime
 import kotlin.math.abs
 import kotlin.math.cos
 import kotlin.math.max
@@ -71,6 +77,7 @@ class MainActivity : Activity() {
 
     companion object {
         private const val GOOGLE_SIGN_IN_REQUEST = 7401
+        private const val WEATHER_PERMISSION_REQUEST = 7402
     }
 
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -84,6 +91,7 @@ class MainActivity : Activity() {
         setContentView(gameView)
         connectivityManager = getSystemService(ConnectivityManager::class.java)
         connectivityManager.registerDefaultNetworkCallback(networkCallback)
+        gameView.postDelayed({ startWeatherSync() }, 3200L)
         gameView.postDelayed({ gameView.checkForUpdates(showNoUpdate = false) }, 650L)
         gameView.postDelayed({
             if (auth.currentUser != null) gameView.restoreCloudAtStartup()
@@ -105,6 +113,21 @@ class MainActivity : Activity() {
     override fun onDestroy() {
         if (::connectivityManager.isInitialized) connectivityManager.unregisterNetworkCallback(networkCallback)
         super.onDestroy()
+    }
+
+    private fun startWeatherSync() {
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M &&
+            checkSelfPermission(Manifest.permission.ACCESS_COARSE_LOCATION) != PackageManager.PERMISSION_GRANTED
+        ) {
+            requestPermissions(arrayOf(Manifest.permission.ACCESS_COARSE_LOCATION), WEATHER_PERMISSION_REQUEST)
+        } else {
+            gameView.refreshWeather()
+        }
+    }
+
+    override fun onRequestPermissionsResult(requestCode: Int, permissions: Array<out String>, grantResults: IntArray) {
+        super.onRequestPermissionsResult(requestCode, permissions, grantResults)
+        if (requestCode == WEATHER_PERMISSION_REQUEST) gameView.refreshWeather()
     }
 
     private fun buildGoogleSignInClient(): GoogleSignInClient? {
@@ -476,6 +499,16 @@ private class PetGameView(context: Context, private val onPetCreated: () -> Unit
     private var menuOpen = false
     private var menuAnimationStart = 0L
     private var menuOpening = true
+    @Volatile private var weather = WeatherState()
+    private var weatherLoading = false
+    private var weatherStarted = false
+    private val weatherHandler = Handler(Looper.getMainLooper())
+    private val weatherRefresh = object : Runnable {
+        override fun run() {
+            refreshWeather()
+            weatherHandler.postDelayed(this, WEATHER_REFRESH_MS)
+        }
+    }
 
     private fun petArtwork(kind: PetKind): Bitmap = petArtCache.getOrPut(kind) {
         val options = BitmapFactory.Options().apply {
@@ -530,6 +563,99 @@ private class PetGameView(context: Context, private val onPetCreated: () -> Unit
             preloadWalkArtwork(pet.kind)
         }
     }
+
+    /**
+     * Uses the phone's last known approximate location with Open-Meteo. If
+     * location or network access is unavailable, the scene still follows the
+     * local clock and uses calm, partly-cloudy fallback scenery.
+     */
+    fun refreshWeather() {
+        if (!weatherStarted) {
+            weatherStarted = true
+            weatherHandler.postDelayed(weatherRefresh, WEATHER_REFRESH_MS)
+        }
+        if (weatherLoading) return
+        weatherLoading = true
+        Thread {
+            val snapshot = runCatching {
+                val location = lastKnownLocation()
+                if (location == null) fallbackWeather() else fetchWeather(location)
+            }.getOrElse { fallbackWeather() }
+            weatherHandler.post {
+                weather = snapshot
+                weatherLoading = false
+                invalidate()
+            }
+        }.start()
+    }
+
+    private fun lastKnownLocation(): Location? {
+        val manager = appContext.getSystemService(Context.LOCATION_SERVICE) as LocationManager
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M &&
+            appContext.checkSelfPermission(Manifest.permission.ACCESS_COARSE_LOCATION) != PackageManager.PERMISSION_GRANTED
+        ) return null
+        val candidates = listOf(LocationManager.NETWORK_PROVIDER, LocationManager.GPS_PROVIDER)
+            .mapNotNull { provider -> runCatching { manager.getLastKnownLocation(provider) }.getOrNull() }
+        return candidates.maxByOrNull { it.time }
+    }
+
+    private fun fetchWeather(location: Location): WeatherState {
+        val request = URL(
+            "https://api.open-meteo.com/v1/forecast" +
+                "?latitude=${location.latitude}&longitude=${location.longitude}" +
+                "&current=precipitation,rain,showers,snowfall,cloud_cover,weather_code" +
+                "&hourly=precipitation_probability&daily=sunrise,sunset&forecast_days=1&timezone=auto"
+        )
+        val connection = (request.openConnection() as HttpURLConnection).apply {
+            connectTimeout = 12_000
+            readTimeout = 15_000
+            requestMethod = "GET"
+            setRequestProperty("User-Agent", "Mochigotchi-Weather")
+        }
+        return try {
+            if (connection.responseCode !in 200..299) throw IOException("Weather HTTP ${connection.responseCode}")
+            val root = JSONObject(connection.inputStream.bufferedReader().use { it.readText() })
+            val current = root.optJSONObject("current") ?: throw IOException("Weather response missing current data")
+            val code = current.optInt("weather_code", 0)
+            val precipitation = current.optDouble("precipitation", 0.0)
+            val rain = current.optDouble("rain", 0.0) + current.optDouble("showers", 0.0) + current.optDouble("snowfall", 0.0)
+            val hourly = root.optJSONObject("hourly")
+            val probabilities = hourly?.optJSONArray("precipitation_probability")
+            val currentHour = current.optString("time").substringAfter('T').take(2).toIntOrNull()
+                ?: LocalTime.now().hour
+            val probabilityCount = probabilities?.length() ?: 0
+            val firstHour = if (probabilityCount > 0) currentHour.coerceIn(0, probabilityCount - 1) else 0
+            var rainSoon = 0f
+            if (probabilities != null && probabilityCount > 0) {
+                for (index in firstHour until min(probabilityCount, firstHour + 4)) {
+                    rainSoon = max(rainSoon, probabilities.optDouble(index, 0.0).toFloat() / 100f)
+                }
+            }
+            val daily = root.optJSONObject("daily")
+            val sunrise = daily?.optJSONArray("sunrise")?.optString(0)?.let(::minutesFromIsoTime) ?: 360
+            val sunset = daily?.optJSONArray("sunset")?.optString(0)?.let(::minutesFromIsoTime) ?: 1080
+            WeatherState(
+                available = true,
+                cloudCover = (current.optDouble("cloud_cover", 28.0) / 100.0).toFloat().coerceIn(0f, 1f),
+                raining = rain > .01 || precipitation > .01 || isWetWeatherCode(code),
+                rainSoon = rainSoon,
+                weatherCode = code,
+                sunriseMinutes = sunrise,
+                sunsetMinutes = sunset
+            )
+        } finally {
+            connection.disconnect()
+        }
+    }
+
+    private fun minutesFromIsoTime(value: String): Int {
+        val time = value.substringAfter('T').take(5)
+        return time.substringBefore(':').toIntOrNull()?.times(60)?.plus(time.substringAfter(':').toIntOrNull() ?: 0) ?: 360
+    }
+
+    private fun isWetWeatherCode(code: Int): Boolean = code in 51..67 || code in 80..82 || code in 95..99
+
+    private fun fallbackWeather(): WeatherState = WeatherState()
 
     override fun onWindowVisibilityChanged(visibility: Int) {
         super.onWindowVisibilityChanged(visibility)
@@ -806,16 +932,46 @@ private class PetGameView(context: Context, private val onPetCreated: () -> Unit
 
         canvas.save()
         canvas.clipPath(Path().apply { addRoundRect(scene, dp(26f), dp(26f), Path.Direction.CW) })
+        val weatherNow = weather
+        val daylight = daylightFactor(LocalTime.now().hour * 60 + LocalTime.now().minute, weatherNow)
         paint.shader = LinearGradient(
             0f, scene.top, 0f, scene.bottom,
-            Color.rgb(225, 241, 255), Color.rgb(250, 239, 249), Shader.TileMode.CLAMP
+            blendColor(Color.rgb(28, 42, 86), Color.rgb(190, 229, 255), daylight),
+            blendColor(Color.rgb(72, 64, 116), Color.rgb(250, 239, 249), daylight), Shader.TileMode.CLAMP
         )
         canvas.drawRect(scene, paint)
         paint.shader = null
 
-        paint.color = Color.argb(195, 255, 255, 255)
-        drawCloud(canvas, scene.left + dp(18f), scene.top + dp(76f), .38f)
-        drawCloud(canvas, scene.right - dp(82f), scene.top + dp(126f), .32f)
+        drawCelestial(canvas, scene, weatherNow)
+
+        val cloudiness = max(weatherNow.cloudCover, weatherNow.rainSoon * .85f)
+        val cloudCount = (cloudiness * 4f).roundToInt().coerceIn(0, 4)
+        val cloudColor = if (daylight < .2f) Color.argb(110, 122, 130, 164)
+        else if (weatherNow.raining || weatherNow.rainSoon > .5f) Color.argb(205, 148, 164, 185)
+        else Color.argb(195, 255, 255, 255)
+        paint.color = cloudColor
+        for (index in 0 until cloudCount) {
+            val cycle = ((now / (42_000f + index * 4_000f) + index * .29f) % 1f + 1f) % 1f
+            val x = scene.left - dp(88f) + cycle * (scene.width() + dp(176f))
+            val y = scene.top + dp(61f + index * 34f)
+            drawCloud(canvas, x, y, .28f + (index % 2) * .07f)
+        }
+
+        val distantMountains = Path().apply {
+            moveTo(scene.left, scene.bottom - dp(78f))
+            lineTo(scene.left + dp(57f), scene.bottom - dp(132f))
+            lineTo(scene.left + dp(104f), scene.bottom - dp(92f))
+            lineTo(scene.left + dp(163f), scene.bottom - dp(146f))
+            lineTo(scene.left + dp(231f), scene.bottom - dp(88f))
+            lineTo(scene.right - dp(104f), scene.bottom - dp(139f))
+            lineTo(scene.right - dp(44f), scene.bottom - dp(91f))
+            lineTo(scene.right, scene.bottom - dp(124f))
+            lineTo(scene.right, scene.bottom)
+            lineTo(scene.left, scene.bottom)
+            close()
+        }
+        paint.color = if (daylight < .2f) Color.rgb(67, 78, 112) else Color.rgb(174, 213, 216)
+        canvas.drawPath(distantMountains, paint)
 
         val farHill = Path().apply {
             moveTo(scene.left, scene.bottom - dp(67f))
@@ -835,6 +991,9 @@ private class PetGameView(context: Context, private val onPetCreated: () -> Unit
         }
         paint.color = Color.rgb(184, 225, 194)
         canvas.drawPath(nearHill, paint)
+
+        drawHorizonDetails(canvas, scene, daylight, now)
+        if (weatherNow.raining) drawRain(canvas, scene, now, daylight)
         canvas.restore()
     }
 
@@ -843,6 +1002,88 @@ private class PetGameView(context: Context, private val onPetCreated: () -> Unit
         canvas.drawCircle(x + dp(22f) * scale, y - dp(8f) * scale, dp(28f) * scale, paint)
         canvas.drawCircle(x + dp(52f) * scale, y, dp(20f) * scale, paint)
         canvas.drawRoundRect(RectF(x - dp(5f) * scale, y, x + dp(60f) * scale, y + dp(18f) * scale), dp(10f), dp(10f), paint)
+    }
+
+    private fun drawCelestial(canvas: Canvas, scene: RectF, state: WeatherState) {
+        val now = LocalTime.now().hour * 60 + LocalTime.now().minute + LocalTime.now().second / 60f
+        val sunrise = state.sunriseMinutes.toFloat().coerceIn(0f, 1439f)
+        val sunset = state.sunsetMinutes.toFloat().coerceIn(sunrise + 60f, 1439f)
+        val day = now in sunrise..sunset
+        val fraction = if (day) ((now - sunrise) / (sunset - sunrise)).coerceIn(0f, 1f)
+        else ((if (now >= sunset) now - sunset else now + 1440f - sunset) /
+            (1440f - sunset + sunrise)).coerceIn(0f, 1f)
+        val x = if (day) scene.left + scene.width() * (.12f + .76f * fraction)
+        else scene.right - scene.width() * (.12f + .76f * fraction)
+        val y = scene.top + scene.height() * (.68f - sin(fraction * Math.PI.toFloat()) * .52f)
+
+        if (day) {
+            paint.color = Color.argb(42, 255, 224, 111)
+            canvas.drawCircle(x, y, dp(27f), paint)
+            paint.color = Color.rgb(255, 220, 109)
+            canvas.drawCircle(x, y, dp(15f), paint)
+        } else {
+            paint.color = Color.argb(230, 255, 249, 207)
+            canvas.drawCircle(x, y, dp(14f), paint)
+            paint.color = Color.rgb(45, 56, 101)
+            canvas.drawCircle(x + dp(6f), y - dp(4f), dp(13f), paint)
+            paint.color = Color.argb(150, 255, 255, 255)
+            val stars = arrayOf(floatArrayOf(.18f, .20f), floatArrayOf(.76f, .18f), floatArrayOf(.62f, .36f), floatArrayOf(.34f, .42f))
+            for (star in stars) canvas.drawCircle(scene.left + scene.width() * star[0], scene.top + scene.height() * star[1], dp(1.5f), paint)
+        }
+    }
+
+    private fun drawHorizonDetails(canvas: Canvas, scene: RectF, daylight: Float, now: Long) {
+        val treeColor = if (daylight < .2f) Color.rgb(51, 77, 77) else Color.rgb(101, 168, 127)
+        paint.color = treeColor
+        val positions = floatArrayOf(.12f, .31f, .70f, .88f)
+        for (index in positions.indices) {
+            val x = scene.left + scene.width() * positions[index]
+            val base = scene.bottom - dp(36f + (index % 2) * 9f)
+            val size = dp(18f + (index % 3) * 4f)
+            canvas.drawRect(RectF(x - dp(2f), base - size * .55f, x + dp(2f), base), paint)
+            canvas.drawCircle(x, base - size * .8f, size * .55f, paint)
+            canvas.drawCircle(x - size * .34f, base - size * .58f, size * .42f, paint)
+            canvas.drawCircle(x + size * .34f, base - size * .58f, size * .42f, paint)
+        }
+        paint.color = Color.argb((70f + daylight * 80f).roundToInt(), 64, 135, 93)
+        for (index in 0 until 18) {
+            val x = scene.left + ((index * 47 + (now / 50L).toInt()) % scene.width().toInt()).toFloat()
+            val y = scene.bottom - dp(8f + (index % 4) * 4f)
+            canvas.drawLine(x.toFloat(), y, x + dp(2f), y - dp(7f), paint)
+        }
+    }
+
+    private fun drawRain(canvas: Canvas, scene: RectF, now: Long, daylight: Float) {
+        paint.color = if (daylight < .2f) Color.argb(120, 173, 199, 238) else Color.argb(145, 92, 157, 202)
+        paint.strokeWidth = dp(1.2f)
+        paint.style = Paint.Style.STROKE
+        for (index in 0 until 42) {
+            val x = scene.left + ((index * 43 + (now / 7L).toInt()) % scene.width().toInt()).toFloat()
+            val y = scene.top + ((index * 67 + (now / 5L).toInt()) % scene.height().toInt()).toFloat()
+            canvas.drawLine(x.toFloat(), y.toFloat(), x - dp(4f), y + dp(12f), paint)
+        }
+        paint.style = Paint.Style.FILL
+    }
+
+    private fun daylightFactor(minutes: Int, state: WeatherState): Float {
+        val dawn = state.sunriseMinutes
+        val dusk = state.sunsetMinutes
+        return when {
+            minutes < dawn - 35 -> 0f
+            minutes < dawn -> (minutes - (dawn - 35)) / 35f
+            minutes <= dusk -> 1f
+            minutes < dusk + 35 -> 1f - (minutes - dusk) / 35f
+            else -> 0f
+        }.coerceIn(0f, 1f)
+    }
+
+    private fun blendColor(night: Int, day: Int, amount: Float): Int {
+        val t = amount.coerceIn(0f, 1f)
+        return Color.rgb(
+            (Color.red(night) + (Color.red(day) - Color.red(night)) * t).roundToInt(),
+            (Color.green(night) + (Color.green(day) - Color.green(night)) * t).roundToInt(),
+            (Color.blue(night) + (Color.blue(day) - Color.blue(night)) * t).roundToInt()
+        )
     }
 
     private fun drawPet(canvas: Canvas, now: Long) {
@@ -1585,6 +1826,16 @@ private class PetGameView(context: Context, private val onPetCreated: () -> Unit
 
     private data class ActionButton(val action: Action, val rect: RectF)
 
+    private data class WeatherState(
+        val available: Boolean = false,
+        val cloudCover: Float = .28f,
+        val raining: Boolean = false,
+        val rainSoon: Float = 0f,
+        val weatherCode: Int = 0,
+        val sunriseMinutes: Int = 360,
+        val sunsetMinutes: Int = 1080
+    )
+
     private enum class Action { FEED, PLAY, BATH, SLEEP }
 
     private enum class CloudRestoreResult {
@@ -1596,6 +1847,7 @@ private class PetGameView(context: Context, private val onPetCreated: () -> Unit
 
     companion object {
         private const val WALK_FRAME_DURATION_MS = 105L
+        private const val WEATHER_REFRESH_MS = 30 * 60 * 1000L
     }
 
     private enum class MotionMode { REST, WALK, CURIOUS, STAND }
