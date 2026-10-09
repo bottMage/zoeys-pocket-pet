@@ -485,6 +485,13 @@ private class PetGameView(context: Context, private val onPetCreated: () -> Unit
     private var actionUntil = 0L
     private var touchReactionStartedAt = 0L
     private var touchReactionUntil = 0L
+    private var lifecycleDialogShowing = false
+    private var hatchPromptShown = false
+    private var evolutionPromptShown = false
+    private var deathPromptShown = false
+    private var transitionKind: TransitionKind? = null
+    private var transitionStartedAt = 0L
+    private var transitionUntil = 0L
     private var petCenterX = 0f
     private var petGroundY = 0f
     private var motionX = .5f
@@ -770,27 +777,8 @@ private class PetGameView(context: Context, private val onPetCreated: () -> Unit
         val now = SystemClock.uptimeMillis()
         updateAmbientSound()
         pet.updateFromClock()
-        if (!setupMode && pet.consumeHatchEvent()) {
-            message = "${pet.name} has hatched! Hello, little one!"
-            messageUntil = now + 6000L
-            activeAction = Action.PLAY
-            actionStartedAt = now
-            actionUntil = now + 1600L
-            savePet()
-        }
-        if (!setupMode && pet.consumeDeathEvent()) {
-            activeAction = null
-            savePet()
-        }
-        if (!setupMode && !pet.dead && pet.consumeEvolutionEvent()) {
-            activeAction = Action.PLAY
-            actionStartedAt = now
-            actionUntil = now + 2400L
-            message = "Amazing! ${pet.name} evolved!"
-            messageColor = Color.rgb(130, 82, 185)
-            messageUntil = now + 5000L
-            savePet()
-        }
+        finishLifecycleTransition(now)
+        maybePromptLifecycle()
         drawBackground(canvas)
         if (setupMode) {
             drawSetup(canvas, now)
@@ -807,6 +795,190 @@ private class PetGameView(context: Context, private val onPetCreated: () -> Unit
         if (menuOpen || menuAnimationStart != 0L) drawMenu(canvas, now)
         if (now - lastSaved > 30_000L) savePet()
         postInvalidateOnAnimation()
+    }
+
+    private fun maybePromptLifecycle() {
+        if (setupMode || pet.dead || lifecycleDialogShowing || transitionKind != null) return
+        when {
+            !pet.hatched && pet.hatchReady && !hatchPromptShown -> showHatchPrompt()
+            pet.hatched && pet.evolutionReady && !evolutionPromptShown -> showEvolutionPrompt()
+            pet.hatched && pet.deathReady && !deathPromptShown -> showDeathPrompt()
+        }
+    }
+
+    private fun showHatchPrompt() {
+        val activity = appContext as? Activity ?: return
+        if (activity.isFinishing || activity.isDestroyed) return
+        hatchPromptShown = true
+        lifecycleDialogShowing = true
+        val dialog = AlertDialog.Builder(activity)
+            .setTitle("A little hatchling is ready!")
+            .setMessage("${pet.name}'s egg is ready to crack open. Shall we welcome the baby now?")
+            .setNegativeButton("NOT YET") { _, _ ->
+                lifecycleDialogShowing = false
+                remindLifecycleLater(TransitionKind.HATCH)
+            }
+            .setPositiveButton("HATCH NOW") { _, _ ->
+                lifecycleDialogShowing = false
+                beginLifecycleTransition(TransitionKind.HATCH)
+            }
+            .create()
+        dialog.setOnCancelListener {
+            lifecycleDialogShowing = false
+            remindLifecycleLater(TransitionKind.HATCH)
+        }
+        dialog.show()
+    }
+
+    private fun showEvolutionPrompt() {
+        val activity = appContext as? Activity ?: return
+        if (activity.isFinishing || activity.isDestroyed) return
+        evolutionPromptShown = true
+        lifecycleDialogShowing = true
+        val dialog = AlertDialog.Builder(activity)
+            .setTitle("${pet.name} is ready to grow!")
+            .setMessage("A new chapter is waiting. Would you like ${pet.name} to evolve now?")
+            .setNegativeButton("NOT YET") { _, _ ->
+                lifecycleDialogShowing = false
+                remindLifecycleLater(TransitionKind.EVOLUTION)
+            }
+            .setPositiveButton("GROW NOW") { _, _ ->
+                lifecycleDialogShowing = false
+                beginLifecycleTransition(TransitionKind.EVOLUTION)
+            }
+            .create()
+        dialog.setOnCancelListener {
+            lifecycleDialogShowing = false
+            remindLifecycleLater(TransitionKind.EVOLUTION)
+        }
+        dialog.show()
+    }
+
+    private fun showDeathPrompt() {
+        val activity = appContext as? Activity ?: return
+        if (activity.isFinishing || activity.isDestroyed) return
+        deathPromptShown = true
+        lifecycleDialogShowing = true
+        val dialog = AlertDialog.Builder(activity)
+            .setTitle("A beautiful life")
+            .setMessage("${pet.name} has lived a happy life and is growing very old. Would you like to say goodbye, or keep caring for this pet forever?")
+            .setNegativeButton("KEEP PLAYING") { _, _ ->
+                lifecycleDialogShowing = false
+                pet.keepOldPetForever()
+                message = "${pet.name} will stay with you forever."
+                messageColor = Color.rgb(73, 139, 112)
+                messageUntil = SystemClock.uptimeMillis() + 5000L
+                savePet()
+            }
+            .setPositiveButton("LET GO") { _, _ ->
+                lifecycleDialogShowing = false
+                pet.confirmDeath()
+                activeAction = null
+                message = "${pet.name} lived a happy life and will always be remembered."
+                messageColor = Color.rgb(130, 82, 185)
+                messageUntil = SystemClock.uptimeMillis() + 7000L
+                savePet()
+            }
+            .create()
+        dialog.setOnCancelListener {
+            lifecycleDialogShowing = false
+            remindLifecycleLater(TransitionKind.DEATH)
+        }
+        dialog.show()
+    }
+
+    private fun remindLifecycleLater(kind: TransitionKind) {
+        postDelayed({
+            when (kind) {
+                TransitionKind.HATCH -> hatchPromptShown = false
+                TransitionKind.EVOLUTION -> evolutionPromptShown = false
+                TransitionKind.DEATH -> deathPromptShown = false
+            }
+            invalidate()
+        }, LIFECYCLE_REPROMPT_MS)
+    }
+
+    private fun beginLifecycleTransition(kind: TransitionKind) {
+        if (transitionKind != null) return
+        transitionKind = kind
+        transitionStartedAt = SystemClock.uptimeMillis()
+        transitionUntil = transitionStartedAt + if (kind == TransitionKind.HATCH) 2800L else 1900L
+        activeAction = null
+        message = when (kind) {
+            TransitionKind.HATCH -> "The shell is cracking open…"
+            TransitionKind.EVOLUTION -> "${pet.name} is growing…"
+            TransitionKind.DEATH -> message
+        }
+        messageColor = Color.rgb(130, 82, 185)
+        messageUntil = transitionUntil + 3500L
+        invalidate()
+    }
+
+    private fun finishLifecycleTransition(now: Long) {
+        val kind = transitionKind ?: return
+        if (now < transitionUntil) return
+        when (kind) {
+            TransitionKind.HATCH -> {
+                pet.confirmHatch()
+                message = "${pet.name} has hatched! Hello, little one!"
+                activeAction = Action.PLAY
+                actionStartedAt = now
+                actionUntil = now + 1600L
+            }
+            TransitionKind.EVOLUTION -> {
+                pet.confirmEvolution()
+                message = "Amazing! ${pet.name} grew into a new stage!"
+                activeAction = Action.PLAY
+                actionStartedAt = now
+                actionUntil = now + 1800L
+            }
+            TransitionKind.DEATH -> return
+        }
+        transitionKind = null
+        savePet()
+    }
+
+    private fun transitionProgress(now: Long): Float {
+        if (transitionKind == null || transitionUntil <= transitionStartedAt) return 0f
+        return ((now - transitionStartedAt).toFloat() / (transitionUntil - transitionStartedAt).toFloat()).coerceIn(0f, 1f)
+    }
+
+    private fun smoothTransition(value: Float): Float {
+        val t = value.coerceIn(0f, 1f)
+        return t * t * (3f - 2f * t)
+    }
+
+    private fun growthTransitionScale(now: Long): Float {
+        if (transitionKind != TransitionKind.EVOLUTION) return 1f
+        val current = pet.growthStage.size
+        val next = when (pet.growthStage) {
+            PetGrowth.Stage.BABY -> PetGrowth.Stage.YOUNG.size
+            PetGrowth.Stage.YOUNG -> PetGrowth.Stage.ADULT.size
+            else -> current
+        }
+        if (current <= 0.0) return 1f
+        return (1f + ((next / current - 1.0) * smoothTransition(transitionProgress(now)))).toFloat()
+    }
+
+    private fun drawEmergingBaby(canvas: Canvas, now: Long, ground: Float, eggScale: Float) {
+        val progress = transitionProgress(now)
+        if (progress <= .2f) return
+        val reveal = smoothTransition(((progress - .2f) / .8f).coerceIn(0f, 1f))
+        val bitmap = petArtwork(pet.kind)
+        val babyWidth = dp(148f) * eggScale * (.38f + .62f * reveal)
+        val babyHeight = babyWidth * bitmap.height / bitmap.width.toFloat()
+        val lift = dp(48f) * reveal
+        val rect = RectF(
+            width / 2f - babyWidth / 2f,
+            ground - babyHeight * .48f - lift,
+            width / 2f + babyWidth / 2f,
+            ground + babyHeight * .52f - lift
+        )
+        paint.alpha = (255f * reveal).roundToInt().coerceIn(0, 255)
+        paint.colorFilter = null
+        paint.isFilterBitmap = true
+        canvas.drawBitmap(bitmap, null, rect, paint)
+        paint.alpha = 255
     }
 
     private fun drawBackground(canvas: Canvas) {
@@ -1289,6 +1461,7 @@ private class PetGameView(context: Context, private val onPetCreated: () -> Unit
                 actionProgress,
                 touchProgress
             )
+            if (transitionKind == TransitionKind.HATCH) drawEmergingBaby(canvas, now, ground, eggScale)
             motionLastAt = now
             motionX = .5f
             petCenterX = width / 2f
@@ -1344,7 +1517,8 @@ private class PetGameView(context: Context, private val onPetCreated: () -> Unit
         )
         // Fit the adult first, then scale every earlier stage relative to it.
         // Otherwise scenery fitting can make baby and adult the same size.
-        val artWidth = (layout.artWidth * pet.growthStage.size).toFloat()
+        val growthScale = growthTransitionScale(now)
+        val artWidth = (layout.artWidth * pet.growthStage.size * growthScale).toFloat()
         val reach = walkEnvelopeCache.getValue(pet.kind).reach * artWidth
         val leftCenter = sceneLeft + dp(6f) + reach
         val rightCenter = sceneRight - dp(6f) - reach
@@ -1695,10 +1869,12 @@ private class PetGameView(context: Context, private val onPetCreated: () -> Unit
         val left = dp(18f)
         val buttonWidth = (width - left * 2f - gap) / 2f
         val buttonHeight = dp(55f)
-        val actions = listOf(Action.FEED, Action.PLAY, Action.BATH, Action.SLEEP)
-        val fills = intArrayOf(Color.rgb(255, 225, 170), Color.rgb(255, 193, 216), Color.rgb(190, 232, 220), Color.rgb(198, 205, 255))
-        val labels = if (pet.hatched) listOf("FEED", "PLAY", "BATH", "SLEEP") else listOf("WARM", "SOOTHE", "TIDY", "REST")
-        val glyphs = listOf("+", "★", "✦", "Z")
+        // Match each control to the stat directly above it: hunger/warmth,
+        // joy/comfort, energy/rest, then clean/nest.
+        val actions = listOf(Action.FEED, Action.PLAY, Action.SLEEP, Action.BATH)
+        val fills = intArrayOf(Color.rgb(255, 225, 170), Color.rgb(255, 193, 216), Color.rgb(198, 205, 255), Color.rgb(190, 232, 220))
+        val labels = if (pet.hatched) listOf("FEED", "PLAY", "SLEEP", "BATH") else listOf("WARM", "SOOTHE", "REST", "TIDY")
+        val glyphs = listOf("+", "★", "Z", "✦")
         for (i in actions.indices) {
             val x = left + (i % 2) * (buttonWidth + gap)
             val y = top + (i / 2) * (buttonHeight + gap)
@@ -2131,6 +2307,8 @@ private class PetGameView(context: Context, private val onPetCreated: () -> Unit
 
     private enum class Action { FEED, PLAY, BATH, SLEEP }
 
+    private enum class TransitionKind { HATCH, EVOLUTION, DEATH }
+
     private enum class CloudRestoreResult {
         RESTORED,
         NO_CLOUD_BACKUP,
@@ -2141,6 +2319,7 @@ private class PetGameView(context: Context, private val onPetCreated: () -> Unit
     companion object {
         private const val WALK_FRAME_DURATION_MS = 105L
         private const val WEATHER_REFRESH_MS = 30 * 60 * 1000L
+        private const val LIFECYCLE_REPROMPT_MS = 20_000L
     }
 
     private enum class MotionMode { REST, WALK, CURIOUS, STAND }
@@ -2254,6 +2433,7 @@ private class PetGameView(context: Context, private val onPetCreated: () -> Unit
             hatched = prefs.getBoolean("hatched", false)
             dead = prefs.getBoolean("dead", false)
             diedAt = prefs.getLong("died_at", 0L)
+            oldAgeDeclined = prefs.getBoolean("old_age_declined", false)
             eggAgeMillis = prefs.getLong("egg_age_millis", 0L)
             eggProgressMillis = prefs.getLong("egg_progress_millis", 0L).toDouble()
             evolutionMillis = if (prefs.contains("evolution_millis")) prefs.getLong("evolution_millis", 0L).toDouble()
@@ -2307,16 +2487,22 @@ private class PetGameView(context: Context, private val onPetCreated: () -> Unit
         val evolutionHint: String
             get() = when {
                 dead -> "Memories saved"
+                !hatched && hatchReady -> "Ready to hatch"
                 !hatched -> "About 2 days with good care"
+                evolutionReady -> "Ready to grow"
                 generation >= 2 -> "Adult • enjoy your time together"
+                deathReady -> "A happy life is nearly complete"
                 else -> "About a week per stage • care helps"
             }
+
+        val hatchReady: Boolean get() = life.hatchReady()
+        val evolutionReady: Boolean get() = life.evolutionReady()
+        val deathReady: Boolean get() = life.deathReady()
 
         fun updateFromClock() {
             val now = System.currentTimeMillis()
             life.advance((now - lastUpdate).coerceAtLeast(0), now)
             lastUpdate = now
-            if (life.deathEvent) archiveCurrent("old_age")
         }
 
         fun apply(action: Action): Pair<String, Int> {
@@ -2351,9 +2537,13 @@ private class PetGameView(context: Context, private val onPetCreated: () -> Unit
             lastUpdate = System.currentTimeMillis();createdAt = lastUpdate;lastSavedAt = 0L
         }
 
-        fun consumeHatchEvent(): Boolean = life.hatchEvent.also { life.hatchEvent = false }
-        fun consumeEvolutionEvent(): Boolean = life.evolutionEvent.also { life.evolutionEvent = false }
-        fun consumeDeathEvent(): Boolean = life.deathEvent.also { life.deathEvent = false }
+        fun confirmHatch() = life.confirmHatch()
+        fun confirmEvolution() = life.confirmEvolution()
+        fun confirmDeath() {
+            life.confirmDeath(System.currentTimeMillis())
+            if (life.dead) archiveCurrent("old_age")
+        }
+        fun keepOldPetForever() = life.keepForever()
 
         private fun history(): org.json.JSONArray = try {
             org.json.JSONArray(historyJson)
@@ -2411,6 +2601,7 @@ private class PetGameView(context: Context, private val onPetCreated: () -> Unit
             "eggAgeMillis" to life.eggAgeMillis, "eggProgressMillis" to life.eggProgressMillis.toLong(),
             "evolutionMillis" to life.evolutionMillis.toLong(), "adultAgeMillis" to life.adultAgeMillis,
             "adultClockReady" to life.adultClockReady,
+            "oldAgeDeclined" to life.oldAgeDeclined,
             "dead" to dead, "diedAt" to life.diedAt, "petId" to petId, "createdAt" to createdAt, "historyJson" to historyJson
         )
 
@@ -2441,6 +2632,7 @@ private class PetGameView(context: Context, private val onPetCreated: () -> Unit
                 else PetGrowth.migrateEvolution(generation, life.ageMillis, life.carePercent())
             life.adultAgeMillis = long("adultAgeMillis", 0)
             life.adultClockReady = data["adultClockReady"] as? Boolean ?: (generation < 2 || data.containsKey("adultAgeMillis"))
+            life.oldAgeDeclined = data["oldAgeDeclined"] as? Boolean ?: false
             lastUpdate = long("lastUpdate", lastUpdate)
             lastSavedAt = long("savedAt", lastSavedAt)
             petId = data["petId"] as? String ?: petId
@@ -2462,6 +2654,7 @@ private class PetGameView(context: Context, private val onPetCreated: () -> Unit
                 .putLong("egg_age_millis", life.eggAgeMillis).putLong("egg_progress_millis", life.eggProgressMillis.toLong())
                 .putLong("evolution_millis", life.evolutionMillis.toLong()).putLong("adult_age_millis", life.adultAgeMillis)
                 .putBoolean("adult_clock_ready", life.adultClockReady)
+                .putBoolean("old_age_declined", life.oldAgeDeclined)
                 .putBoolean("dead", dead).putLong("died_at", life.diedAt)
                 .putString("pet_id", petId).putLong("created_at", createdAt).putString("history_json", historyJson)
                 .apply()

@@ -1,5 +1,30 @@
 # Zoey's Pocket Pet — cloud handover
 
+## Current release candidate: lifecycle consent and mapped care controls — v63
+
+The v63 candidate keeps the v62 whole-pet renderer, ambient audio and updater.
+Care controls now match the stat grid: FEED/WARM is top-left, PLAY/SOOTHE is
+top-right, SLEEP/REST is bottom-left, and BATH/TIDY is bottom-right. The four
+existing action feedback sounds remain mapped to the action rather than its
+screen position.
+
+Hatching, evolution and old-age thresholds are now pending states. They no
+longer mutate the pet automatically or archive a pet before the player agrees.
+Each shows a repeatable consent dialog. HATCH NOW and GROW NOW run a staged
+transition; the hatch transition reveals the baby artwork rising from the
+cracked egg, and evolution smoothly scales the current whole-pet cel into the
+next size before committing the new generation. NOT YET leaves the pending
+state intact and reminds the player later. At old age, LET GO creates the
+memorial; KEEP PLAYING persists an immortal adult choice until reset.
+
+The new `oldAgeDeclined` field is saved locally and in Firestore, while pending
+thresholds are represented by capped progress values so a process restart
+cannot lose or silently apply the decision. `PetLifeCheck` passes the explicit
+confirmation and keep-forever behavior, `WholePetCheck` still passes 148,680
+whole-pet alpha-bound cases, and clean `assembleDebug`/`lintDebug` passes. The
+v63 APK is signed with the unchanged cloud certificate and has SHA-256
+`39a0c00b720bf3da6c151faa92b20ec98843e468cbaccbcb0680a67902f603ea`.
+
 ## Current work: eggs, visible growth and care lifecycle — v49
 
 This supersedes earlier rollback-only notes. The user requested moving eggs in

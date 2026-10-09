@@ -20,13 +20,16 @@ public final class PetLifeCheck {
         }
         PetLife pet=new PetLife();pet.createEgg();
         wellCared(pet,47,0);check(!pet.hatched,"Egg hatches before two days");
-        wellCared(pet,1,47*HOUR);check(pet.hatched&&pet.ageMillis==0&&pet.hatchEvent,"Egg never hatches or has wrong birth age");
-        pet.hatchEvent=false;
+        wellCared(pet,1,47*HOUR);check(!pet.hatched&&pet.hatchReady()&&pet.hatchEvent,"Egg did not become ready without hatching itself");
+        pet.confirmHatch();check(pet.hatched&&pet.ageMillis==0,"Hatch confirmation did not start the baby stage");
         wellCared(pet,7*24-1,2*DAY);check(pet.generation==0,"Baby evolves early");
-        wellCared(pet,1,9*DAY-HOUR);check(pet.generation==1,"Baby does not become young");
-        wellCared(pet,7*24,9*DAY);check(pet.generation==2&&pet.adultAgeMillis==0,"Young/adult timing incorrect");
+        wellCared(pet,1,9*DAY-HOUR);check(pet.generation==0&&pet.evolutionReady(),"Baby did not wait for evolution confirmation");
+        pet.confirmEvolution();check(pet.generation==1,"Baby confirmation did not become young");
+        wellCared(pet,7*24,9*DAY);check(pet.generation==1&&pet.evolutionReady(),"Young stage evolved without confirmation");
+        pet.confirmEvolution();check(pet.generation==2&&pet.adultAgeMillis==0,"Young confirmation did not become adult");
         wellCared(pet,7*24-1,16*DAY);check(!pet.dead,"Adult dies before its own week");
-        wellCared(pet,1,23*DAY-HOUR);check(pet.dead&&pet.deathEvent&&pet.diedAt==23*DAY,"Old-age transition missing or incorrectly dated");
+        wellCared(pet,1,23*DAY-HOUR);check(!pet.dead&&pet.deathReady()&&pet.deathEvent,"Old-age prompt was skipped or killed the pet");
+        pet.confirmDeath(23*DAY);check(pet.dead&&pet.diedAt==23*DAY,"Old-age confirmation did not end the pet");
         long age=pet.ageMillis;float[] finalNeeds=pet.needs.clone();pet.deathEvent=false;
         pet.advance(30*DAY,53*DAY);careAll(pet);
         check(pet.ageMillis==age&&Arrays.equals(pet.needs,finalNeeds)&&!pet.deathEvent,"Dead pet changes or repeatedly dies");
@@ -39,6 +42,9 @@ public final class PetLifeCheck {
         legacy.ageMillis=100*DAY;legacy.adultClockReady=false;
         legacy.advance(100*DAY,200*DAY);check(!legacy.dead&&legacy.adultAgeMillis==0,"Legacy adult suddenly dies on upgrade/restore");
         legacy.advance(HOUR,200*DAY+HOUR);check(legacy.adultAgeMillis==HOUR,"Legacy death clock never starts");
+        PetLife forever=new PetLife();forever.created=true;forever.hatched=true;forever.generation=2;
+        forever.adultAgeMillis=PetGrowth.ADULT_LIFESPAN_MILLIS;check(forever.deathReady(),"Old-age choice did not become available");
+        forever.keepForever();forever.advance(30*DAY,30*DAY);check(!forever.dead&&forever.oldAgeDeclined,"Keep-forever choice did not persist");
         PetLife eggOvernight=new PetLife();eggOvernight.createEgg();eggOvernight.advance(9*HOUR,9*HOUR);
         check(eggOvernight.needs[0]<82-20&&eggOvernight.needs[0]>82-24,"Egg overnight decay is not moderate");
         check(eggOvernight.eggProgressMillis>8*HOUR&&eggOvernight.eggProgressMillis<10*HOUR,"Egg clock does not catch up offline");

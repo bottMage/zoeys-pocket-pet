@@ -4,6 +4,8 @@ package com.example.shortsgesturecontrol;
 public final class PetLife {
     public final float[] needs={78,82,74,88};
     public boolean created,hatched,dead,hatchEvent,evolutionEvent,deathEvent,adultClockReady=true;
+    /** Once old age is reached, the player can choose to keep this pet forever. */
+    public boolean oldAgeDeclined;
     public int generation;
     public long ageMillis,eggAgeMillis,adultAgeMillis,goodCareMillis,totalCareMillis,diedAt;
     public double eggProgressMillis,evolutionMillis;
@@ -28,8 +30,43 @@ public final class PetLife {
         created=true;hatched=false;dead=false;generation=0;
         ageMillis=eggAgeMillis=adultAgeMillis=goodCareMillis=totalCareMillis=diedAt=0;
         eggProgressMillis=evolutionMillis=0;adultClockReady=true;
-        hatchEvent=evolutionEvent=deathEvent=false;
+        hatchEvent=evolutionEvent=deathEvent=false;oldAgeDeclined=false;
         needs[0]=82;needs[1]=88;needs[2]=84;needs[3]=92;
+    }
+
+    public boolean hatchReady() {
+        return created&&!hatched&&!dead&&eggProgressMillis>=PetGrowth.INCUBATION_MILLIS;
+    }
+
+    public boolean evolutionReady() {
+        return created&&hatched&&!dead&&generation<2&&evolutionMillis>=PetGrowth.STAGE_MILLIS;
+    }
+
+    public boolean deathReady() {
+        return created&&hatched&&!dead&&generation>=2&&!oldAgeDeclined&&PetGrowth.oldAge(adultAgeMillis);
+    }
+
+    public void confirmHatch() {
+        if(!hatchReady())return;
+        hatched=true;hatchEvent=false;ageMillis=0;
+        goodCareMillis=totalCareMillis=0;evolutionMillis=0;adultAgeMillis=0;
+        needs[0]=82;needs[1]=88;needs[2]=84;needs[3]=92;
+    }
+
+    public void confirmEvolution() {
+        if(!evolutionReady())return;
+        evolutionMillis=0;generation++;evolutionEvent=false;
+        if(generation>=2)adultAgeMillis=0;
+    }
+
+    public void confirmDeath(long now) {
+        if(!deathReady())return;
+        dead=true;deathEvent=false;diedAt=now;
+    }
+
+    public void keepForever() {
+        if(!deathReady())return;
+        oldAgeDeclined=true;deathEvent=false;
     }
 
     public void care(int action) {
@@ -59,23 +96,19 @@ public final class PetLife {
             if(!liveAtStart) {
                 eggAgeMillis+=step;eggProgressMillis+=growing;
                 if(eggProgressMillis>=PetGrowth.INCUBATION_MILLIS) {
-                    hatched=true;hatchEvent=true;ageMillis=0;
-                    goodCareMillis=totalCareMillis=0;evolutionMillis=0;
-                    needs[0]=82;needs[1]=88;needs[2]=84;needs[3]=92;
+                    eggProgressMillis=PetGrowth.INCUBATION_MILLIS;hatchEvent=true;
                 }
             } else {
                 ageMillis+=step;
                 if(generation<2) {
-                    evolutionMillis+=growing;
+                    evolutionMillis=Math.min(PetGrowth.STAGE_MILLIS,evolutionMillis+growing);
                     if(evolutionMillis>=PetGrowth.STAGE_MILLIS) {
-                        evolutionMillis-=PetGrowth.STAGE_MILLIS;
-                        generation++;evolutionEvent=true;
-                        if(generation==2){evolutionMillis=0;adultAgeMillis=0;}
+                        evolutionMillis=PetGrowth.STAGE_MILLIS;evolutionEvent=true;
                     }
-                } else if(!skipAdultTime) {
-                    adultAgeMillis+=step;
+                } else if(!skipAdultTime&&!oldAgeDeclined) {
+                    adultAgeMillis=Math.min(PetGrowth.ADULT_LIFESPAN_MILLIS,adultAgeMillis+step);
                     if(PetGrowth.oldAge(adultAgeMillis)) {
-                        dead=true;deathEvent=true;diedAt=clock+step;
+                        adultAgeMillis=PetGrowth.ADULT_LIFESPAN_MILLIS;deathEvent=true;
                     }
                 }
             }

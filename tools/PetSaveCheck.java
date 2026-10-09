@@ -71,7 +71,9 @@ public final class PetSaveCheck {
         check(call(restored,"getName").equals("New puppy"),"Egg identity lost");
         check(((List<?>)call(restored,"memories")).size()==1,"Replaced pet wasn't archived");
         PetLife dying=life(restored);dying.hatched=true;dying.generation=2;dying.adultAgeMillis=7*86400000L;
-        dying.advance(1,System.currentTimeMillis());call(restored,"updateFromClock");call(restored,"save");
+        dying.advance(1,System.currentTimeMillis());call(restored,"updateFromClock");
+        check(!dying.dead&&dying.deathReady(),"Old-age readiness was applied without consent");
+        call(restored,"confirmDeath");call(restored,"save");
         List<?> memories=(List<?>)call(restored,"memories");check(memories.size()==2,"Old-age memorial not saved");
         JSONArray archives=new JSONArray((String)cloud(restored).get("historyJson"));
         check(archives.getJSONObject(1).getJSONObject("snapshot").getBoolean("dead"),"Full deceased progress not archived");
