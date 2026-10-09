@@ -1158,14 +1158,21 @@ private class PetGameView(context: Context, private val onPetCreated: () -> Unit
             canvas.drawPath(eggBackStrands[strand], paint)
         }
         canvas.save()
-        val actionWave = sin(reactionProgress * Math.PI.toFloat())
         val touchWave = sin(touchProgress * Math.PI.toFloat())
         val sleepEase = ((1f - cos(reactionProgress * Math.PI.toFloat())) * .5f)
+        // Eggs stay upright while sleeping. Once the initial settle-in is
+        // complete, a slow whole-egg scale pulse reads as gentle breathing
+        // without making the egg look like it has fallen over.
+        val sleepBreath = if (reactionAction == Action.SLEEP) {
+            sleepEase * sin(seconds * (Math.PI * 2.0 / 2.8)).toFloat()
+        } else 0f
+        val sleepScaleX = 1f + sleepBreath * .032f
+        val sleepScaleY = 1f - sleepBreath * .045f
         val actionLift = when (reactionAction) {
             Action.FEED -> -abs(sin(reactionProgress * Math.PI.toFloat() * 2f)) * 7f
             Action.PLAY -> -abs(sin(reactionProgress * Math.PI.toFloat() * 3f)) * 12f
             Action.BATH -> -abs(sin(reactionProgress * Math.PI.toFloat() * 2f)) * 5f
-            Action.SLEEP -> -actionWave * 1.5f
+            Action.SLEEP -> 0f
             null -> 0f
         }
         val touchLift = -abs(touchWave) * 8f
@@ -1173,7 +1180,7 @@ private class PetGameView(context: Context, private val onPetCreated: () -> Unit
             Action.FEED -> sin(reactionProgress * Math.PI.toFloat() * 4f) * 4f
             Action.PLAY -> sin(reactionProgress * Math.PI.toFloat() * 6f) * 7f
             Action.BATH -> sin(reactionProgress * Math.PI.toFloat() * 8f) * 3f
-            Action.SLEEP -> -sleepEase * 32f
+            Action.SLEEP -> 0f
             null -> 0f
         }
         val touchTilt = sin(touchProgress * Math.PI.toFloat() * 5f) * 4f
@@ -1181,6 +1188,7 @@ private class PetGameView(context: Context, private val onPetCreated: () -> Unit
             sin(touchProgress * Math.PI.toFloat() * 3f) * 2f,
             PetGrowth.eggLift(seconds).toFloat() + actionLift + touchLift
         )
+        if (reactionAction == Action.SLEEP) canvas.scale(sleepScaleX, sleepScaleY, 0f, 0f)
         canvas.rotate(
             PetGrowth.eggAngle(seconds, progress).toFloat() + actionTilt + touchTilt,
             0f,

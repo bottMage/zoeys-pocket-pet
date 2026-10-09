@@ -1,6 +1,13 @@
 # Zoey's Pocket Pet — cloud handover
 
-## Current release candidate: approved ambient sleep loop — v65
+## Current release candidate: upright breathing egg sleep — v66
+
+The v66 candidate keeps the v65 approved ambient sleep loop and one-minute
+sleep behavior. During egg sleep, the egg remains upright and uses a slow
+whole-egg vertical breathing pulse instead of rotating onto its side. Live
+pet sleep behavior is unchanged.
+
+## Previous release: approved ambient sleep loop — v65
 
 The v65 candidate keeps the v64 one-minute sleep behavior and separate short
 SLEEP button acknowledgment. The approved user-provided snore clip is now
