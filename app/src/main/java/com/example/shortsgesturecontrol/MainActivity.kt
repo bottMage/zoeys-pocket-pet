@@ -1383,34 +1383,110 @@ private class PetGameView(context: Context, private val onPetCreated: () -> Unit
     }
 
     private fun drawBirds(canvas: Canvas, scene: RectF, now: Long) {
-        paint.color = Color.argb(185, 71, 80, 94)
-        paint.style = Paint.Style.STROKE
-        paint.strokeWidth = dp(1.5f)
-        for (index in 0 until 3) {
-            val phase = now / (1800f + index * 300f) + index * 1.7f
-            val x = scene.left + scene.width() * (.18f + index * .29f) + sin(phase) * dp(26f)
-            val y = scene.top + dp(137f + index * 22f) + cos(phase * .7f) * dp(12f)
-            val wing = sin(phase * 5f) * dp(4f)
-            canvas.drawArc(RectF(x - dp(9f), y - wing, x, y + dp(5f)), 205f, 135f, false, paint)
-            canvas.drawArc(RectF(x, y + dp(5f), x + dp(9f), y + dp(10f) + wing), 205f, 135f, false, paint)
-        }
+        val birdBody = Color.rgb(65, 75, 91)
+        val birdWing = Color.rgb(88, 103, 119)
+        val birdBelly = Color.rgb(132, 151, 157)
         paint.style = Paint.Style.FILL
+        for (index in 0 until 3) {
+            val travelPhase = now / (5200f + index * 500f) + index * 1.7f
+            val flapPhase = now / 360f + index * 1.9f
+            val x = scene.left + scene.width() * (.18f + index * .29f) + sin(travelPhase) * dp(29f)
+            val y = scene.top + dp(133f + index * 22f) + cos(travelPhase * .72f) * dp(10f)
+            val flap = sin(flapPhase).toFloat()
+            canvas.save()
+            canvas.translate(x, y)
+            canvas.rotate(sin(travelPhase * .8f).toFloat() * 4f)
+
+            // A compact silhouette with a body, head, beak, tail and two
+            // overlapping wings reads as a bird instead of two bent lines.
+            paint.color = birdWing
+            val farWing = Path().apply {
+                moveTo(dp(-1f), dp(-1f))
+                cubicTo(dp(-12f), dp(-10f) - flap * dp(3f), dp(-18f), dp(-9f) - flap * dp(3f), dp(-22f), dp(-4f))
+                cubicTo(dp(-14f), dp(1f), dp(-7f), dp(3f), dp(-1f), dp(3f))
+                close()
+            }
+            canvas.drawPath(farWing, paint)
+            paint.color = birdBody
+            canvas.drawOval(RectF(dp(-9f), dp(-4f), dp(8f), dp(5f)), paint)
+            canvas.drawCircle(dp(8f), dp(-5f), dp(5f), paint)
+            val tail = Path().apply {
+                moveTo(dp(-8f), dp(1f))
+                lineTo(dp(-19f), dp(7f))
+                lineTo(dp(-7f), dp(5f))
+                close()
+            }
+            canvas.drawPath(tail, paint)
+            paint.color = birdBelly
+            canvas.drawOval(RectF(dp(-2f), dp(-1f), dp(7f), dp(4f)), paint)
+            paint.color = birdWing
+            val nearWing = Path().apply {
+                moveTo(dp(1f), dp(-2f))
+                cubicTo(dp(-5f), dp(-12f) - flap * dp(7f), dp(3f), dp(-18f) - flap * dp(8f), dp(12f), dp(-9f) - flap * dp(6f))
+                cubicTo(dp(10f), dp(-3f), dp(7f), dp(1f), dp(1f), dp(3f))
+                close()
+            }
+            canvas.drawPath(nearWing, paint)
+            paint.color = Color.rgb(244, 221, 153)
+            val beak = Path().apply {
+                moveTo(dp(12f), dp(-5f))
+                lineTo(dp(19f), dp(-2f))
+                lineTo(dp(12f), dp(0f))
+                close()
+            }
+            canvas.drawPath(beak, paint)
+            paint.color = Color.WHITE
+            canvas.drawCircle(dp(9f), dp(-6f), dp(1.6f), paint)
+            paint.color = Color.rgb(35, 42, 55)
+            canvas.drawCircle(dp(9.4f), dp(-6f), dp(.8f), paint)
+            canvas.restore()
+        }
     }
 
     private fun drawNightCreatures(canvas: Canvas, scene: RectF, now: Long) {
-        paint.color = Color.rgb(74, 111, 83)
-        val hop = abs(sin(now / 1100f))
-        val positions = floatArrayOf(.17f, .84f)
+        val frogBody = Color.rgb(72, 123, 87)
+        val frogDark = Color.rgb(49, 91, 67)
+        val frogLight = Color.rgb(149, 190, 111)
+        val positions = floatArrayOf(.16f, .50f, .84f)
+        paint.style = Paint.Style.FILL
         for (index in positions.indices) {
-            val x = scene.left + scene.width() * positions[index]
-            val y = scene.bottom - dp(27f) - hop * dp(7f)
-            canvas.drawOval(RectF(x - dp(7f), y - dp(5f), x + dp(7f), y + dp(5f)), paint)
-            canvas.drawCircle(x - dp(5f), y - dp(6f), dp(4f), paint)
-            canvas.drawCircle(x + dp(5f), y - dp(6f), dp(4f), paint)
-            paint.color = Color.rgb(210, 231, 153)
-            canvas.drawCircle(x - dp(6f), y - dp(7f), dp(1.2f), paint)
-            canvas.drawCircle(x + dp(6f), y - dp(7f), dp(1.2f), paint)
-            paint.color = Color.rgb(74, 111, 83)
+            val phase = now / (1550f + index * 170f) + index * 2.1f
+            val travel = sin(phase).toFloat()
+            val hop = max(0f, sin(phase).toFloat())
+            val x = scene.left + scene.width() * positions[index] + travel * dp(30f)
+            val ground = scene.bottom - dp(27f)
+            val y = ground - hop * dp(17f)
+            paint.color = Color.argb((62f - hop * 24f).roundToInt(), 48, 73, 61)
+            canvas.drawOval(RectF(x - dp(11f) - hop * dp(3f), ground + dp(1f), x + dp(11f) + hop * dp(3f), ground + dp(5f)), paint)
+
+            canvas.save()
+            canvas.translate(x, y)
+            val squash = 1f + (1f - hop) * .08f
+            canvas.scale(squash, 1f - (1f - hop) * .05f, 0f, dp(3f))
+            paint.color = frogDark
+            canvas.drawOval(RectF(dp(-13f), dp(-3f), dp(-5f), dp(7f)), paint)
+            canvas.drawOval(RectF(dp(5f), dp(-3f), dp(13f), dp(7f)), paint)
+            paint.color = frogBody
+            canvas.drawOval(RectF(dp(-11f), dp(-13f), dp(11f), dp(5f)), paint)
+            canvas.drawOval(RectF(dp(-10f), dp(-20f), dp(10f), dp(-5f)), paint)
+            paint.color = frogLight
+            canvas.drawCircle(dp(-6f), dp(-19f), dp(4f), paint)
+            canvas.drawCircle(dp(6f), dp(-19f), dp(4f), paint)
+            paint.color = Color.rgb(31, 47, 36)
+            canvas.drawCircle(dp(-6f), dp(-19f), dp(1.5f), paint)
+            canvas.drawCircle(dp(6f), dp(-19f), dp(1.5f), paint)
+            paint.style = Paint.Style.STROKE
+            paint.strokeWidth = dp(1.2f)
+            paint.strokeCap = Paint.Cap.ROUND
+            paint.color = frogDark
+            val mouth = Path().apply {
+                moveTo(dp(-5f), dp(-11f))
+                quadTo(0f, dp(-8f), dp(5f), dp(-11f))
+            }
+            canvas.drawPath(mouth, paint)
+            paint.style = Paint.Style.FILL
+            paint.strokeCap = Paint.Cap.BUTT
+            canvas.restore()
         }
     }
 

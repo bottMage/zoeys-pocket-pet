@@ -1,6 +1,15 @@
 # Zoey's Pocket Pet — cloud handover
 
-## Current release candidate: natural sleep Z timing — v67
+## Current release candidate: smoother ambient birds and frogs — v68
+
+The v68 candidate keeps the v67 Z timing and all approved sleep audio
+unchanged. Daytime birds now use compact filled silhouettes with body, head,
+beak, tail and layered wings, with slower continuous travel and coordinated
+flapping. Night frogs now have clearer anatomy, eyes, mouths and feet, plus
+three independently phased smooth hops across the ground instead of sitting in
+place.
+
+## Previous release: natural sleep Z timing — v67
 
 The v67 candidate keeps the v66 approved snore audio and upright breathing egg
 sleep exactly unchanged. Sleep Zs now spawn one at a time with staggered
