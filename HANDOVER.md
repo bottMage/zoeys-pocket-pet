@@ -1,6 +1,14 @@
 # Zoey's Pocket Pet — cloud handover
 
-## Current release candidate: clearer live-pet sleep pose — v76
+## Current release candidate: directional sleeping tilt — v77
+
+The v77 candidate keeps v76's per-pet closed-eye overlays and lower compressed
+sleep pose. It corrects the remaining sleep posture issue by tilting the head
+toward the ground based on the pet's facing direction; a fixed tilt could
+raise the head when the pet faced right and make it look propped up. Hatching,
+walking, grass, audio, and other interactions are unchanged.
+
+## Previous release: clearer live-pet sleep pose — v76
 
 The v76 candidate keeps v75's bottom-anchored taller grass unchanged. Live
 pet sleep now settles the whole body lower with a gentler tilt and stronger

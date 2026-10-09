@@ -1712,7 +1712,13 @@ private class PetGameView(context: Context, private val onPetCreated: () -> Unit
         canvas.save()
         canvas.translate(reactionShiftX + touchShiftX, 0f)
         if (reactionScale != 1f || reactionScaleY != 1f) canvas.scale(reactionScale, reactionScaleY, centerX, rootY)
-        if (sleepEase > 0f) canvas.rotate(-4f * sleepEase, centerX, rootY)
+        // Tilt the head toward the ground in either facing direction. A
+        // fixed tilt raised the head when the dragon was facing right, making
+        // the rear look like it was standing the pet up while asleep.
+        if (sleepEase > 0f) {
+            val sleepTilt = if (motionDirection > 0f) 10f else -10f
+            canvas.rotate(sleepTilt * sleepEase, centerX, rootY)
+        }
         // The artwork faces left by default.  Mirror it only while travelling
         // right; the old condition reversed that relationship.
         if (motionDirection > 0f) canvas.scale(-1f, 1f, centerX, rootY)
