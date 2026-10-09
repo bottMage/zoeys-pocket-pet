@@ -598,9 +598,9 @@ private class PetGameView(context: Context, private val onPetCreated: () -> Unit
         textPaint.color = Color.rgb(68, 43, 90)
         textPaint.textSize = dp(22f)
         textPaint.typeface = PaintTypeface.bold()
-        textPaint.textSize = min(dp(22f), dp(22f) * titleWidth / textPaint.measureText("ZOEY'S POCKET PET"))
+        textPaint.textSize = min(dp(22f), dp(22f) * titleWidth / textPaint.measureText("MOCHIGOTCHI"))
         textPaint.textAlign = Paint.Align.CENTER
-        canvas.drawText("ZOEY'S POCKET PET", titleCenter, dp(38f), textPaint)
+        canvas.drawText("MOCHIGOTCHI", titleCenter, dp(38f), textPaint)
         textPaint.textSize = dp(13f)
         textPaint.typeface = PaintTypeface.rounded()
         textPaint.color = Color.rgb(105, 78, 116)
@@ -1037,8 +1037,11 @@ private class PetGameView(context: Context, private val onPetCreated: () -> Unit
             pet.needsCritical && now >= messageUntil -> "Needs care — growth is slowed"
             else -> message
         }
-        val shortMessage = if (displayedMessage.length > 31) displayedMessage.take(28) + "..." else displayedMessage
-        canvas.drawText(shortMessage, width / 2f, dp(101f), textPaint)
+        // Keep the greeting complete. The previous character-count crop made
+        // it look like the message was broken by the pet window itself.
+        val messageMaxWidth = width - dp(34f)
+        textPaint.textSize = min(dp(12f), dp(12f) * messageMaxWidth / textPaint.measureText(displayedMessage))
+        canvas.drawText(displayedMessage, width / 2f, dp(101f), textPaint)
     }
 
     private fun drawStats(canvas: Canvas) {
