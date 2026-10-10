@@ -2,9 +2,121 @@ rules_version = '2';
 
 service cloud.firestore {
   match /databases/{database}/documents {
+    function signedIn() {
+      return request.auth != null;
+    }
+
+    function isOwner(userId) {
+      return signedIn() && request.auth.uid == userId;
+    }
+
     match /users/{userId}/pets/{petId} {
-      allow read, write: if request.auth != null
-        && request.auth.uid == userId;
+      allow read, write: if isOwner(userId);
+    }
+
+    // Only the owner can publish their public display/presence profile. It is
+    // intentionally limited to app-generated fields; there is no free-form
+    // messaging data in this document.
+    match /users/{userId}/public/profile {
+      allow read: if signedIn();
+      allow create, update: if isOwner(userId)
+        && request.resource.data.displayName is string
+        && request.resource.data.petName is string
+        && request.resource.data.online is bool;
+      allow delete: if false;
+    }
+
+    // Requests live under the sender's account. The recipient can query the
+    // collection group with recipientUid == their own uid and accept/decline
+    // only that request.
+    match /users/{senderUid}/friendRequests/{requestId} {
+      allow create: if isOwner(senderUid)
+        && request.resource.data.senderUid == senderUid
+        && request.resource.data.recipientUid != senderUid
+        && request.resource.data.status == 'pending';
+      allow read: if isOwner(senderUid)
+        || (signedIn() && resource.data.recipientUid == request.auth.uid);
+      allow update: if (
+          isOwner(senderUid)
+          && request.resource.data.senderUid == senderUid
+          && request.resource.data.recipientUid == resource.data.recipientUid
+        ) || (
+          signedIn()
+          && resource.data.recipientUid == request.auth.uid
+          && request.resource.data.senderUid == resource.data.senderUid
+          && request.resource.data.recipientUid == resource.data.recipientUid
+          && request.resource.data.status in ['accepted', 'declined']
+        );
+      allow delete: if false;
+    }
+
+    // Each side stores its own accepted-friend record. A record can only be
+    // created after one of the two sides' request documents is accepted.
+    match /users/{userId}/friends/{friendId} {
+      allow read: if isOwner(userId);
+      allow create, update: if isOwner(userId)
+        && request.resource.data.friendUid == friendId
+        && (
+          (
+            exists(/databases/$(database)/documents/users/$(userId)/friendRequests/$(friendId))
+            && get(/databases/$(database)/documents/users/$(userId)/friendRequests/$(friendId)).data.status == 'accepted'
+          ) || (
+            exists(/databases/$(database)/documents/users/$(friendId)/friendRequests/$(userId))
+            && get(/databases/$(database)/documents/users/$(friendId)/friendRequests/$(userId)).data.status == 'accepted'
+          )
+        );
+      allow delete: if isOwner(userId);
+    }
+
+    match /users/{senderUid}/playRequests/{requestId} {
+      allow create: if isOwner(senderUid)
+        && request.resource.data.senderUid == senderUid
+        && request.resource.data.recipientUid != senderUid
+        && request.resource.data.status == 'pending'
+        && exists(/databases/$(database)/documents/users/$(senderUid)/friends/$(request.resource.data.recipientUid));
+      allow read: if isOwner(senderUid)
+        || (signedIn() && resource.data.recipientUid == request.auth.uid);
+      allow update: if (
+          isOwner(senderUid)
+          && request.resource.data.senderUid == senderUid
+          && request.resource.data.recipientUid == resource.data.recipientUid
+        ) || (
+          signedIn()
+          && resource.data.recipientUid == request.auth.uid
+          && request.resource.data.senderUid == resource.data.senderUid
+          && request.resource.data.recipientUid == resource.data.recipientUid
+          && request.resource.data.status in ['accepted', 'declined']
+        );
+      allow delete: if false;
+    }
+
+    match /friendCodes/{code} {
+      allow read: if signedIn();
+      allow create: if signedIn()
+        && request.resource.data.ownerUid == request.auth.uid
+        && request.resource.data.displayName is string
+        && request.resource.data.petName is string;
+      allow update, delete: if false;
+    }
+
+    match /playSessions/{sessionId} {
+      allow create: if signedIn()
+        && request.resource.data.members is list
+        && request.resource.data.members.size() == 2
+        && request.auth.uid in request.resource.data.members
+        && request.resource.data.status == 'active';
+      allow read, update: if signedIn() && request.auth.uid in resource.data.members;
+      allow delete: if false;
+
+      match /events/{eventId} {
+        allow read: if signedIn()
+          && request.auth.uid in get(/databases/$(database)/documents/playSessions/$(sessionId)).data.members;
+        allow create: if signedIn()
+          && request.auth.uid in get(/databases/$(database)/documents/playSessions/$(sessionId)).data.members
+          && request.resource.data.actorUid == request.auth.uid
+          && request.resource.data.action in ['hello', 'wave', 'dance', 'heart', 'goodbye'];
+        allow update, delete: if false;
+      }
     }
   }
 }

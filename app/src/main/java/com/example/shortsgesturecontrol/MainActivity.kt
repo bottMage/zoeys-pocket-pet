@@ -3,6 +3,9 @@ package com.example.shortsgesturecontrol
 import android.Manifest
 import android.app.Activity
 import android.app.AlertDialog
+import android.app.NotificationChannel
+import android.app.NotificationManager
+import android.app.PendingIntent
 import android.content.Context
 import android.content.pm.PackageManager
 import android.content.Intent
@@ -34,8 +37,10 @@ import android.view.MotionEvent
 import android.view.View
 import android.text.InputType
 import android.widget.EditText
+import android.widget.Button
 import android.widget.LinearLayout
 import android.widget.ProgressBar
+import android.widget.ScrollView
 import android.widget.TextView
 import android.widget.Toast
 import androidx.core.content.FileProvider
@@ -97,6 +102,7 @@ class MainActivity : Activity() {
         googleSignInClient = buildGoogleSignInClient()
         gameView = PetGameView(this) {
             maybePromptForCloudBackup()
+            gameView.startSocialPresenceIfReady()
             gameView.postDelayed({ maybeRequestCareReminderPermission() }, 1200L)
             gameView.postDelayed({ gameView.maybeShowTutorialIfNeeded() }, 800L)
         }
@@ -211,6 +217,8 @@ class MainActivity : Activity() {
         if (client == null) return
         startActivityForResult(client.signInIntent, GOOGLE_SIGN_IN_REQUEST)
     }
+
+    fun requestGoogleSignInForSocial() = startGoogleSignIn()
 
     @Deprecated("Uses the Google Sign-In activity result API for Android 8 compatibility")
     override fun onActivityResult(requestCode: Int, resultCode: Int, data: Intent?) {
@@ -470,6 +478,7 @@ private class PetGameView(context: Context, private val onPetCreated: () -> Unit
     private val textPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply { typeface = PaintTypeface.rounded() }
     private val pet = PetState(prefs)
     private val cloudSave = CloudSaveManager()
+    private val social = SocialPlayManager()
     private val petArtCache = HashMap<PetKind, Bitmap>()
     private val walkFrameCache = HashMap<String, Bitmap>()
     private val walkFrameBoundsCache = HashMap<String, PetSpriteLayout.Bounds>()
@@ -550,6 +559,18 @@ private class PetGameView(context: Context, private val onPetCreated: () -> Unit
     // The care categories are always available; the old giant CARE opener is
     // intentionally gone. Selecting a category temporarily shows its actions.
     private var careCategory: CareCategory? = null
+    private var socialFriends: List<SocialPlayManager.Friend> = emptyList()
+    private var socialFriendRequests: List<SocialPlayManager.FriendRequest> = emptyList()
+    private var socialPlayRequests: List<SocialPlayManager.PlayRequest> = emptyList()
+    private var socialStatusMessage = ""
+    private var socialDialog: AlertDialog? = null
+    private var socialDialogRoot: LinearLayout? = null
+    private var playSessionId: String? = null
+    private var playFriend: SocialPlayManager.Friend? = null
+    private var playSubscription: SocialPlayManager.SessionSubscription? = null
+    private var playEvents: List<SocialPlayManager.PlayEvent> = emptyList()
+    private var playActionUntil = 0L
+    private var pressedPlayButton = -1
     private var tutorialShowing = false
     @Volatile private var weather = WeatherState()
     private var weatherLoading = false
@@ -614,6 +635,46 @@ private class PetGameView(context: Context, private val onPetCreated: () -> Unit
 
     init {
         isFocusable = true
+        social.onFriendsChanged = { friends ->
+            socialFriends = friends
+            renderSocialDialog()
+            invalidate()
+        }
+        social.onFriendRequestsChanged = { requests ->
+            val previousPending = socialFriendRequests.filter { it.status == "pending" }.map { it.documentPath }.toSet()
+            socialFriendRequests = requests
+            renderSocialDialog()
+            val fresh = requests.firstOrNull {
+                it.status == "pending" && it.recipientUid == FirebaseAuth.getInstance().currentUser?.uid &&
+                    it.documentPath !in previousPending
+            }
+            if (fresh != null) {
+                if (activityResumed && windowVisibility == View.VISIBLE) showIncomingFriendPrompt(fresh)
+                else showSocialNotification("New friend request", "${fresh.senderName} wants to be friends.", 8801)
+            }
+        }
+        social.onPlayRequestsChanged = { requests ->
+            val previousPending = socialPlayRequests.filter { it.status == "pending" }.map { it.documentPath }.toSet()
+            socialPlayRequests = requests
+            renderSocialDialog()
+            val fresh = requests.firstOrNull {
+                it.status == "pending" && it.recipientUid == FirebaseAuth.getInstance().currentUser?.uid &&
+                    it.documentPath !in previousPending
+            }
+            if (fresh != null) {
+                if (activityResumed && windowVisibility == View.VISIBLE) showIncomingPlayPrompt(fresh)
+                else showSocialNotification("Playtime request", "${fresh.senderPetName} wants to play!", 8802)
+            }
+            // The sender sees the accepted request through the same listener.
+            requests.firstOrNull {
+                it.status == "accepted" && it.senderUid == FirebaseAuth.getInstance().currentUser?.uid &&
+                    it.sessionId != null && it.sessionId != playSessionId
+            }?.let { request ->
+                val friend = socialFriends.firstOrNull { it.uid == request.recipientUid }
+                    ?: SocialPlayManager.Friend(request.recipientUid, request.recipientName, request.recipientPetName, "", "", true, System.currentTimeMillis())
+                startPlaySession(request.sessionId!!, friend)
+            }
+        }
         pet.updateFromClock()
         motionModeUntil = motionLastAt + 1800L
         if (pet.created && pet.hatched && !pet.dead) {
@@ -656,6 +717,8 @@ private class PetGameView(context: Context, private val onPetCreated: () -> Unit
     fun pauseForActivity() {
         activityResumed = false
         weatherHandler.removeCallbacks(weatherRefresh)
+        social.stopPresence()
+        leavePlaySession(sendGoodbye = false)
         stopAmbientSound()
         stopInteractionSound()
     }
@@ -663,6 +726,7 @@ private class PetGameView(context: Context, private val onPetCreated: () -> Unit
     fun resumeForActivity() {
         activityResumed = true
         motionLastAt = SystemClock.uptimeMillis()
+        startSocialPresenceIfReady()
         if (weatherStarted) refreshWeather()
         invalidate()
     }
@@ -837,6 +901,7 @@ private class PetGameView(context: Context, private val onPetCreated: () -> Unit
         }
         drawHeader(canvas)
         drawPlayground(canvas, now)
+        if (playSessionId != null) drawFriendPet(canvas, now)
         drawPet(canvas, now)
         drawActionEffects(canvas, now)
         drawMessage(canvas, now)
@@ -857,6 +922,7 @@ private class PetGameView(context: Context, private val onPetCreated: () -> Unit
             transitionKind != null ||
             menuAnimationStart != 0L ||
             touchReactionUntil > now ||
+            playActionUntil > now ||
             pressedBlob >= 0 ||
             liquidRippleStartedAt != 0L && now - liquidRippleStartedAt < LIQUID_RIPPLE_DURATION_MS ||
             (!pet.dead && motionMode == MotionMode.WALK)
@@ -1797,6 +1863,46 @@ private class PetGameView(context: Context, private val onPetCreated: () -> Unit
         drawPetName(canvas, centerX, groundY)
     }
 
+    private fun drawFriendPet(canvas: Canvas, now: Long) {
+        val friend = playFriend ?: return
+        val kind = PetKind.values().firstOrNull { it.name == friend.petKind.uppercase() } ?: PetKind.BUNNY
+        val ground = statsTop() - dp(52f)
+        val centerX = width * .73f
+        if (!friend.stage.equals("EGG", true) && friend.petKind.isNotBlank()) {
+            val bitmap = petArtwork(kind)
+            val artWidth = min(width * .30f, dp(150f))
+            val artHeight = artWidth * bitmap.height / bitmap.width.toFloat()
+            paint.color = Color.argb(48, 67, 57, 82)
+            canvas.drawOval(RectF(centerX - artWidth * .24f, ground - dp(2f), centerX + artWidth * .24f, ground + dp(7f)), paint)
+            paint.colorFilter = null
+            canvas.drawBitmap(bitmap, null, RectF(centerX - artWidth / 2f, ground - artHeight, centerX + artWidth / 2f, ground), paint)
+        } else {
+            drawEgg(canvas, centerX, ground, kind, now / 1000.0, .55, .45f)
+        }
+        textPaint.textAlign = Paint.Align.CENTER
+        textPaint.typeface = PaintTypeface.bold()
+        textPaint.textSize = dp(10f)
+        textPaint.color = kind.dark
+        canvas.drawText(friend.petName, centerX, ground + dp(16f), textPaint)
+        val remoteAction = playEvents.lastOrNull { it.actorUid != FirebaseAuth.getInstance().currentUser?.uid }?.action
+        if (!remoteAction.isNullOrBlank() && playSessionId != null) {
+            val bubble = RectF(centerX - dp(45f), ground - dp(104f), centerX + dp(45f), ground - dp(72f))
+            paint.color = Color.WHITE
+            canvas.drawRoundRect(bubble, dp(16f), dp(16f), paint)
+            textPaint.textSize = dp(10f)
+            textPaint.color = Color.rgb(68, 43, 90)
+            canvas.drawText(playActionLabel(remoteAction), bubble.centerX(), bubble.centerY() + dp(4f), textPaint)
+        }
+    }
+
+    private fun playActionLabel(action: String): String = when (action) {
+        "hello" -> "HI!"
+        "wave" -> "WAVE"
+        "dance" -> "DANCE!"
+        "heart" -> "♥"
+        else -> action.uppercase()
+    }
+
     private fun drawSleepEyes(canvas: Canvas, artRect: RectF) {
         val eyePosition = when (pet.kind) {
             PetKind.CAT -> .285f to .49f
@@ -2193,6 +2299,10 @@ private class PetGameView(context: Context, private val onPetCreated: () -> Unit
             return
         }
         val panel = carePanelRect()
+        if (playSessionId != null) {
+            drawPlayPanel(canvas, panel)
+            return
+        }
         // The tile surface fills the available window edge to edge. The dark
         // color is reserved for the shared liquid-tile seams.
         paint.color = Color.rgb(248, 235, 248)
@@ -2226,6 +2336,63 @@ private class PetGameView(context: Context, private val onPetCreated: () -> Unit
             }
             drawCareCenterButton(canvas)
         }
+    }
+
+    private fun playButtonActions(): List<Triple<String, String, Int>> = listOf(
+        Triple("hello", "SAY HI", Color.rgb(255, 82, 164)),
+        Triple("wave", "WAVE", Color.rgb(104, 124, 255)),
+        Triple("dance", "DANCE", Color.rgb(255, 179, 54)),
+        Triple("heart", "HEART", Color.rgb(47, 207, 173))
+    )
+
+    private fun playButtonRects(panel: RectF): List<RectF> {
+        val gap = dp(8f)
+        val left = panel.left + dp(14f)
+        val right = panel.right - dp(14f)
+        val top = panel.top + dp(48f)
+        val bottom = panel.bottom - dp(58f)
+        val halfWidth = (right - left - gap) / 2f
+        val halfHeight = (bottom - top - gap) / 2f
+        return listOf(
+            RectF(left, top, left + halfWidth, top + halfHeight),
+            RectF(left + halfWidth + gap, top, right, top + halfHeight),
+            RectF(left, top + halfHeight + gap, left + halfWidth, bottom),
+            RectF(left + halfWidth + gap, top + halfHeight + gap, right, bottom)
+        )
+    }
+
+    private fun playLeaveRect(panel: RectF): RectF = RectF(
+        panel.left + dp(88f), panel.bottom - dp(48f), panel.right - dp(88f), panel.bottom - dp(12f)
+    )
+
+    private fun drawPlayPanel(canvas: Canvas, panel: RectF) {
+        paint.color = Color.rgb(249, 232, 244)
+        canvas.drawRect(panel, paint)
+        textPaint.textAlign = Paint.Align.CENTER
+        textPaint.typeface = PaintTypeface.bold()
+        textPaint.textSize = dp(13f)
+        textPaint.color = Color.rgb(76, 49, 94)
+        val friendName = playFriend?.petName ?: "friend"
+        canvas.drawText("PLAYTIME WITH $friendName", panel.centerX(), panel.top + dp(25f), textPaint)
+        val actions = playButtonActions()
+        playButtonRects(panel).forEachIndexed { index, rect ->
+            val action = actions[index]
+            paint.color = if (index == pressedPlayButton) Color.rgb(68, 43, 90) else action.third
+            canvas.drawRoundRect(rect, dp(22f), dp(22f), paint)
+            paint.color = Color.argb(55, 255, 255, 255)
+            canvas.drawOval(RectF(rect.left + dp(12f), rect.top + dp(10f), rect.left + dp(42f), rect.top + dp(28f)), paint)
+            textPaint.textSize = dp(23f)
+            textPaint.color = if (index == pressedPlayButton) Color.WHITE else Color.rgb(68, 35, 86)
+            canvas.drawText(action.second.first().toString(), rect.centerX(), rect.centerY() - dp(2f), textPaint)
+            textPaint.textSize = dp(11f)
+            canvas.drawText(action.second, rect.centerX(), rect.centerY() + dp(22f), textPaint)
+        }
+        val leave = playLeaveRect(panel)
+        paint.color = Color.rgb(86, 48, 108)
+        canvas.drawRoundRect(leave, dp(18f), dp(18f), paint)
+        textPaint.textSize = dp(11f)
+        textPaint.color = Color.WHITE
+        canvas.drawText("LEAVE PLAY", leave.centerX(), leave.centerY() + dp(4f), textPaint)
     }
 
     private fun drawCareTopBleeds(canvas: Canvas, panel: RectF, colors: List<Int>) {
@@ -2588,7 +2755,8 @@ private class PetGameView(context: Context, private val onPetCreated: () -> Unit
         val pages = arrayOf(
             "Your little friend has four bars: HUNGER, JOY, ENERGY, and CLEAN. Keep them happy and your friend grows.",
             "Tap FOOD, FUN, REST, CLEAN, or HEALTH below the bars. Choose an action as often as you like. Tap BACK to choose another category.",
-            "CHECKUP tells you how your friend feels. VITAMIN gives a tiny boost. If your friend gets sick, MEDICINE appears. You can read this again in MENU > SETTINGS."
+            "CHECKUP tells you how your friend feels. VITAMIN gives a tiny boost. If your friend gets sick, MEDICINE appears. You can read this again in MENU > SETTINGS.",
+            "Want to play together? Open MENU > SETTINGS > INVITE FRIEND. Share your short code, then choose PLAY WITH FRIENDS from FUN when a friend is online."
         )
         val lastPage = pages.lastIndex
         tutorialShowing = true
@@ -2621,6 +2789,7 @@ private class PetGameView(context: Context, private val onPetCreated: () -> Unit
         val remindersOn = CareReminderScheduler.isEnabled(appContext)
         val choices = arrayOf(
             "CHANGE NAME",
+            "INVITE FRIEND",
             if (remindersOn) "TURN OFF CARE REMINDERS" else "TURN ON CARE REMINDERS",
             "HOW TO PLAY",
             "RESET DATA"
@@ -2634,13 +2803,330 @@ private class PetGameView(context: Context, private val onPetCreated: () -> Unit
             .setItems(choices) { _, which ->
                 when (which) {
                     0 -> editPlayerName()
-                    1 -> toggleCareReminders()
-                    2 -> post { showTutorialPage(0, false) }
+                    1 -> showFriendsCenter()
+                    2 -> toggleCareReminders()
+                    3 -> post { showTutorialPage(0, false) }
                     else -> showResetChoices()
                 }
             }
             .setNegativeButton("CLOSE", null)
             .show()
+    }
+
+    private fun showFriendsCenter() {
+        val activity = appContext as? Activity ?: return
+        if (!cloudSave.isSignedIn()) {
+            AlertDialog.Builder(activity)
+                .setTitle("Invite a friend")
+                .setMessage("Sign in with Google first. Your friend list will then work on every device using this account.")
+                .setNegativeButton("NOT NOW", null)
+                .setPositiveButton("SIGN IN") { _, _ ->
+                    (activity as? MainActivity)?.requestGoogleSignInForSocial()
+                }
+                .show()
+            return
+        }
+        val root = LinearLayout(activity).apply {
+            orientation = LinearLayout.VERTICAL
+            setPadding(dp(18f).toInt(), dp(4f).toInt(), dp(18f).toInt(), dp(8f).toInt())
+        }
+        val scroll = ScrollView(activity).apply { addView(root) }
+        val dialog = AlertDialog.Builder(activity)
+            .setTitle("Friends")
+            .setView(scroll)
+            .setNegativeButton("CLOSE", null)
+            .create()
+        socialDialog = dialog
+        socialDialogRoot = root
+        dialog.setOnDismissListener {
+            if (socialDialog === dialog) {
+                socialDialog = null
+                socialDialogRoot = null
+            }
+        }
+        dialog.show()
+        renderSocialDialog()
+    }
+
+    private fun showSocialNotification(title: String, body: String, id: Int) {
+        val activity = appContext as? Activity ?: return
+        val manager = activity.getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
+        val channelId = "mochi_social"
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+            manager.createNotificationChannel(
+                NotificationChannel(channelId, "Friend activity", NotificationManager.IMPORTANCE_DEFAULT)
+            )
+        }
+        val openIntent = Intent(activity, MainActivity::class.java).apply {
+            addFlags(Intent.FLAG_ACTIVITY_SINGLE_TOP or Intent.FLAG_ACTIVITY_CLEAR_TOP)
+        }
+        val pending = PendingIntent.getActivity(
+            activity, id, openIntent,
+            PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
+        )
+        val notification = android.app.Notification.Builder(activity, channelId)
+            .setSmallIcon(R.mipmap.ic_launcher)
+            .setContentTitle(title)
+            .setContentText(body)
+            .setContentIntent(pending)
+            .setAutoCancel(true)
+            .build()
+        manager.notify(id, notification)
+    }
+
+    private fun renderSocialDialog() {
+        val root = socialDialogRoot ?: return
+        root.removeAllViews()
+        val activity = appContext as? Activity ?: return
+        fun label(text: String, size: Float = 14f, color: Int = Color.rgb(76, 49, 94)): TextView =
+            TextView(activity).apply {
+                this.text = text
+                textSize = size
+                setTextColor(color)
+                setPadding(0, dp(5f).toInt(), 0, dp(5f).toInt())
+            }
+        fun actionButton(text: String, action: () -> Unit): Button =
+            Button(activity).apply {
+                this.text = text
+                setOnClickListener { action() }
+                isAllCaps = true
+            }
+        fun addGap() { root.addView(TextView(activity), LinearLayout.LayoutParams(1, dp(5f).toInt())) }
+
+        root.addView(label("Connect with a short code. No contacts or chat are needed.", 13f, Color.rgb(111, 82, 123)))
+        root.addView(actionButton("GET / SHARE INVITE CODE") {
+            social.createInviteCode { code, error ->
+                activity.runOnUiThread {
+                    if (code != null) {
+                        socialStatusMessage = "Your invite code is $code"
+                        val share = Intent(Intent.ACTION_SEND).apply {
+                            type = "text/plain"
+                            putExtra(Intent.EXTRA_TEXT, "Join me in MochiGotchi! Add my friend code: $code")
+                        }
+                        activity.startActivity(Intent.createChooser(share, "Share your friend code"))
+                    } else socialStatusMessage = error.orEmpty()
+                    renderSocialDialog()
+                }
+            }
+        })
+        val codeInput = EditText(activity).apply {
+            hint = "Friend code"
+            inputType = InputType.TYPE_CLASS_TEXT
+            setSingleLine(true)
+            setTextSize(14f)
+        }
+        root.addView(codeInput, LinearLayout.LayoutParams(-1, dp(50f).toInt()))
+        root.addView(actionButton("ADD FRIEND") {
+            social.sendFriendCode(codeInput.text.toString()) { success, message ->
+                activity.runOnUiThread {
+                    socialStatusMessage = message
+                    codeInput.text.clear()
+                    renderSocialDialog()
+                }
+            }
+        })
+        if (socialStatusMessage.isNotBlank()) root.addView(label(socialStatusMessage, 13f, Color.rgb(33, 126, 103)))
+
+        val incomingFriends = socialFriendRequests.filter {
+            it.status == "pending" && it.recipientUid == FirebaseAuth.getInstance().currentUser?.uid
+        }
+        if (incomingFriends.isNotEmpty()) {
+            addGap()
+            root.addView(label("FRIEND REQUESTS", 12f, Color.rgb(122, 69, 123)))
+            incomingFriends.forEach { request ->
+                val row = LinearLayout(activity).apply { orientation = LinearLayout.VERTICAL }
+                row.addView(label("${request.senderName} wants to be friends with ${request.senderPetName}.", 14f))
+                val buttons = LinearLayout(activity).apply { orientation = LinearLayout.HORIZONTAL }
+                buttons.addView(actionButton("ACCEPT") {
+                    social.acceptFriendRequest(request) {
+                        socialStatusMessage = if (it) "You are friends now!" else "I couldn't accept that yet."
+                        activity.runOnUiThread { renderSocialDialog() }
+                    }
+                }, LinearLayout.LayoutParams(0, dp(48f).toInt(), 1f))
+                buttons.addView(actionButton("DECLINE") {
+                    social.declineFriendRequest(request) {
+                        socialStatusMessage = if (it) "Request declined." else "I couldn't update that yet."
+                        activity.runOnUiThread { renderSocialDialog() }
+                    }
+                }, LinearLayout.LayoutParams(0, dp(48f).toInt(), 1f))
+                row.addView(buttons)
+                root.addView(row)
+            }
+        }
+
+        addGap()
+        root.addView(label("FRIENDS", 12f, Color.rgb(122, 69, 123)))
+        if (socialFriends.isEmpty()) {
+            root.addView(label("No friends yet. Share your code to invite someone!", 14f))
+        } else {
+            socialFriends.forEach { friend ->
+                val row = LinearLayout(activity).apply { orientation = LinearLayout.HORIZONTAL; gravity = Gravity.CENTER_VERTICAL }
+                val status = if (friend.online) "ONLINE" else "OFFLINE"
+                val info = label("${friend.displayName} • ${friend.petName}\n$status", 14f)
+                row.addView(info, LinearLayout.LayoutParams(0, dp(60f).toInt(), 1f))
+                if (friend.online) {
+                    row.addView(actionButton("PLAY") { showPlayRequestConfirmation(friend) }, LinearLayout.LayoutParams(dp(92f).toInt(), dp(48f).toInt()))
+                }
+                root.addView(row)
+            }
+        }
+
+        val incomingPlay = socialPlayRequests.filter {
+            it.status == "pending" && it.recipientUid == FirebaseAuth.getInstance().currentUser?.uid
+        }
+        if (incomingPlay.isNotEmpty()) {
+            addGap()
+            root.addView(label("PLAY REQUESTS", 12f, Color.rgb(122, 69, 123)))
+            incomingPlay.forEach { request ->
+                val row = LinearLayout(activity).apply { orientation = LinearLayout.VERTICAL }
+                row.addView(label("${request.senderPetName} wants to play with ${request.recipientPetName}!", 14f))
+                val buttons = LinearLayout(activity).apply { orientation = LinearLayout.HORIZONTAL }
+                buttons.addView(actionButton("PLAY") {
+                    social.acceptPlayRequest(request) { sessionId ->
+                        activity.runOnUiThread {
+                            if (sessionId != null) {
+                                val friend = socialFriends.firstOrNull { it.uid == request.senderUid }
+                                    ?: SocialPlayManager.Friend(request.senderUid, request.senderName, request.senderPetName, "", "", true, System.currentTimeMillis())
+                                startPlaySession(sessionId, friend)
+                            } else socialStatusMessage = "I couldn't start that play session yet."
+                            renderSocialDialog()
+                        }
+                    }
+                }, LinearLayout.LayoutParams(0, dp(48f).toInt(), 1f))
+                buttons.addView(actionButton("NOT NOW") { social.declinePlayRequest(request) { renderSocialDialog() } }, LinearLayout.LayoutParams(0, dp(48f).toInt(), 1f))
+                row.addView(buttons)
+                root.addView(row)
+            }
+        }
+    }
+
+    private fun showIncomingFriendPrompt(request: SocialPlayManager.FriendRequest) {
+        val activity = appContext as? Activity ?: return
+        AlertDialog.Builder(activity)
+            .setTitle("New friend request")
+            .setMessage("${request.senderName} wants to be friends with ${request.senderPetName}.")
+            .setNegativeButton("NOT NOW", null)
+            .setPositiveButton("ACCEPT") { _, _ -> social.acceptFriendRequest(request) }
+            .show()
+    }
+
+    private fun showIncomingPlayPrompt(request: SocialPlayManager.PlayRequest) {
+        val activity = appContext as? Activity ?: return
+        AlertDialog.Builder(activity)
+            .setTitle("Playtime request")
+            .setMessage("${request.senderPetName} wants to play with ${request.recipientPetName}!")
+            .setNegativeButton("NOT NOW", null)
+            .setPositiveButton("PLAY") { _, _ ->
+                social.acceptPlayRequest(request) { sessionId ->
+                    if (sessionId != null) {
+                        val friend = socialFriends.firstOrNull { it.uid == request.senderUid }
+                            ?: SocialPlayManager.Friend(request.senderUid, request.senderName, request.senderPetName, "", "", true, System.currentTimeMillis())
+                        startPlaySession(sessionId, friend)
+                    }
+                }
+            }
+            .show()
+    }
+
+    private fun showPlayRequestConfirmation(friend: SocialPlayManager.Friend) {
+        val activity = appContext as? Activity ?: return
+        AlertDialog.Builder(activity)
+            .setTitle("Play with ${friend.petName}?")
+            .setMessage("${friend.displayName}'s pet is online. They will get a playtime request.")
+            .setNegativeButton("CANCEL", null)
+            .setPositiveButton("SEND REQUEST") { _, _ ->
+                social.sendPlayRequest(friend) { success, message ->
+                    activity.runOnUiThread {
+                        socialStatusMessage = message
+                        renderSocialDialog()
+                    }
+                }
+            }
+            .show()
+    }
+
+    private fun showPlayChoice() {
+        val activity = appContext as? Activity ?: return
+        AlertDialog.Builder(activity)
+            .setTitle("Play")
+            .setItems(arrayOf("PLAY SOLO", "PLAY WITH FRIENDS")) { _, which ->
+                if (which == 0) perform(CareAction.PLAY) else showFriendPicker()
+            }
+            .setNegativeButton("CANCEL", null)
+            .show()
+    }
+
+    private fun showFriendPicker() {
+        val activity = appContext as? Activity ?: return
+        val online = socialFriends.filter { it.online }
+        if (online.isEmpty()) {
+            AlertDialog.Builder(activity)
+                .setTitle("No friends online")
+                .setMessage("When a friend is online, they will appear here so your pets can play together.")
+                .setPositiveButton("OK", null)
+                .show()
+            return
+        }
+        AlertDialog.Builder(activity)
+            .setTitle("Choose a friend")
+            .setItems(online.map { "${it.petName} • ${it.displayName}" }.toTypedArray()) { _, which ->
+                showPlayRequestConfirmation(online[which])
+            }
+            .setNegativeButton("CANCEL", null)
+            .show()
+    }
+
+    private fun startPlaySession(sessionId: String, friend: SocialPlayManager.Friend) {
+        playSubscription?.close()
+        playSessionId = sessionId
+        playFriend = friend
+        playEvents = emptyList()
+        playActionUntil = 0L
+        playSubscription = social.watchSession(
+            sessionId,
+            onEvents = { events ->
+                val oldRemote = playEvents.lastOrNull { it.actorUid != FirebaseAuth.getInstance().currentUser?.uid }?.id
+                playEvents = events
+                val newestRemote = events.lastOrNull { it.actorUid != FirebaseAuth.getInstance().currentUser?.uid }
+                if (newestRemote != null && newestRemote.id != oldRemote) {
+                    message = "${friend.petName} says ${playActionLabel(newestRemote.action)}!"
+                    messageColor = friend.uid.hashCode().let { Color.rgb(93 + abs(it % 70), 65, 145) }
+                    messageUntil = SystemClock.uptimeMillis() + 3000L
+                    playActionUntil = SystemClock.uptimeMillis() + 1200L
+                }
+                invalidate()
+            },
+            onStatus = { status ->
+                if (status != "active" && playSessionId == sessionId) leavePlaySession(sendGoodbye = false)
+            }
+        )
+        message = "Playtime with ${friend.petName} has started!"
+        messageColor = Color.rgb(113, 67, 156)
+        messageUntil = SystemClock.uptimeMillis() + 3500L
+        invalidate()
+    }
+
+    private fun sendPlayAction(action: String) {
+        val sessionId = playSessionId ?: return
+        social.sendPlayEvent(sessionId, action)
+        message = "You said ${playActionLabel(action)}!"
+        messageColor = Color.rgb(113, 67, 156)
+        messageUntil = SystemClock.uptimeMillis() + 2500L
+        playActionUntil = SystemClock.uptimeMillis() + 1200L
+        invalidate()
+    }
+
+    private fun leavePlaySession(sendGoodbye: Boolean) {
+        val sessionId = playSessionId ?: return
+        if (sendGoodbye) social.sendPlayEvent(sessionId, "goodbye")
+        social.endPlaySession(sessionId)
+        playSubscription?.close()
+        playSubscription = null
+        playSessionId = null
+        playFriend = null
+        playEvents = emptyList()
+        pressedPlayButton = -1
+        invalidate()
     }
 
     private fun toggleCareReminders() {
@@ -2718,6 +3204,7 @@ private class PetGameView(context: Context, private val onPetCreated: () -> Unit
     override fun onTouchEvent(event: MotionEvent): Boolean {
         if (menuOpen || menuAnimationStart != 0L) return handleMenuTouch(event)
         if (setupMode) return handleSetupTouch(event)
+        if (playSessionId != null && event.y >= carePanelRect().top) return handlePlayTouch(event)
         if (event.actionMasked == MotionEvent.ACTION_DOWN) {
             careGesture = !pet.dead && event.y >= carePanelRect().top
         }
@@ -2779,7 +3266,12 @@ private class PetGameView(context: Context, private val onPetCreated: () -> Unit
                         else -> CareCategory.HEALTH
                     }
                     else if (hit == currentBlobs().lastIndex) careCategory = null
-                    else careOptions(category).getOrNull(hit)?.let { if (it == pressedAction) perform(it) }
+                    else careOptions(category).getOrNull(hit)?.let {
+                        if (it == pressedAction) {
+                            if (it == CareAction.PLAY) showPlayChoice()
+                            else perform(it)
+                        }
+                    }
                 }
                 careGesture = false
                 pressedBlob = -1
@@ -2793,6 +3285,31 @@ private class PetGameView(context: Context, private val onPetCreated: () -> Unit
             }
         }
         invalidate()
+        return true
+    }
+
+    private fun handlePlayTouch(event: MotionEvent): Boolean {
+        val panel = carePanelRect()
+        val hit = playButtonRects(panel).indexOfFirst { it.contains(event.x, event.y) }
+        when (event.actionMasked) {
+            MotionEvent.ACTION_DOWN -> {
+                pressedPlayButton = hit
+                invalidate()
+            }
+            MotionEvent.ACTION_UP -> {
+                if (hit >= 0 && hit == pressedPlayButton) {
+                    sendPlayAction(playButtonActions()[hit].first)
+                } else if (playLeaveRect(panel).contains(event.x, event.y)) {
+                    leavePlaySession(sendGoodbye = true)
+                }
+                pressedPlayButton = -1
+                invalidate()
+            }
+            MotionEvent.ACTION_CANCEL -> {
+                pressedPlayButton = -1
+                invalidate()
+            }
+        }
         return true
     }
 
@@ -3020,6 +3537,7 @@ private class PetGameView(context: Context, private val onPetCreated: () -> Unit
     fun restoreAfterSignIn() {
         requestCloudRestore(preferCloudRestore) { result ->
             finishCloudRestore(result)
+            startSocialPresenceIfReady()
         }
     }
 
@@ -3071,6 +3589,7 @@ private class PetGameView(context: Context, private val onPetCreated: () -> Unit
         postDelayed({
             (appContext as? MainActivity)?.maybeRequestCareReminderPermission()
         }, 900L)
+        startSocialPresenceIfReady()
     }
 
     fun hasCreatedPet(): Boolean = pet.created
@@ -3080,6 +3599,19 @@ private class PetGameView(context: Context, private val onPetCreated: () -> Unit
     fun isActivityResumed(): Boolean = activityResumed
 
     fun petName(): String = pet.name
+
+    fun startSocialPresenceIfReady() {
+        if (!activityResumed || !pet.created || !cloudSave.isSignedIn()) return
+        social.startPresence(
+            SocialPlayManager.Profile(
+                displayName = pet.playerName,
+                petName = pet.name,
+                petKind = pet.kind.name,
+                stage = pet.stage,
+                hatched = pet.hatched
+            )
+        )
+    }
 
     fun checkForUpdates(showNoUpdate: Boolean) {
         updateManager.check(showNoUpdate)
