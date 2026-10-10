@@ -576,7 +576,10 @@ private class PetGameView(context: Context, private val onPetCreated: () -> Unit
     private var playFriend: SocialPlayManager.Friend? = null
     private var playSubscription: SocialPlayManager.SessionSubscription? = null
     private var playEvents: List<SocialPlayManager.PlayEvent> = emptyList()
+    private var localPlayAction: String? = null
+    private var remotePlayAction: String? = null
     private var playActionUntil = 0L
+    private var remotePlayActionUntil = 0L
     private var pressedPlayButton = -1
     private var tutorialShowing = false
     @Volatile private var weather = WeatherState()
@@ -934,6 +937,7 @@ private class PetGameView(context: Context, private val onPetCreated: () -> Unit
         drawPlayground(canvas, now)
         drawPet(canvas, now)
         if (playSessionId != null) drawFriendPet(canvas, now)
+        if (playSessionId != null) drawPlayDateSpeechBubbles(canvas, now)
         drawActionEffects(canvas, now)
         drawMessage(canvas, now)
         drawStats(canvas)
@@ -954,6 +958,7 @@ private class PetGameView(context: Context, private val onPetCreated: () -> Unit
             menuAnimationStart != 0L ||
             touchReactionUntil > now ||
             playActionUntil > now ||
+            remotePlayActionUntil > now ||
             pressedBlob >= 0 ||
             liquidRippleStartedAt != 0L && now - liquidRippleStartedAt < LIQUID_RIPPLE_DURATION_MS ||
             (!pet.dead && motionMode == MotionMode.WALK) ||
@@ -1967,15 +1972,69 @@ private class PetGameView(context: Context, private val onPetCreated: () -> Unit
             canvas.restore()
         }
         drawPetNameBadge(canvas, friend.petName, centerX, ground, kind.dark)
-        val remoteAction = playEvents.lastOrNull { it.actorUid != FirebaseAuth.getInstance().currentUser?.uid }?.action
-        if (!remoteAction.isNullOrBlank() && playSessionId != null) {
-            val bubble = RectF(centerX - dp(45f), ground - dp(104f), centerX + dp(45f), ground - dp(72f))
-            paint.color = Color.WHITE
-            canvas.drawRoundRect(bubble, dp(16f), dp(16f), paint)
-            textPaint.textSize = dp(10f)
-            textPaint.color = Color.rgb(68, 43, 90)
-            canvas.drawText(playActionLabel(remoteAction), bubble.centerX(), bubble.centerY() + dp(4f), textPaint)
+    }
+
+    private fun drawPlayDateSpeechBubbles(canvas: Canvas, now: Long) {
+        val friend = playFriend ?: return
+        val localAction = localPlayAction
+        if (!localAction.isNullOrBlank() && now < playActionUntil) {
+            val anchor = if (!pet.hatched) {
+                petGroundY - dp(156f) * petEggScale
+            } else {
+                petGroundY - max(dp(172f), petRenderWidth * .62f)
+            }
+            drawSpeechBubble(canvas, playActionLabel(localAction), petCenterX, anchor, pet.kind.dark)
         }
+
+        val remoteAction = remotePlayAction
+        if (!remoteAction.isNullOrBlank() && now < remotePlayActionUntil) {
+            val kind = PetKind.values().firstOrNull { it.name == friend.petKind.uppercase() } ?: PetKind.BUNNY
+            val egg = friend.stage.equals("EGG", true) || friend.petKind.isBlank()
+            val scale = petEggScale.takeIf { it > 0f } ?: 1f
+            val anchor = if (egg) {
+                petGroundY - dp(156f) * scale
+            } else {
+                petGroundY - max(dp(172f), friendRenderWidth * .62f)
+            }
+            drawSpeechBubble(canvas, playActionLabel(remoteAction), friendRenderCenterX, anchor, kind.dark)
+        }
+    }
+
+    private fun drawSpeechBubble(
+        canvas: Canvas,
+        label: String,
+        centerX: Float,
+        bottom: Float,
+        textColor: Int
+    ) {
+        textPaint.textAlign = Paint.Align.CENTER
+        textPaint.typeface = PaintTypeface.bold()
+        textPaint.textSize = dp(11f)
+        val bubbleWidth = (textPaint.measureText(label) + dp(26f)).coerceIn(dp(64f), dp(154f))
+        val bubbleHeight = dp(32f)
+        val left = (centerX - bubbleWidth / 2f).coerceIn(dp(7f), width - dp(7f) - bubbleWidth)
+        val rect = RectF(left, bottom - bubbleHeight, left + bubbleWidth, bottom)
+        val tailX = centerX.coerceIn(rect.left + dp(14f), rect.right - dp(14f))
+        val tail = Path().apply {
+            moveTo(tailX - dp(8f), rect.bottom - dp(2f))
+            lineTo(tailX, rect.bottom + dp(8f))
+            lineTo(tailX + dp(8f), rect.bottom - dp(2f))
+            close()
+        }
+        paint.style = Paint.Style.FILL
+        paint.color = Color.WHITE
+        canvas.drawPath(tail, paint)
+        canvas.drawRoundRect(rect, dp(15f), dp(15f), paint)
+        paint.style = Paint.Style.STROKE
+        paint.strokeWidth = dp(1.8f)
+        paint.strokeJoin = Paint.Join.ROUND
+        paint.color = Color.rgb(68, 43, 90)
+        canvas.drawPath(tail, paint)
+        canvas.drawRoundRect(rect, dp(15f), dp(15f), paint)
+        paint.style = Paint.Style.FILL
+        textPaint.color = textColor
+        val baseline = rect.centerY() - (textPaint.ascent() + textPaint.descent()) / 2f
+        canvas.drawText(label, rect.centerX(), baseline, textPaint)
     }
 
     private fun playActionLabel(action: String): String = when (action) {
@@ -2405,12 +2464,12 @@ private class PetGameView(context: Context, private val onPetCreated: () -> Unit
                 CareCategory.FOOD.fill,
                 CareCategory.HEALTH.fill
             )
-            drawCareTopBleeds(canvas, panel, visualColors)
             for (category in CareCategory.values()) drawCareCategory(canvas, category)
+            drawCareTopBleeds(canvas, panel, visualColors)
+            drawCareTopSeams(canvas, panel)
         } else {
             val category = careCategory ?: return
             val options = careOptions(category)
-            drawCareTopBleeds(canvas, panel, options.map { it.fill })
             textPaint.textAlign = Paint.Align.CENTER
             textPaint.typeface = PaintTypeface.bold()
             textPaint.textSize = dp(11f)
@@ -2422,6 +2481,8 @@ private class PetGameView(context: Context, private val onPetCreated: () -> Unit
                 drawCareOption(canvas, action, rect)
             }
             drawCareCenterButton(canvas)
+            drawCareTopBleeds(canvas, panel, options.map { it.fill })
+            drawCareTopSeams(canvas, panel)
         }
     }
 
@@ -2514,6 +2575,28 @@ private class PetGameView(context: Context, private val onPetCreated: () -> Unit
             canvas.restore()
             paint.shader = null
         }
+    }
+
+    private fun drawCareTopSeams(canvas: Canvas, panel: RectF) {
+        val fadeHeight = dp(16f)
+        val xEdges = if (currentBlobs().size == 5) {
+            floatArrayOf(0f, 185f, 395f, 592f)
+        } else {
+            floatArrayOf(0f, 296f, 592f)
+        }
+        val scaleX = panel.width() / 592f
+        paint.style = Paint.Style.STROKE
+        paint.strokeWidth = max(dp(2.5f), 4.5f * min(width / 592f, panel.height() / 400f))
+        paint.strokeCap = Paint.Cap.ROUND
+        paint.color = Color.rgb(35, 25, 43)
+        canvas.save()
+        canvas.clipRect(panel.left, panel.top - fadeHeight, panel.right, panel.top + dp(2f))
+        for (index in 1 until xEdges.lastIndex) {
+            val x = panel.left + xEdges[index] * scaleX
+            canvas.drawLine(x, panel.top - fadeHeight, x, panel.top + dp(2f), paint)
+        }
+        canvas.restore()
+        paint.style = Paint.Style.FILL
     }
 
     private data class BlobControl(val index: Int, val path: Path, val samples: FloatArray,
@@ -2729,15 +2812,11 @@ private class PetGameView(context: Context, private val onPetCreated: () -> Unit
         paint.strokeJoin = Paint.Join.ROUND
         paint.strokeCap = Paint.Cap.ROUND
         paint.color = Color.rgb(35, 25, 43)
-        // The care surface is flush with the stats area and the screen edges.
-        // Keep the dark stroke only on internal joins; clipping its outer half
-        // prevents a second, heavy frame from being drawn over the blend.
-        val strokeInset = paint.strokeWidth + dp(1f)
+        // Keep the stroke inside the actual window, but let it reach the
+        // screen edges. This prevents the small pale gaps at the outer edges
+        // while keeping the panel flush instead of growing beyond the window.
         canvas.save()
-        canvas.clipRect(
-            panel.left + strokeInset, panel.top + strokeInset,
-            panel.right - strokeInset, panel.bottom - strokeInset
-        )
+        canvas.clipRect(panel)
         canvas.drawPath(path, paint)
         canvas.restore()
         paint.style = Paint.Style.FILL
@@ -3191,7 +3270,10 @@ private class PetGameView(context: Context, private val onPetCreated: () -> Unit
         friendMotionDirection = -1f
         friendMotionLastAt = SystemClock.uptimeMillis()
         playEvents = emptyList()
+        localPlayAction = null
+        remotePlayAction = null
         playActionUntil = 0L
+        remotePlayActionUntil = 0L
         attachPlaySession()
         message = "Playtime with ${friend.petName} has started!"
         messageColor = Color.rgb(113, 67, 156)
@@ -3215,10 +3297,11 @@ private class PetGameView(context: Context, private val onPetCreated: () -> Unit
                     // signal: that status can race the accepted batch.
                     if (playSessionId == sessionId) leavePlaySession(sendGoodbye = false)
                 } else if (newestRemote != null && newestRemote.id != oldRemote) {
+                    remotePlayAction = newestRemote.action
+                    remotePlayActionUntil = SystemClock.uptimeMillis() + 1800L
                     message = "${friend.petName} says ${playActionLabel(newestRemote.action)}!"
                     messageColor = friend.uid.hashCode().let { Color.rgb(93 + abs(it % 70), 65, 145) }
                     messageUntil = SystemClock.uptimeMillis() + 3000L
-                    playActionUntil = SystemClock.uptimeMillis() + 1200L
                 }
                 invalidate()
             },
@@ -3230,11 +3313,12 @@ private class PetGameView(context: Context, private val onPetCreated: () -> Unit
 
     private fun sendPlayAction(action: String) {
         val sessionId = playSessionId ?: return
+        localPlayAction = action
         social.sendPlayEvent(sessionId, action)
         message = "You said ${playActionLabel(action)}!"
         messageColor = Color.rgb(113, 67, 156)
         messageUntil = SystemClock.uptimeMillis() + 2500L
-        playActionUntil = SystemClock.uptimeMillis() + 1200L
+        playActionUntil = SystemClock.uptimeMillis() + 1800L
         invalidate()
     }
 
@@ -3258,6 +3342,10 @@ private class PetGameView(context: Context, private val onPetCreated: () -> Unit
         friendMotionDirection = -1f
         friendMotionLastAt = SystemClock.uptimeMillis()
         playEvents = emptyList()
+        localPlayAction = null
+        remotePlayAction = null
+        playActionUntil = 0L
+        remotePlayActionUntil = 0L
         pressedPlayButton = -1
         invalidate()
     }
