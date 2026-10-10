@@ -1,5 +1,13 @@
 # Zoey's Pocket Pet — cloud handover
 
+## Current release: two-way play-date joining and matching badges — v118
+
+Pending publication. Both participants now listen for the shared accepted play
+session, so either side joins even when the acceptance prompt/listener timing
+differs. Duplicate starts for the same session are ignored. The remote pet's
+name now uses the same rounded white badge, sizing, and typography as the
+local pet. Build/lint pending.
+
 ## Current release: reliable closed-app notifications — v117
 
 Published APK verified byte-for-byte against the signed local build:

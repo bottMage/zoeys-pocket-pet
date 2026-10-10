@@ -672,13 +672,25 @@ private class PetGameView(context: Context, private val onPetCreated: () -> Unit
                 if (activityResumed && windowVisibility == View.VISIBLE) showIncomingPlayPrompt(fresh)
                 else showSocialNotification("Playtime request", "${fresh.senderPetName} wants to play!", 8802)
             }
-            // The sender sees the accepted request through the same listener.
+            // Both sides listen for the shared accepted request. The sender
+            // normally learns the session here; the recipient normally starts
+            // from the accept callback. Keeping this listener symmetrical
+            // covers notification prompts, settings prompts, and listener
+            // timing differences without making either side depend on the
+            // other device's UI remaining open.
+            val currentUid = FirebaseAuth.getInstance().currentUser?.uid
             requests.firstOrNull {
-                it.status == "accepted" && it.senderUid == FirebaseAuth.getInstance().currentUser?.uid &&
-                    it.sessionId != null && it.sessionId != playSessionId
+                it.status == "accepted" && it.sessionId != null &&
+                    (it.senderUid == currentUid || it.recipientUid == currentUid) &&
+                    it.sessionId != playSessionId
             }?.let { request ->
-                val friend = socialFriends.firstOrNull { it.uid == request.recipientUid }
-                    ?: SocialPlayManager.Friend(request.recipientUid, request.recipientName, request.recipientPetName, "", "", true, System.currentTimeMillis())
+                val friend = if (request.senderUid == currentUid) {
+                    socialFriends.firstOrNull { it.uid == request.recipientUid }
+                        ?: SocialPlayManager.Friend(request.recipientUid, request.recipientName, request.recipientPetName, "", "", true, System.currentTimeMillis())
+                } else {
+                    socialFriends.firstOrNull { it.uid == request.senderUid }
+                        ?: SocialPlayManager.Friend(request.senderUid, request.senderName, request.senderPetName, "", "", true, System.currentTimeMillis())
+                }
                 startPlaySession(request.sessionId!!, friend)
             }
         }
@@ -1942,11 +1954,7 @@ private class PetGameView(context: Context, private val onPetCreated: () -> Unit
             canvas.drawBitmap(bitmap, null, RectF(centerX - artWidth / 2f, ground - artHeight, centerX + artWidth / 2f, ground), paint)
             canvas.restore()
         }
-        textPaint.textAlign = Paint.Align.CENTER
-        textPaint.typeface = PaintTypeface.bold()
-        textPaint.textSize = dp(10f)
-        textPaint.color = kind.dark
-        canvas.drawText(friend.petName, centerX, ground + dp(16f), textPaint)
+        drawPetNameBadge(canvas, friend.petName, centerX, ground, kind.dark)
         val remoteAction = playEvents.lastOrNull { it.actorUid != FirebaseAuth.getInstance().currentUser?.uid }?.action
         if (!remoteAction.isNullOrBlank() && playSessionId != null) {
             val bubble = RectF(centerX - dp(45f), ground - dp(104f), centerX + dp(45f), ground - dp(72f))
@@ -2031,11 +2039,15 @@ private class PetGameView(context: Context, private val onPetCreated: () -> Unit
     }
 
     private fun drawPetName(canvas: Canvas, centerX: Float, groundY: Float) {
+        drawPetNameBadge(canvas, pet.name, centerX, groundY, pet.kind.dark)
+    }
+
+    private fun drawPetNameBadge(canvas: Canvas, petName: String, centerX: Float, groundY: Float, textColor: Int) {
         val bottom = statsTop() - dp(10f)
         textPaint.textAlign = Paint.Align.CENTER
         textPaint.typeface = PaintTypeface.bold()
         textPaint.textSize = dp(13f)
-        val name = pet.name.uppercase()
+        val name = petName.uppercase()
         val nameWidth = textPaint.measureText(name) + dp(26f)
         val nameBaseline = min(bottom - dp(14f), groundY + dp(34f))
         paint.color = Color.argb(225, 255, 255, 255)
@@ -2043,7 +2055,7 @@ private class PetGameView(context: Context, private val onPetCreated: () -> Unit
             RectF(centerX - nameWidth / 2f, nameBaseline - dp(21f), centerX + nameWidth / 2f, nameBaseline + dp(7f)),
             dp(14f), dp(14f), paint
         )
-        textPaint.color = pet.kind.dark
+        textPaint.color = textColor
         canvas.drawText(name, centerX, nameBaseline, textPaint)
     }
 
@@ -3154,6 +3166,7 @@ private class PetGameView(context: Context, private val onPetCreated: () -> Unit
     }
 
     private fun startPlaySession(sessionId: String, friend: SocialPlayManager.Friend) {
+        if (playSessionId == sessionId) return
         playSubscription?.close()
         playSessionId = sessionId
         playFriend = friend
