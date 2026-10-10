@@ -274,6 +274,9 @@ internal class SocialPlayManager {
                 "recipientName" to recipientName,
                 "recipientPetName" to recipientPetName,
                 "status" to "pending",
+                // A new request must not inherit the session ID from an
+                // older accepted request stored in the same per-friend doc.
+                "sessionId" to null,
                 "createdAt" to FieldValue.serverTimestamp(),
                 "updatedAt" to FieldValue.serverTimestamp()
             )
@@ -298,6 +301,8 @@ internal class SocialPlayManager {
         val inbox = userCollection(request.recipientUid).collection("incomingPlayRequests").document(request.senderUid)
         val session = mapOf(
             "members" to listOf(request.senderUid, request.recipientUid),
+            "senderUid" to request.senderUid,
+            "recipientUid" to request.recipientUid,
             "status" to "active",
             "createdAt" to FieldValue.serverTimestamp(),
             "lastActivity" to FieldValue.serverTimestamp()
@@ -336,8 +341,81 @@ internal class SocialPlayManager {
     }
 
     fun endPlaySession(sessionId: String) {
-        firestore.collection("playSessions").document(sessionId)
-            .update("status", "ended", "lastActivity", FieldValue.serverTimestamp())
+        val sessionRef = firestore.collection("playSessions").document(sessionId)
+        sessionRef.update("status", "ended", "lastActivity", FieldValue.serverTimestamp())
+            .addOnCompleteListener { retireLocalPlayRequest(sessionId) }
+    }
+
+    /**
+     * Consumes this user's copy of the accepted request. Request documents are
+     * intentionally retained for the friend list/history, but an old accepted
+     * session must not remain eligible to reopen after an app restart.
+     *
+     * The fallback for pre-v123 sessions has no sender/recipient fields on the
+     * session document, so it safely retires both possible request copies under
+     * the current user's account. Both paths are recipient/owner-writable and
+     * the records are merged rather than deleted, preserving their history.
+     */
+    fun retireLocalPlayRequest(sessionId: String) {
+        val uid = auth.currentUser?.uid ?: return
+        val sessionRef = firestore.collection("playSessions").document(sessionId)
+        sessionRef.get().addOnSuccessListener { session ->
+            val senderUid = session.getString("senderUid")
+            val recipientUid = session.getString("recipientUid")
+            val otherUid = (session.get("members") as? List<*>)
+                ?.mapNotNull { it as? String }
+                ?.firstOrNull { it != uid }
+            val friendUid = recipientUid?.takeIf { it != uid }
+                ?: senderUid?.takeIf { it != uid }
+                ?: otherUid
+            if (friendUid.isNullOrBlank()) return@addOnSuccessListener
+
+            fun requestData(sender: String, recipient: String) = mapOf(
+                "senderUid" to sender,
+                "recipientUid" to recipient,
+                "status" to "declined",
+                "sessionId" to null,
+                "updatedAt" to FieldValue.serverTimestamp()
+            )
+            fun commit(writes: List<Pair<com.google.firebase.firestore.DocumentReference, Map<String, Any?>>>) {
+                if (writes.isEmpty()) return
+                firestore.runBatch { batch ->
+                    writes.distinctBy { it.first.path }.forEach { (reference, data) ->
+                        batch.set(reference, data, SetOptions.merge())
+                    }
+                }
+            }
+            if (senderUid != null && recipientUid != null) {
+                val writes = when {
+                    uid == senderUid -> listOf(
+                        userCollection(uid).collection("playRequests").document(friendUid) to
+                            requestData(senderUid, recipientUid)
+                    )
+                    uid == recipientUid -> listOf(
+                        userCollection(uid).collection("incomingPlayRequests").document(friendUid) to
+                            requestData(senderUid, recipientUid)
+                    )
+                    else -> emptyList()
+                }
+                commit(writes)
+                return@addOnSuccessListener
+            }
+
+            // v122 sessions only stored members. Read both possible local
+            // copies first, because Firestore rules do not allow creating a
+            // made-up inbox/outbox document in the fallback batch.
+            val outbox = userCollection(uid).collection("playRequests").document(friendUid)
+            val inbox = userCollection(uid).collection("incomingPlayRequests").document(friendUid)
+            outbox.get().addOnSuccessListener { outboxSnapshot ->
+                inbox.get().addOnSuccessListener { inboxSnapshot ->
+                    val writes = buildList {
+                        if (outboxSnapshot.exists()) add(outbox to requestData(uid, friendUid))
+                        if (inboxSnapshot.exists()) add(inbox to requestData(friendUid, uid))
+                    }
+                    commit(writes)
+                }
+            }
+        }
     }
 
     fun watchSession(

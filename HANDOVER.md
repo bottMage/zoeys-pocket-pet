@@ -1,5 +1,16 @@
 # Zoey's Pocket Pet — cloud handover
 
+## Current release: stale play-session cleanup — v123 candidate
+
+This release retires the accepted play-request copy when a participant leaves
+and when the remote participant sends goodbye. Session documents now record
+the sender and recipient so each device updates the correct request path;
+pre-v123 sessions fall back to their member list. A new request clears any
+old session ID before becoming pending, so an ended play date cannot reopen
+after a restart. The existing acceptance-gated joining, two-way event stream,
+pet rendering, progress, sync, notifications, updater, and release signing
+are unchanged.
+
 ## Current release: accept-gated play dates and synced egg cracks — v122
 
 Published APK verified byte-for-byte against the signed local build:

@@ -3243,6 +3243,10 @@ private class PetGameView(context: Context, private val onPetCreated: () -> Unit
         if (sendGoodbye) {
             social.sendPlayEvent(sessionId, "goodbye")
             social.endPlaySession(sessionId)
+        } else {
+            // The other participant ended the session. Consume this device's
+            // accepted request copy too, so a stale listener cannot reopen it.
+            social.retireLocalPlayRequest(sessionId)
         }
         playSubscription?.close()
         playSubscription = null
