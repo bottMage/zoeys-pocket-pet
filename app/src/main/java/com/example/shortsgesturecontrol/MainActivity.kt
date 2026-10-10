@@ -545,6 +545,7 @@ private class PetGameView(context: Context, private val onPetCreated: () -> Unit
     private var menuOpening = true
     private var careMenuOpen = false
     private var careCategory: CareCategory? = null
+    private var careOpeningTouch = false
     @Volatile private var weather = WeatherState()
     private var weatherLoading = false
     private var weatherStarted = false
@@ -2167,14 +2168,10 @@ private class PetGameView(context: Context, private val onPetCreated: () -> Unit
             textPaint.typeface = PaintTypeface.bold()
             textPaint.textSize = dp(11f)
             textPaint.color = Color.rgb(111, 82, 123)
-            canvas.drawText("CHOOSE ${category.label}", width / 2f, height - dp(181f), textPaint)
-            val spacing = dp(102f)
-            val center = (options.size - 1) / 2f
+            canvas.drawText("CHOOSE ${category.label}", width / 2f, height - dp(190f), textPaint)
             for (index in options.indices) {
                 val action = options[index]
-                val x = width / 2f + (index - center) * spacing
-                val y = height - dp(137f)
-                val rect = RectF(x - dp(46f), y - dp(25f), x + dp(46f), y + dp(25f))
+                val rect = careOptionRect(action, index, options.size)
                 buttons.add(CareButton(action, rect))
                 drawCareOption(canvas, action, rect)
             }
@@ -2183,7 +2180,7 @@ private class PetGameView(context: Context, private val onPetCreated: () -> Unit
     }
 
     private fun drawCareMenuButton(canvas: Canvas) {
-        val rect = RectF(width / 2f - dp(88f), height - dp(143f), width / 2f + dp(88f), height - dp(77f))
+        val rect = RectF(width / 2f - dp(88f), height - dp(92f), width / 2f + dp(88f), height - dp(24f))
         paint.color = Color.argb(24, 67, 39, 95)
         canvas.drawRoundRect(RectF(rect.left, rect.top + dp(5f), rect.right, rect.bottom + dp(8f)), dp(24f), dp(24f), paint)
         paint.color = Color.rgb(255, 218, 157)
@@ -2239,15 +2236,28 @@ private class PetGameView(context: Context, private val onPetCreated: () -> Unit
     }
 
     private fun careCategoryRect(category: CareCategory): RectF {
-        val index = CareCategory.values().indexOf(category)
-        val x = dp(36f) + index * (width - dp(72f)) / 4f
-        val y = height - dp(137f)
-        return RectF(x - dp(33f), y - dp(24f), x + dp(33f), y + dp(24f))
+        val point = radialPoint(category.angleDegrees, careRadius())
+        return RectF(point.first - dp(34f), point.second - dp(23f), point.first + dp(34f), point.second + dp(23f))
     }
 
     private fun careCenterRect(): RectF = RectF(
-        width / 2f - dp(48f), height - dp(72f), width / 2f + dp(48f), height - dp(22f)
+        width / 2f - dp(48f), height - dp(84f), width / 2f + dp(48f), height - dp(30f)
     )
+
+    private fun careOptionRect(action: CareAction, index: Int, count: Int): RectF {
+        val spread = if (count <= 1) 0f else if (count == 2) 25f else 35f
+        val centeredIndex = index - (count - 1) / 2f
+        val point = radialPoint(action.category.angleDegrees + centeredIndex * spread, careRadius())
+        return RectF(point.first - dp(38f), point.second - dp(25f), point.first + dp(38f), point.second + dp(25f))
+    }
+
+    private fun radialPoint(angleDegrees: Float, radius: Float): Pair<Float, Float> {
+        val radians = Math.toRadians(angleDegrees.toDouble())
+        return (width / 2f + cos(radians).toFloat() * radius) to
+            (height - dp(58f) + sin(radians).toFloat() * radius)
+    }
+
+    private fun careRadius(): Float = min(dp(132f), width / 2f - dp(42f))
 
     private fun careOptions(category: CareCategory): List<CareAction> = when (category) {
         CareCategory.FOOD -> listOf(CareAction.MEAL, CareAction.TREAT)
@@ -2417,7 +2427,7 @@ private class PetGameView(context: Context, private val onPetCreated: () -> Unit
     private fun statsTop(): Float = height - dp(330f)
 
     private fun careMenuButtonRect(): RectF = RectF(
-        width / 2f - dp(88f), height - dp(143f), width / 2f + dp(88f), height - dp(77f)
+        width / 2f - dp(88f), height - dp(92f), width / 2f + dp(88f), height - dp(24f)
     )
 
     override fun onTouchEvent(event: MotionEvent): Boolean {
@@ -2433,6 +2443,7 @@ private class PetGameView(context: Context, private val onPetCreated: () -> Unit
                 if (careMenuButtonRect().contains(event.x, event.y)) {
                     careMenuOpen = true
                     careCategory = null
+                    careOpeningTouch = true
                     invalidate()
                     return true
                 }
@@ -2475,6 +2486,12 @@ private class PetGameView(context: Context, private val onPetCreated: () -> Unit
                 return true
             }
             MotionEvent.ACTION_UP -> {
+                if (careOpeningTouch) {
+                    careOpeningTouch = false
+                    pressedAction = null
+                    invalidate()
+                    return true
+                }
                 if (careCenterRect().contains(event.x, event.y)) {
                     if (careCategory == null) careMenuOpen = false else careCategory = null
                 } else if (careCategory == null) {
@@ -2495,6 +2512,7 @@ private class PetGameView(context: Context, private val onPetCreated: () -> Unit
                 return true
             }
             MotionEvent.ACTION_CANCEL -> {
+                careOpeningTouch = false
                 pressedAction = null
                 invalidate()
                 return true
@@ -2749,12 +2767,12 @@ private class PetGameView(context: Context, private val onPetCreated: () -> Unit
 
     private enum class Action { FEED, PLAY, BATH, SLEEP }
 
-    private enum class CareCategory(val label: String, val glyph: String, val fill: Int) {
-        FOOD("FOOD", "+", Color.rgb(255, 225, 170)),
-        FUN("FUN", "★", Color.rgb(255, 193, 216)),
-        REST("REST", "Z", Color.rgb(198, 205, 255)),
-        CLEAN("CLEAN", "✦", Color.rgb(190, 232, 220)),
-        HEALTH("HEALTH", "♥", Color.rgb(244, 208, 214))
+    private enum class CareCategory(val label: String, val glyph: String, val fill: Int, val angleDegrees: Float) {
+        FOOD("FOOD", "+", Color.rgb(255, 225, 170), -160f),
+        FUN("FUN", "★", Color.rgb(255, 193, 216), -125f),
+        REST("REST", "Z", Color.rgb(198, 205, 255), -90f),
+        CLEAN("CLEAN", "✦", Color.rgb(190, 232, 220), -55f),
+        HEALTH("HEALTH", "♥", Color.rgb(244, 208, 214), -20f)
     }
 
     private enum class CareAction(

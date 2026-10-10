@@ -1,15 +1,14 @@
 # Zoey's Pocket Pet — cloud handover
 
-## Current release: radial care menu and gentle health state — v83
+## Current release candidate: true radial care menu and persistent opening — v84
 
-The v83 release keeps v82's threshold and gentle general reminder work while
-adding a gentle elapsed-time health state, then replaces the four-button bottom strip with a kid-friendly two-level
-care menu. A central CARE button opens FOOD, FUN, REST, CLEAN, and HEALTH
-categories; each category then offers focused actions such as meals and treats,
-toys and cuddles, naps and sleep, bath and tidy, or checkup, medicine, and
-vitamin. Existing pet/scenery artwork, animation, audio, saves, Firebase sync,
-updater, and release signing are unchanged. The menu reuses the existing action
-motion and feedback paths, so the visible change is confined to the bottom UI.
+The v84 candidate corrects the v83 bottom-menu interaction and layout. The
+categories now fan around the central CARE button in a real radial arc rather
+than appearing in a row, and each selected category fans its actions outward
+from that category direction. Releasing the opening CARE tap leaves the menu
+open; it no longer requires holding the button. Existing pet/scenery artwork,
+animation, audio, saves, Firebase sync, updater, and release signing are
+unchanged.
 
 The health model remains elapsed-time based and offline-safe. If overall care is
 poor for about four hours, or one need remains critically low for about two
@@ -18,6 +17,15 @@ restores normal growth. Health state is saved locally and in Firestore. Closed
 app reminders can repeat sickness help every three hours until medicine is
 given, while existing stat-threshold and cute two-hour general reminders remain
 rate-limited and battery-conscious.
+
+## Previous release: radial care menu and gentle health state — v83
+
+The v83 release kept v82's threshold and gentle general reminder work while
+adding the elapsed-time health state and the first two-level care menu. A
+central CARE button opened FOOD, FUN, REST, CLEAN, and HEALTH categories; each
+category offered focused actions such as meals and treats, toys and cuddles,
+naps and sleep, bath and tidy, or checkup, medicine, and vitamin. The v84
+candidate above refines only that bottom-menu interaction and layout.
 
 The v83 APK uses the unchanged cloud certificate and is published at
 `https://github.com/bottMage/zoeys-pocket-pet/releases/download/v83/zoeys-pocket-pet-v83.apk?download=83`.
