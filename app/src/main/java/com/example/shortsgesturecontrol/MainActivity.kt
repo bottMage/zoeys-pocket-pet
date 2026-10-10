@@ -2197,10 +2197,12 @@ private class PetGameView(context: Context, private val onPetCreated: () -> Unit
         paint.color = Color.rgb(248, 235, 248)
         canvas.drawRect(panel, paint)
         if (careCategory == null) {
+            drawCareTopBleeds(canvas, panel, CareCategory.values().map { it.fill })
             for (category in CareCategory.values()) drawCareCategory(canvas, category)
         } else {
             val category = careCategory ?: return
             val options = careOptions(category)
+            drawCareTopBleeds(canvas, panel, options.map { it.fill })
             textPaint.textAlign = Paint.Align.CENTER
             textPaint.typeface = PaintTypeface.bold()
             textPaint.textSize = dp(11f)
@@ -2212,6 +2214,36 @@ private class PetGameView(context: Context, private val onPetCreated: () -> Unit
                 drawCareOption(canvas, action, rect)
             }
             drawCareCenterButton(canvas)
+        }
+    }
+
+    private fun drawCareTopBleeds(canvas: Canvas, panel: RectF, colors: List<Int>) {
+        val blobs = currentBlobs()
+        val fadeHeight = dp(16f)
+        val topCount = if (blobs.size == 5) 3 else blobs.size - 1
+        val topColors = colors.take(topCount)
+        for (index in topColors.indices) {
+            val blob = blobs[index]
+            val color = topColors[index]
+            val bleedPath = Path(blob.path)
+            android.graphics.Matrix().apply {
+                setTranslate(0f, -fadeHeight)
+                bleedPath.transform(this)
+            }
+            val red = Color.red(color)
+            val green = Color.green(color)
+            val blue = Color.blue(color)
+            canvas.save()
+            canvas.clipRect(panel.left, panel.top - fadeHeight, panel.right, panel.top)
+            paint.style = Paint.Style.FILL
+            paint.shader = LinearGradient(
+                0f, panel.top - fadeHeight, 0f, panel.top,
+                Color.argb(0, red, green, blue), Color.rgb(red, green, blue),
+                Shader.TileMode.CLAMP
+            )
+            canvas.drawPath(bleedPath, paint)
+            canvas.restore()
+            paint.shader = null
         }
     }
 
@@ -2356,17 +2388,11 @@ private class PetGameView(context: Context, private val onPetCreated: () -> Unit
         val path = liquidPath(blob, now)
         paint.style = Paint.Style.FILL
         val fill = if (pressed) Color.WHITE else color
-        // Only the buttons that meet the stats area fade down from the same
-        // pale pink as that panel. This applies to both the category screen
-        // and the action screen, while lower buttons retain their vivid fill.
         val panel = carePanelRect()
-        val touchesStats = !pressed && blob.bounds.top <= panel.top + dp(3f)
-        paint.shader = if (touchesStats) {
-            LinearGradient(
-                0f, panel.top, 0f, panel.top + dp(82f),
-                Color.rgb(248, 235, 248), color, Shader.TileMode.CLAMP
-            )
-        } else null
+        // Keep the button itself saturated at its top contour. The separate
+        // upward bleed drawn by drawCareTopBleeds carries its color into the
+        // stats surface, avoiding a shared pale horizontal edge.
+        paint.shader = null
         paint.color = fill
         canvas.drawPath(path, paint)
         paint.shader = null
