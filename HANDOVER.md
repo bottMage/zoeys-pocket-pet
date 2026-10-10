@@ -1,6 +1,19 @@
 # Zoey's Pocket Pet — cloud handover
 
-## Current release: prevent stale background cloud overwrites — v111
+## Current release: quiet sync and egg-specific care controls — v112
+
+Published APK verified byte-for-byte against the signed local build:
+`https://github.com/bottMage/zoeys-pocket-pet/releases/download/v112/zoeys-pocket-pet-v112.apk?verify=112-1`.
+SHA-256: `daeda6f550d36d9e9fb3a224856c416bd206791fc4f131e23b8879522fd66703`.
+Build/lint pass. Existing signing certificate unchanged.
+
+Nonessential Toast messages are removed; only explicit update checking and
+confirmed up-to-date messages remain. Egg care controls now use egg-specific
+labels and needs (WARMTH, COMFORT, REST, NEST with actions such as WARM,
+COZY, TALK, HUM, and NEST), then automatically return to the normal FOOD,
+FUN, REST, CLEAN controls when the egg hatches.
+
+## Previous release: prevent stale background cloud overwrites — v111
 
 Published APK verified byte-for-byte against the signed local build:
 `https://github.com/bottMage/zoeys-pocket-pet/releases/download/v111/zoeys-pocket-pet-v111.apk?verify=111-2`.

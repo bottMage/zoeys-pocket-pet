@@ -208,10 +208,7 @@ class MainActivity : Activity() {
 
     private fun startGoogleSignIn() {
         val client = googleSignInClient
-        if (client == null) {
-            Toast.makeText(this, "Google backup is still being configured.", Toast.LENGTH_LONG).show()
-            return
-        }
+        if (client == null) return
         startActivityForResult(client.signInIntent, GOOGLE_SIGN_IN_REQUEST)
     }
 
@@ -228,13 +225,9 @@ class MainActivity : Activity() {
                 .addOnCompleteListener(this) { task ->
                     if (task.isSuccessful) {
                         gameView.restoreAfterSignIn()
-                    } else {
-                        Toast.makeText(this, "Google sign-in failed. Progress is still saved on this phone.", Toast.LENGTH_LONG).show()
                     }
                 }
-        } catch (_: Exception) {
-            Toast.makeText(this, "Google sign-in was cancelled.", Toast.LENGTH_SHORT).show()
-        }
+        } catch (_: Exception) { }
     }
 }
 
@@ -283,9 +276,7 @@ private class AppUpdateManager(private val context: Context) {
                         release.version > installedVersion -> showUpdate(release.version, release.apkUrl)
                         report -> Toast.makeText(context, "You're all up to date.", Toast.LENGTH_SHORT).show()
                     }
-                }, onFailure = {
-                    if (report) Toast.makeText(context, "Couldn't confirm the latest version. Please try again.", Toast.LENGTH_LONG).show()
-                })
+                }, onFailure = { })
             }
         }.start()
     }
@@ -333,7 +324,6 @@ private class AppUpdateManager(private val context: Context) {
             } else {
                 mainHandler.post {
                     dismissDownloadProgress()
-                    Toast.makeText(context, "Update download failed. Please try again.", Toast.LENGTH_LONG).show()
                 }
                 Log.w(TAG, "All update sources failed", lastError)
             }
@@ -455,7 +445,6 @@ private class AppUpdateManager(private val context: Context) {
             updatePrefs.edit().putBoolean(PENDING_PERMISSION, true).apply()
             context.startActivity(Intent(android.provider.Settings.ACTION_MANAGE_UNKNOWN_APP_SOURCES, Uri.parse("package:${context.packageName}"))
                 .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK))
-            Toast.makeText(context, "Allow installs, then the installer will open automatically.", Toast.LENGTH_LONG).show()
             return
         }
         updatePrefs.edit().remove(PENDING_PERMISSION).apply()
@@ -2321,8 +2310,28 @@ private class PetGameView(context: Context, private val onPetCreated: () -> Unit
     private fun drawCareCategory(canvas: Canvas, category: CareCategory) {
         val index = categoryBlobIndex(category)
         drawBlob(canvas, currentBlobs()[index], category.fill,
-            if (category == CareCategory.HEALTH) "❤️" else category.glyph,
-            category.label, pressedBlob == index)
+            careCategoryGlyph(category), careCategoryLabel(category), pressedBlob == index)
+    }
+
+    private fun careCategoryLabel(category: CareCategory): String = if (pet.hatched) {
+        category.label
+    } else {
+        when (category) {
+            CareCategory.FOOD -> "WARMTH"
+            CareCategory.FUN -> "COMFORT"
+            CareCategory.REST -> "REST"
+            CareCategory.CLEAN -> "NEST"
+            CareCategory.HEALTH -> "HEALTH"
+        }
+    }
+
+    private fun careCategoryGlyph(category: CareCategory): String = when {
+        category == CareCategory.HEALTH -> "❤️"
+        pet.hatched -> category.glyph
+        category == CareCategory.FOOD -> "☀"
+        category == CareCategory.FUN -> "♡"
+        category == CareCategory.REST -> "Z"
+        else -> "⌂"
     }
 
     private fun categoryBlobIndex(category: CareCategory): Int = when (category) {
@@ -2335,7 +2344,46 @@ private class PetGameView(context: Context, private val onPetCreated: () -> Unit
 
     private fun drawCareOption(canvas: Canvas, action: CareAction, rect: RectF) {
         val index = careOptions(action.category).indexOf(action)
-        drawBlob(canvas, currentBlobs()[index], action.fill, action.glyph, action.label, pressedAction == action)
+        drawBlob(canvas, currentBlobs()[index], action.fill,
+            careActionGlyph(action), careActionLabel(action), pressedAction == action)
+    }
+
+    private fun careActionLabel(action: CareAction): String = if (pet.hatched) {
+        action.label
+    } else {
+        when (action) {
+            CareAction.MEAL -> "WARM"
+            CareAction.TREAT -> "COZY"
+            CareAction.PLAY -> "TALK"
+            CareAction.TOY -> "HUM"
+            CareAction.CUDDLE -> "CUDDLE"
+            CareAction.NAP -> "NAP"
+            CareAction.SLEEP -> "SLEEP"
+            CareAction.BATH -> "NEST"
+            CareAction.TIDY -> "TIDY"
+            CareAction.CHECKUP -> "CHECKUP"
+            CareAction.MEDICINE -> "MEDICINE"
+            CareAction.VITAMIN -> "VITAMIN"
+        }
+    }
+
+    private fun careActionGlyph(action: CareAction): String = if (pet.hatched) {
+        action.glyph
+    } else {
+        when (action) {
+            CareAction.MEAL -> "☀"
+            CareAction.TREAT -> "♥"
+            CareAction.PLAY -> "♫"
+            CareAction.TOY -> "♪"
+            CareAction.CUDDLE -> "♥"
+            CareAction.NAP -> "z"
+            CareAction.SLEEP -> "Zz"
+            CareAction.BATH -> "⌂"
+            CareAction.TIDY -> "✧"
+            CareAction.CHECKUP -> "♡"
+            CareAction.MEDICINE -> "+"
+            CareAction.VITAMIN -> "●"
+        }
     }
 
     private fun drawCareCenterButton(canvas: Canvas) {
@@ -2598,11 +2646,9 @@ private class PetGameView(context: Context, private val onPetCreated: () -> Unit
     private fun toggleCareReminders() {
         if (CareReminderScheduler.isEnabled(appContext)) {
             CareReminderScheduler.disable(appContext)
-            Toast.makeText(appContext, "Care reminders turned off.", Toast.LENGTH_SHORT).show()
         } else {
             CareReminderScheduler.enable(appContext)
             (appContext as? MainActivity)?.maybeRequestCareReminderPermission(force = true)
-            Toast.makeText(appContext, "Care reminders turned on.", Toast.LENGTH_SHORT).show()
         }
     }
 
@@ -2649,18 +2695,12 @@ private class PetGameView(context: Context, private val onPetCreated: () -> Unit
         setupPlayerName = pet.playerName
         pressedAction = null
         activeAction = null
-        if (showToast) Toast.makeText(appContext, "Local pet data reset. Cloud backup was kept.", Toast.LENGTH_LONG).show()
         invalidate()
     }
 
     private fun resetCloudData() {
         cloudSave.delete { deleted ->
             if (deleted) cloudSave.signOut()
-            Toast.makeText(
-                appContext,
-                if (deleted) "Cloud backup deleted. This phone's pet was kept." else "Cloud backup could not be deleted.",
-                Toast.LENGTH_LONG
-            ).show()
         }
     }
 
@@ -2669,9 +2709,6 @@ private class PetGameView(context: Context, private val onPetCreated: () -> Unit
             if (deleted) {
                 cloudSave.signOut()
                 resetLocalData(showToast = false)
-                Toast.makeText(appContext, "Local and cloud data reset.", Toast.LENGTH_LONG).show()
-            } else {
-                Toast.makeText(appContext, "Cloud data was not deleted; nothing was reset.", Toast.LENGTH_LONG).show()
             }
         }
     }
@@ -2924,9 +2961,6 @@ private class PetGameView(context: Context, private val onPetCreated: () -> Unit
                 finishCloudRestore(result)
             } else {
                 if (result == CloudRestoreResult.RESTORED) invalidate()
-                if (result == CloudRestoreResult.FAILED) {
-                    Toast.makeText(appContext, "Cloud backup could not sync yet; this phone still has your progress.", Toast.LENGTH_LONG).show()
-                }
             }
         }
     }
@@ -2966,9 +3000,7 @@ private class PetGameView(context: Context, private val onPetCreated: () -> Unit
                     savePet()
                     invalidate()
                 }
-                CloudRestoreResult.FAILED -> {
-                    Toast.makeText(appContext, "Cloud backup could not sync yet; this phone still has its progress.", Toast.LENGTH_LONG).show()
-                }
+                CloudRestoreResult.FAILED -> Unit
             }
         }
     }
@@ -3020,16 +3052,12 @@ private class PetGameView(context: Context, private val onPetCreated: () -> Unit
                 // shared document. A later user action can upload normally.
                 persistPetLocally()
                 invalidate()
-                Toast.makeText(appContext, "Cloud progress restored.", Toast.LENGTH_LONG).show()
             }
             CloudRestoreResult.NO_CLOUD_BACKUP -> {
                 preferCloudRestore = false
                 cloudSyncReady = true
                 pet.updateFromClock()
                 savePet()
-                if (hasCreatedPet()) {
-                    Toast.makeText(appContext, "Google backup enabled.", Toast.LENGTH_SHORT).show()
-                }
             }
             CloudRestoreResult.KEPT_LOCAL -> {
                 preferCloudRestore = false
@@ -3037,11 +3065,8 @@ private class PetGameView(context: Context, private val onPetCreated: () -> Unit
                 pet.updateFromClock()
                 savePet()
                 invalidate()
-                Toast.makeText(appContext, "Google backup synced.", Toast.LENGTH_SHORT).show()
             }
-            CloudRestoreResult.FAILED -> {
-                Toast.makeText(appContext, "Cloud backup could not sync yet; this phone still has its local progress.", Toast.LENGTH_LONG).show()
-            }
+            CloudRestoreResult.FAILED -> Unit
         }
         postDelayed({
             (appContext as? MainActivity)?.maybeRequestCareReminderPermission()
@@ -3361,7 +3386,7 @@ private class PetGameView(context: Context, private val onPetCreated: () -> Unit
                 CareAction.MEAL -> (if (hatched) "Nom nom! A lovely meal!" else "Toasty and warm!") to Color.rgb(172, 86, 40)
                 CareAction.TREAT -> (if (hatched) "A tiny tasty treat!" else "A cozy little treat!") to Color.rgb(172, 86, 40)
                 CareAction.PLAY -> (if (hatched) "Wheee! That was fun!" else "That made me wiggle!") to Color.rgb(191, 54, 112)
-                CareAction.TOY -> "A favorite toy!" to Color.rgb(191, 54, 112)
+                CareAction.TOY -> (if (hatched) "A favorite toy!" else "A soothing little hum.") to Color.rgb(191, 54, 112)
                 CareAction.CUDDLE -> "A warm cuddle!" to Color.rgb(191, 54, 112)
                 CareAction.NAP -> "A short, cozy nap." to Color.rgb(75, 78, 173)
                 CareAction.SLEEP -> "Sweet dreams, little one." to Color.rgb(75, 78, 173)
