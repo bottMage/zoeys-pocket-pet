@@ -210,9 +210,12 @@ internal class SocialPlayManager {
                     "createdAt" to FieldValue.serverTimestamp(),
                     "updatedAt" to FieldValue.serverTimestamp()
                 )
-                userCollection(uid).collection("friendRequests")
-                    .document(ownerUid).set(request, SetOptions.merge())
-                    .addOnSuccessListener { onComplete(true, "Friend request sent!") }
+                val outbox = userCollection(uid).collection("friendRequests").document(ownerUid)
+                val inbox = userCollection(ownerUid).collection("incomingFriendRequests").document(uid)
+                firestore.runBatch { batch ->
+                    batch.set(outbox, request, SetOptions.merge())
+                    batch.set(inbox, request, SetOptions.merge())
+                }.addOnSuccessListener { onComplete(true, "Friend request sent!") }
                     .addOnFailureListener { onComplete(false, "I couldn't send that request yet.") }
             }
             .addOnFailureListener { onComplete(false, "I couldn't check that code yet.") }
@@ -221,8 +224,12 @@ internal class SocialPlayManager {
     fun acceptFriendRequest(request: FriendRequest, onComplete: (Boolean) -> Unit = {}) {
         val uid = auth.currentUser?.uid ?: run { onComplete(false); return }
         if (request.recipientUid != uid) { onComplete(false); return }
-        firestore.document(request.documentPath)
-            .update("status", "accepted", "updatedAt", FieldValue.serverTimestamp())
+        val outbox = userCollection(request.senderUid).collection("friendRequests").document(request.recipientUid)
+        val inbox = userCollection(request.recipientUid).collection("incomingFriendRequests").document(request.senderUid)
+        firestore.runBatch { batch ->
+            batch.update(outbox, "status", "accepted", "updatedAt", FieldValue.serverTimestamp())
+            batch.set(inbox, mapOf("status" to "accepted", "updatedAt" to FieldValue.serverTimestamp()), SetOptions.merge())
+        }
             .addOnSuccessListener {
                 saveFriend(uid, request.senderUid, request.senderName, request.senderPetName)
                 onComplete(true)
@@ -233,8 +240,12 @@ internal class SocialPlayManager {
     fun declineFriendRequest(request: FriendRequest, onComplete: (Boolean) -> Unit = {}) {
         val uid = auth.currentUser?.uid ?: run { onComplete(false); return }
         if (request.recipientUid != uid) { onComplete(false); return }
-        firestore.document(request.documentPath)
-            .update("status", "declined", "updatedAt", FieldValue.serverTimestamp())
+        val outbox = userCollection(request.senderUid).collection("friendRequests").document(request.recipientUid)
+        val inbox = userCollection(request.recipientUid).collection("incomingFriendRequests").document(request.senderUid)
+        firestore.runBatch { batch ->
+            batch.update(outbox, "status", "declined", "updatedAt", FieldValue.serverTimestamp())
+            batch.set(inbox, mapOf("status" to "declined", "updatedAt" to FieldValue.serverTimestamp()), SetOptions.merge())
+        }
             .addOnSuccessListener { onComplete(true) }
             .addOnFailureListener { onComplete(false) }
     }
@@ -257,9 +268,12 @@ internal class SocialPlayManager {
             "createdAt" to FieldValue.serverTimestamp(),
             "updatedAt" to FieldValue.serverTimestamp()
         )
-        userCollection(uid).collection("playRequests")
-            .document(friend.uid).set(request, SetOptions.merge())
-            .addOnSuccessListener { onComplete(true, "Play request sent!") }
+        val outbox = userCollection(uid).collection("playRequests").document(friend.uid)
+        val inbox = userCollection(friend.uid).collection("incomingPlayRequests").document(uid)
+        firestore.runBatch { batch ->
+            batch.set(outbox, request, SetOptions.merge())
+            batch.set(inbox, request, SetOptions.merge())
+        }.addOnSuccessListener { onComplete(true, "Play request sent!") }
             .addOnFailureListener { onComplete(false, "I couldn't send a play request yet.") }
     }
 
@@ -268,7 +282,8 @@ internal class SocialPlayManager {
         if (request.recipientUid != uid || request.status != "pending") { onComplete(null); return }
         val sessionId = UUID.randomUUID().toString()
         val sessionRef = firestore.collection("playSessions").document(sessionId)
-        val requestRef = firestore.document(request.documentPath)
+        val outbox = userCollection(request.senderUid).collection("playRequests").document(request.recipientUid)
+        val inbox = userCollection(request.recipientUid).collection("incomingPlayRequests").document(request.senderUid)
         val session = mapOf(
             "members" to listOf(request.senderUid, request.recipientUid),
             "status" to "active",
@@ -276,7 +291,8 @@ internal class SocialPlayManager {
             "lastActivity" to FieldValue.serverTimestamp()
         )
         firestore.runBatch { batch ->
-            batch.update(requestRef, "status", "accepted", "sessionId", sessionId, "updatedAt", FieldValue.serverTimestamp())
+            batch.update(outbox, "status", "accepted", "sessionId", sessionId, "updatedAt", FieldValue.serverTimestamp())
+            batch.set(inbox, mapOf("status" to "accepted", "sessionId" to sessionId, "updatedAt" to FieldValue.serverTimestamp()), SetOptions.merge())
             batch.set(sessionRef, session)
         }.addOnSuccessListener { onComplete(sessionId) }
             .addOnFailureListener { onComplete(null) }
@@ -285,8 +301,12 @@ internal class SocialPlayManager {
     fun declinePlayRequest(request: PlayRequest, onComplete: (Boolean) -> Unit = {}) {
         val uid = auth.currentUser?.uid ?: run { onComplete(false); return }
         if (request.recipientUid != uid) { onComplete(false); return }
-        firestore.document(request.documentPath)
-            .update("status", "declined", "updatedAt", FieldValue.serverTimestamp())
+        val outbox = userCollection(request.senderUid).collection("playRequests").document(request.recipientUid)
+        val inbox = userCollection(request.recipientUid).collection("incomingPlayRequests").document(request.senderUid)
+        firestore.runBatch { batch ->
+            batch.update(outbox, "status", "declined", "updatedAt", FieldValue.serverTimestamp())
+            batch.set(inbox, mapOf("status" to "declined", "updatedAt" to FieldValue.serverTimestamp()), SetOptions.merge())
+        }
             .addOnSuccessListener { onComplete(true) }
             .addOnFailureListener { onComplete(false) }
     }
@@ -328,8 +348,7 @@ internal class SocialPlayManager {
     }
 
     private fun listenForSocialChanges(uid: String) {
-        registrations += firestore.collectionGroup("friendRequests")
-            .whereEqualTo("recipientUid", uid)
+        registrations += userCollection(uid).collection("incomingFriendRequests")
             .addSnapshotListener { snapshot, _ ->
                 val incoming = snapshot?.documents.orEmpty().mapNotNull(::parseFriendRequest)
                     .filter { it.recipientUid == uid }
@@ -351,8 +370,7 @@ internal class SocialPlayManager {
                 }
                 refreshFriendProfiles()
             }
-        registrations += firestore.collectionGroup("playRequests")
-            .whereEqualTo("recipientUid", uid)
+        registrations += userCollection(uid).collection("incomingPlayRequests")
             .addSnapshotListener { snapshot, _ ->
                 val incoming = snapshot?.documents.orEmpty().mapNotNull(::parsePlayRequest)
                     .filter { it.recipientUid == uid }

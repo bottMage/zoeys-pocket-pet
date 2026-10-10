@@ -50,6 +50,32 @@ service cloud.firestore {
       allow delete: if false;
     }
 
+    // A recipient-owned inbox gives the app a direct listener. The sender may
+    // create/update a pending copy here, while only the recipient can resolve
+    // it as accepted or declined.
+    match /users/{recipientUid}/incomingFriendRequests/{senderUid} {
+      allow create: if signedIn()
+        && request.auth.uid == senderUid
+        && request.resource.data.senderUid == senderUid
+        && request.resource.data.recipientUid == recipientUid
+        && request.resource.data.status == 'pending';
+      allow read: if isOwner(recipientUid)
+        || (signedIn() && request.auth.uid == senderUid);
+      allow update: if (
+          signedIn()
+          && request.auth.uid == senderUid
+          && request.resource.data.senderUid == senderUid
+          && request.resource.data.recipientUid == recipientUid
+          && request.resource.data.status == 'pending'
+        ) || (
+          isOwner(recipientUid)
+          && request.resource.data.senderUid == senderUid
+          && request.resource.data.recipientUid == recipientUid
+          && request.resource.data.status in ['accepted', 'declined']
+        );
+      allow delete: if false;
+    }
+
     // Each side stores its own accepted-friend record. A record can only be
     // created after one of the two sides' request documents is accepted.
     match /users/{userId}/friends/{friendId} {
@@ -85,6 +111,29 @@ service cloud.firestore {
           && resource.data.recipientUid == request.auth.uid
           && request.resource.data.senderUid == resource.data.senderUid
           && request.resource.data.recipientUid == resource.data.recipientUid
+          && request.resource.data.status in ['accepted', 'declined']
+        );
+      allow delete: if false;
+    }
+
+    match /users/{recipientUid}/incomingPlayRequests/{senderUid} {
+      allow create: if signedIn()
+        && request.auth.uid == senderUid
+        && request.resource.data.senderUid == senderUid
+        && request.resource.data.recipientUid == recipientUid
+        && request.resource.data.status == 'pending';
+      allow read: if isOwner(recipientUid)
+        || (signedIn() && request.auth.uid == senderUid);
+      allow update: if (
+          signedIn()
+          && request.auth.uid == senderUid
+          && request.resource.data.senderUid == senderUid
+          && request.resource.data.recipientUid == recipientUid
+          && request.resource.data.status == 'pending'
+        ) || (
+          isOwner(recipientUid)
+          && request.resource.data.senderUid == senderUid
+          && request.resource.data.recipientUid == recipientUid
           && request.resource.data.status in ['accepted', 'declined']
         );
       allow delete: if false;
