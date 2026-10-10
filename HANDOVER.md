@@ -2,7 +2,7 @@
 
 ## Current release: responsive care button sizing — v88
 
-The v88 candidate keeps v87's compact adjacent care-action clusters and large
+The v88 release keeps v87's compact adjacent care-action clusters and large
 CARE panel, but sizes every care button from the available lower-panel space.
 Category and secondary-action geometry is checked for panel bounds, spacing,
 and center-button collisions before the largest safe size is selected. Labels
