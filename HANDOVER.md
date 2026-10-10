@@ -931,10 +931,10 @@ release facts are the sections below.
 - Repository: `https://github.com/bottMage/zoeys-pocket-pet` (public).
 - Cloud checkout: `/workspace/zoeys-pocket-pet`.
 - Local branch name is `work`; completed changes are pushed to remote `main` using `git push origin HEAD:main`.
-- Latest pushed app commit: pending v99 publication.
-- Latest public release/tag: `v98` until the v99 tag and workflow asset complete.
+- Latest pushed app commit: `77c77e7 Keep care tiles fully saturated`.
+- Latest public release/tag: `v99`.
 - Current Android version: `versionCode = 99`, `versionName = "99.0"` in `app/build.gradle.kts`.
-- The v99 local checksum is recorded in the current release section above; its public URL is added after the release asset returns HTTP 200.
+- The v99 APK URL and verified checksum are recorded in the current release section above.
 - The v79 care-button change was tested by the user on Zoey's phone and
   removed the repeated-OK-button freeze/ANR: it uses Android's built-in click
   effect rather than constructing a `ToneGenerator` on every tap. v79 did not
