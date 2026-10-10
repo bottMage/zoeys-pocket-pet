@@ -2158,6 +2158,10 @@ private class PetGameView(context: Context, private val onPetCreated: () -> Unit
             canvas.drawText("Choose NEW PET whenever you're ready", width / 2f, rect.bottom + dp(31f), textPaint)
             return
         }
+        val panel = carePanelRect()
+        paint.color = Color.rgb(255, 227, 238)
+        canvas.drawRoundRect(RectF(0f, panel.top - dp(3f), width.toFloat(), height.toFloat()),
+            dp(24f), dp(24f), paint)
         if (careCategory == null) {
             for (category in CareCategory.values()) drawCareCategory(canvas, category)
         } else {
@@ -2167,7 +2171,6 @@ private class PetGameView(context: Context, private val onPetCreated: () -> Unit
             textPaint.typeface = PaintTypeface.bold()
             textPaint.textSize = dp(11f)
             textPaint.color = Color.rgb(111, 82, 123)
-            canvas.drawText("CHOOSE ${category.label}", width / 2f, statsTop() + dp(165f), textPaint)
             for (index in options.indices) {
                 val action = options[index]
                 val rect = careOptionRect(action, index, options.size)
@@ -2178,218 +2181,105 @@ private class PetGameView(context: Context, private val onPetCreated: () -> Unit
         }
     }
 
+    private data class BlobControl(val path: Path, val hit: android.graphics.Region, val bounds: RectF,
+                                   val x: Float, val y: Float,
+                                   var shadeColor: Int = 0, var shade: Shader? = null)
+    private var blobCacheKey = ""
+    private var blobControls = emptyList<BlobControl>()
+    private var pressedBlob = -1
+    private var careGesture = false
+
+    private fun carePanelRect(): RectF = RectF(
+        dp(2f), statsTop() + dp(158f), width - dp(2f), height - dp(3f)
+    )
+
+    private fun currentBlobs(): List<BlobControl> {
+        val count = careCategory?.let { careOptions(it).size } ?: 0
+        val key = "$width:$height:$count"
+        if (key != blobCacheKey) {
+            val panel = carePanelRect()
+            val definitions = when (count) {
+                0 -> CareBlobArt.categories
+                2 -> CareBlobArt.two + CareBlobArt.back
+                else -> CareBlobArt.three + CareBlobArt.back
+            }
+            val matrix = android.graphics.Matrix().apply {
+                setScale(panel.width() / 592f, panel.height() / 400f)
+                postTranslate(panel.left, panel.top)
+            }
+            val clip = android.graphics.Region(0, 0, width, height)
+            blobControls = definitions.map { definition ->
+                val path = androidx.core.graphics.PathParser.createPathFromPathData(definition.outline)!!
+                path.transform(matrix)
+                val bounds = RectF()
+                path.computeBounds(bounds, true)
+                BlobControl(path, android.graphics.Region().apply { setPath(path, clip) }, bounds,
+                    panel.left + definition.x * panel.width() / 592f,
+                    panel.top + definition.y * panel.height() / 400f)
+            }
+            blobCacheKey = key
+        }
+        return blobControls
+    }
+
     private fun drawCareCategory(canvas: Canvas, category: CareCategory) {
-        val rect = careCategoryRect(category)
-        drawOrganicButton(canvas, rect, category.fill, CareCategory.values().indexOf(category), pressed = false)
-        val scale = min(rect.width() / dp(68f), rect.height() / dp(58f)).coerceIn(.78f, 1.45f)
-        textPaint.textAlign = Paint.Align.CENTER
-        textPaint.typeface = PaintTypeface.bold()
-        textPaint.textSize = dp(16f) * scale
-        textPaint.color = Color.rgb(76, 49, 94)
-        canvas.drawText(category.glyph, rect.centerX(), rect.top + rect.height() * .43f, textPaint)
-        textPaint.textSize = dp(8f) * scale
-        canvas.drawText(category.label, rect.centerX(), rect.top + rect.height() * .75f, textPaint)
+        val index = category.ordinal
+        drawBlob(canvas, currentBlobs()[index], category.fill,
+            if (category == CareCategory.HEALTH) "❤️" else category.glyph,
+            category.label, pressedBlob == index)
     }
 
     private fun drawCareOption(canvas: Canvas, action: CareAction, rect: RectF) {
-        val scale = min(rect.width() / dp(76f), rect.height() / dp(58f)).coerceIn(.78f, 1.3f)
-        drawOrganicButton(canvas, rect, if (pressedAction == action) Color.WHITE else action.fill, action.ordinal, pressedAction == action)
-        textPaint.textAlign = Paint.Align.CENTER
-        textPaint.typeface = PaintTypeface.bold()
-        textPaint.textSize = dp(15f) * scale
-        textPaint.color = Color.rgb(76, 49, 94)
-        canvas.drawText(action.glyph, rect.centerX(), rect.top + rect.height() * .43f, textPaint)
-        textPaint.textSize = dp(9f) * scale
-        canvas.drawText(action.label, rect.centerX(), rect.top + rect.height() * .75f, textPaint)
+        val index = careOptions(action.category).indexOf(action)
+        drawBlob(canvas, currentBlobs()[index], action.fill, action.glyph, action.label, pressedAction == action)
     }
 
     private fun drawCareCenterButton(canvas: Canvas) {
-        val rect = careCenterRect()
-        val scale = (rect.width() / dp(132f)).coerceIn(.72f, 1f)
-        drawOrganicButton(canvas, rect, Color.rgb(86, 58, 108), 9, pressed = false)
+        drawBlob(canvas, currentBlobs().last(), Color.rgb(86, 48, 108), "‹", "BACK",
+            pressedBlob == currentBlobs().lastIndex, light = true)
+    }
+
+    private fun drawBlob(canvas: Canvas, blob: BlobControl, color: Int, glyph: String,
+                         label: String, pressed: Boolean, light: Boolean = false) {
+        val scale = min(width / 592f, carePanelRect().height() / 400f)
+        paint.style = Paint.Style.FILL
+        val fill = if (pressed) Color.WHITE else color
+        if (blob.shade == null || blob.shadeColor != fill) {
+            blob.shadeColor = fill
+            blob.shade = RadialGradient(blob.x - 30f * scale, blob.y - 45f * scale,
+                max(blob.bounds.width(), blob.bounds.height()), fill, darkenBlob(color), Shader.TileMode.CLAMP)
+        }
+        paint.shader = blob.shade
+        canvas.drawPath(blob.path, paint)
+        paint.shader = null
+        paint.style = Paint.Style.STROKE
+        paint.strokeWidth = 4f * scale
+        paint.color = Color.rgb(255, 248, 245)
+        canvas.drawPath(blob.path, paint)
+        paint.style = Paint.Style.FILL
+        canvas.save()
+        canvas.clipPath(blob.path)
+        paint.color = Color.argb(65, 255, 255, 255)
+        val hx = blob.bounds.left + blob.bounds.width() * .15f
+        val hy = blob.bounds.top + blob.bounds.height() * .18f
+        canvas.drawOval(RectF(hx, hy, hx + 20f * scale, hy + 29f * scale), paint)
+        canvas.restore()
         textPaint.textAlign = Paint.Align.CENTER
         textPaint.typeface = PaintTypeface.bold()
-        textPaint.textSize = dp(11f) * scale
-        textPaint.color = Color.WHITE
-        canvas.drawText(if (careCategory == null) "CLOSE" else "BACK", rect.centerX(), rect.centerY() + dp(4f) * scale, textPaint)
+        textPaint.color = if (light) Color.WHITE else Color.rgb(68, 35, 86)
+        textPaint.textSize = 49f * scale
+        canvas.drawText(glyph, blob.x, blob.y, textPaint)
+        textPaint.textSize = 21f * scale
+        canvas.drawText(label, blob.x, blob.y + 32f * scale, textPaint)
     }
 
-    private fun drawOrganicButton(canvas: Canvas, rect: RectF, color: Int, variant: Int, pressed: Boolean) {
-        val path = organicButtonPath(rect, variant)
-        canvas.save()
-        canvas.translate(0f, dp(6f))
-        paint.style = Paint.Style.FILL
-        paint.color = Color.argb(if (pressed) 18 else 30, 67, 39, 95)
-        canvas.drawPath(path, paint)
-        canvas.restore()
-        paint.style = Paint.Style.FILL
-        paint.color = color
-        canvas.drawPath(path, paint)
-        paint.style = Paint.Style.STROKE
-        paint.strokeWidth = dp(3f)
-        paint.color = Color.WHITE
-        canvas.drawPath(path, paint)
-        paint.style = Paint.Style.FILL
-        paint.color = Color.argb(52, 255, 255, 255)
-        canvas.drawCircle(rect.left + rect.width() * .22f, rect.top + rect.height() * .2f, min(rect.width(), rect.height()) * .075f, paint)
-    }
-
-    private fun organicButtonPath(rect: RectF, variant: Int): Path {
-        val w = rect.width()
-        val h = rect.height()
-        val wobble = ((variant % 5) - 2) * .018f
-        val path = Path()
-        path.moveTo(rect.left + w * (.5f + wobble), rect.top)
-        path.cubicTo(
-            rect.left + w * .78f, rect.top - h * .025f,
-            rect.right + w * .025f, rect.top + h * .12f,
-            rect.right, rect.top + h * .43f
-        )
-        path.cubicTo(
-            rect.right + w * .02f, rect.top + h * .73f,
-            rect.right - w * .16f, rect.bottom + h * .02f,
-            rect.left + w * .52f, rect.bottom
-        )
-        path.cubicTo(
-            rect.left + w * .2f, rect.bottom + h * .025f,
-            rect.left - w * .025f, rect.bottom - h * .18f,
-            rect.left, rect.top + h * .52f
-        )
-        path.cubicTo(
-            rect.left - w * .01f, rect.top + h * .2f,
-            rect.left + w * .2f, rect.top + h * .02f,
-            rect.left + w * (.5f + wobble), rect.top
-        )
-        path.close()
-        return path
-    }
-
-    private fun careCategoryRect(category: CareCategory): RectF {
-        return careCategoryGeometry()[CareCategory.values().indexOf(category)]
-    }
-
-    private fun careCenterRect(): RectF = RectF(
-        width / 2f - min(dp(66f), carePanelRect().width() * .36f),
-        carePanelRect().bottom - dp(62f),
-        width / 2f + min(dp(66f), carePanelRect().width() * .36f),
-        carePanelRect().bottom
+    private fun darkenBlob(color: Int): Int = Color.rgb(
+        (Color.red(color) * .94f).toInt(), (Color.green(color) * .91f).toInt(),
+        (Color.blue(color) * .96f).toInt()
     )
 
-    private fun careOptionRect(action: CareAction, index: Int, count: Int): RectF {
-        return careOptionGeometry(action.category, count)[index]
-    }
-
-    private fun radialPoint(angleDegrees: Float, radius: Float): Pair<Float, Float> {
-        val radians = Math.toRadians(angleDegrees.toDouble())
-        val center = careCenterRect()
-        return (center.centerX() + cos(radians).toFloat() * radius) to
-            (center.centerY() + sin(radians).toFloat() * radius)
-    }
-
-    private fun carePanelRect(): RectF = RectF(
-        dp(12f), statsTop() + dp(176f), width - dp(12f), height - dp(18f)
-    )
-
-    private fun careCategoryGeometry(): List<RectF> {
-        val panel = carePanelRect()
-        val gap = dp(3f)
-        val top = panel.top + dp(2f)
-        val bottom = panel.bottom - dp(2f)
-        val totalHeight = bottom - top
-        val centerWidth = (panel.width() * .34f).coerceAtLeast(dp(92f))
-        val sideWidth = ((panel.width() - centerWidth - gap * 2f) / 2f).coerceAtLeast(dp(48f))
-        val left = panel.left
-        val centerLeft = left + sideWidth + gap
-        val right = centerLeft + centerWidth + gap
-        val topHeight = (totalHeight * .46f).coerceAtLeast(dp(72f))
-        val bottomTop = top + topHeight + gap
-        val sideRects = listOf(
-            RectF(left, bottomTop, left + sideWidth, bottom),
-            RectF(left, top, left + sideWidth, bottomTop),
-            RectF(centerLeft, top, centerLeft + centerWidth, bottom),
-            RectF(right, top, right + sideWidth, bottomTop),
-            RectF(right, bottomTop, right + sideWidth, bottom)
-        )
-        return sideRects
-    }
-
-    private fun careOptionGeometry(category: CareCategory, count: Int): List<RectF> {
-        val panel = carePanelRect()
-        var widthCandidate = min(dp(126f), panel.width() - dp(24f))
-        while (widthCandidate >= dp(48f)) {
-            val heightCandidate = widthCandidate * .67f
-            var radius = careRadialRadius(panel, widthCandidate, heightCandidate)
-            while (radius >= dp(28f)) {
-                val anchor = radialPoint(category.angleDegrees, radius)
-                val tangentRadians = Math.toRadians((category.angleDegrees + 90f).toDouble())
-                val gap = dp(4f)
-                val spacing = widthCandidate + gap
-                val rects = (0 until count).map { index ->
-                    val centeredIndex = index - (count - 1) / 2f
-                    val x = anchor.first + cos(tangentRadians).toFloat() * centeredIndex * spacing
-                    val y = anchor.second + sin(tangentRadians).toFloat() * centeredIndex * spacing
-                    RectF(
-                        x - widthCandidate / 2f, y - heightCandidate / 2f,
-                        x + widthCandidate / 2f, y + heightCandidate / 2f
-                    )
-                }
-                if (careRectsFit(rects, panel, careCenterRect())) return rects
-                radius -= dp(2f)
-            }
-            widthCandidate -= dp(2f)
-        }
-        return careFallbackRects(listOf(category.angleDegrees), panel, count)
-    }
-
-    private fun careRadialRadius(panel: RectF, buttonWidth: Float, buttonHeight: Float): Float {
-        val center = careCenterRect()
-        return min(
-            dp(170f),
-            min(
-                panel.width() / 2f - buttonWidth / 2f - dp(8f),
-                center.centerY() - panel.top - buttonHeight / 2f - dp(8f)
-            )
-        ).coerceAtLeast(dp(28f))
-    }
-
-    private fun careRectsFit(rects: List<RectF>, panel: RectF, center: RectF): Boolean {
-        val gap = dp(4f)
-        if (rects.any { it.left < panel.left || it.right > panel.right || it.top < panel.top || it.bottom > panel.bottom }) return false
-        for (first in rects.indices) {
-            for (second in first + 1 until rects.size) if (rectsOverlap(rects[first], rects[second], gap)) return false
-            if (rectsOverlap(rects[first], center, gap)) return false
-        }
-        return true
-    }
-
-    private fun rectsOverlap(first: RectF, second: RectF, gap: Float): Boolean =
-        first.left < second.right + gap && first.right + gap > second.left &&
-            first.top < second.bottom + gap && first.bottom + gap > second.top
-
-    private fun careFallbackRects(angles: List<Float>, panel: RectF, tangentCount: Int = 1): List<RectF> {
-        val widthCandidate = min(dp(54f), panel.width() / 3f)
-        val heightCandidate = widthCandidate * .67f
-        val radius = careRadialRadius(panel, widthCandidate, heightCandidate)
-        if (tangentCount > 1 && angles.size == 1) {
-            val anchor = radialPoint(angles.single(), radius)
-            val tangentRadians = Math.toRadians((angles.single() + 90f).toDouble())
-            val spacing = widthCandidate + dp(6f)
-            return (0 until tangentCount).map { index ->
-                val centeredIndex = index - (tangentCount - 1) / 2f
-                val x = anchor.first + cos(tangentRadians).toFloat() * centeredIndex * spacing
-                val y = anchor.second + sin(tangentRadians).toFloat() * centeredIndex * spacing
-                RectF(
-                    x - widthCandidate / 2f, y - heightCandidate / 2f,
-                    x + widthCandidate / 2f, y + heightCandidate / 2f
-                )
-            }
-        }
-        return angles.map { angle ->
-            val point = radialPoint(angle, radius)
-            RectF(point.first - widthCandidate / 2f, point.second - heightCandidate / 2f,
-                point.first + widthCandidate / 2f, point.second + heightCandidate / 2f)
-        }
-    }
+    private fun careOptionRect(action: CareAction, index: Int, count: Int): RectF =
+        currentBlobs()[index].bounds
 
     private fun careOptions(category: CareCategory): List<CareAction> = when (category) {
         CareCategory.FOOD -> listOf(CareAction.MEAL, CareAction.TREAT)
@@ -2466,7 +2356,7 @@ private class PetGameView(context: Context, private val onPetCreated: () -> Unit
         if (activity.isFinishing || activity.isDestroyed) return
         val pages = arrayOf(
             "Your little friend has four bars: HUNGER, JOY, ENERGY, and CLEAN. Keep them happy and your friend grows.",
-            "Tap the big CARE button to choose FOOD, FUN, REST, CLEAN, or HEALTH. You can do more than one kind thing before closing the menu.",
+            "Tap FOOD, FUN, REST, CLEAN, or HEALTH below the bars. Choose an action as often as you like. Tap BACK to choose another category.",
             "CHECKUP tells you how your friend feels. VITAMIN gives a tiny boost. If your friend gets sick, MEDICINE appears. You can read this again in MENU > SETTINGS."
         )
         val lastPage = pages.lastIndex
@@ -2608,7 +2498,10 @@ private class PetGameView(context: Context, private val onPetCreated: () -> Unit
     override fun onTouchEvent(event: MotionEvent): Boolean {
         if (menuOpen || menuAnimationStart != 0L) return handleMenuTouch(event)
         if (setupMode) return handleSetupTouch(event)
-        if (event.y >= carePanelRect().top) return handleCareMenuTouch(event)
+        if (event.actionMasked == MotionEvent.ACTION_DOWN) {
+            careGesture = !pet.dead && event.y >= carePanelRect().top
+        }
+        if (careGesture) return handleCareMenuTouch(event)
         when (event.actionMasked) {
             MotionEvent.ACTION_DOWN -> {
                 if (menuButtonRect().contains(event.x, event.y)) {
@@ -2647,36 +2540,31 @@ private class PetGameView(context: Context, private val onPetCreated: () -> Unit
     }
 
     private fun handleCareMenuTouch(event: MotionEvent): Boolean {
+        val hit = currentBlobs().indexOfFirst { it.hit.contains(event.x.toInt(), event.y.toInt()) }
         when (event.actionMasked) {
             MotionEvent.ACTION_DOWN -> {
-                pressedAction = buttons.firstOrNull { it.rect.contains(event.x, event.y) }?.action
-                invalidate()
-                return true
+                pressedBlob = hit
+                pressedPetTouch = false
+                pressedAction = careCategory?.let { careOptions(it).getOrNull(hit) }
             }
             MotionEvent.ACTION_UP -> {
-                if (careCategory != null && careCenterRect().contains(event.x, event.y)) {
-                    careCategory = null
-                } else if (careCategory == null) {
-                    val category = CareCategory.values().firstOrNull {
-                        careCategoryRect(it).contains(event.x, event.y)
-                    }
-                    if (category != null) careCategory = category
-                } else {
-                    val action = buttons.firstOrNull { it.rect.contains(event.x, event.y) }?.action
-                    if (action != null && action == pressedAction) {
-                        perform(action)
-                    }
+                if (hit >= 0 && hit == pressedBlob) {
+                    val category = careCategory
+                    if (category == null) careCategory = CareCategory.values()[hit]
+                    else if (hit == currentBlobs().lastIndex) careCategory = null
+                    else careOptions(category).getOrNull(hit)?.let { if (it == pressedAction) perform(it) }
                 }
+                careGesture = false
+                pressedBlob = -1
                 pressedAction = null
-                invalidate()
-                return true
             }
             MotionEvent.ACTION_CANCEL -> {
+                careGesture = false
+                pressedBlob = -1
                 pressedAction = null
-                invalidate()
-                return true
             }
         }
+        invalidate()
         return true
     }
 

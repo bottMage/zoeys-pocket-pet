@@ -1,6 +1,23 @@
 # Zoey's Pocket Pet — cloud handover
 
-## Current release: permanent organic care controls — v90
+## Current release candidate: traced interlocking care panel — v91
+
+The user's reference requires individually shaped, interlocking contours,
+not v90's ovals in columns. CareBlobArt.kt traces the category contours into
+a normalized 592-by-400 panel. The obsolete CLOSE space is filled by FOOD
+and HEALTH because the user removed the CARE opener. Two- and three-action
+screens also fill the panel with fitted contours around BACK. Pink backing,
+cream outlines, gradients, highlights and larger centered labels follow the
+reference. The panel starts immediately below the stats.
+
+Cached paths and pixel regions share rendering/hit detection; taps must start
+and finish on the same shape. Dead-pet memories remain on the normal touch
+route, and the tutorial no longer references the removed CARE button.
+Geometry previews are in artwork/care-v91*.svg; these are offline shape
+previews, not device screenshots. Category and both action layouts were
+rendered and checked for intersecting interiors.
+
+## Previous release: permanent organic care controls — v90
 
 The v90 candidate removes the large CARE opener entirely. The five care
 categories stay visible as large, softly irregular organic buttons that fill
