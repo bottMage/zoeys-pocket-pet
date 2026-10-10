@@ -890,10 +890,10 @@ release facts are the sections below.
 - Repository: `https://github.com/bottMage/zoeys-pocket-pet` (public).
 - Cloud checkout: `/workspace/zoeys-pocket-pet`.
 - Local branch name is `work`; completed changes are pushed to remote `main` using `git push origin HEAD:main`.
-- Latest pushed app commit: pending v95 publication.
-- Latest public release/tag: `v94` until the v95 tag and workflow asset complete.
+- Latest pushed app commit: `a92b506 Animate care taps as shared liquid ripples`.
+- Latest public release/tag: `v95`.
 - Current Android version: `versionCode = 95`, `versionName = "95.0"` in `app/build.gradle.kts`.
-- The v95 local checksum is recorded in the current release section above; its public URL is added after the release asset returns HTTP 200.
+- The v95 APK URL and verified checksum are recorded in the current release section above.
 - The v79 care-button change was tested by the user on Zoey's phone and
   removed the repeated-OK-button freeze/ANR: it uses Android's built-in click
   effect rather than constructing a `ToneGenerator` on every tap. v79 did not
