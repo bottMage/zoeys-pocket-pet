@@ -2,9 +2,14 @@
 
 ## Current release: always-visible settings actions — v114
 
-Pending publication. The settings screen now uses explicit visible buttons for
-CHANGE NAME, INVITE FRIEND, reminders, HOW TO PLAY, and RESET DATA, avoiding a
-device/theme-specific dialog-list rendering problem.
+Published APK verified byte-for-byte against the signed local build:
+`https://github.com/bottMage/zoeys-pocket-pet/releases/download/v114/zoeys-pocket-pet-v114.apk?verify=114-1`.
+SHA-256: `19dc95fef74dc30b19d77d967738981d8f842d83752da12e3bed34101b8cdbe3`.
+Build/lint pass. Existing signing certificate unchanged.
+
+The settings screen now uses explicit visible buttons for CHANGE NAME, INVITE
+FRIEND, reminders, HOW TO PLAY, and RESET DATA, avoiding a device/theme-
+specific dialog-list rendering problem.
 
 ## Previous release: child-safe friend play sessions — v113
 
