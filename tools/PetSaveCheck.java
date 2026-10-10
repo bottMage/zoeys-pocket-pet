@@ -65,7 +65,7 @@ public final class PetSaveCheck {
         for(String key:oldCloud(now).keySet())check(saved.containsKey(key),"Existing cloud key removed: "+key);
         Class<?> kind=Class.forName("com.example.shortsgesturecontrol.PetGameView$PetKind");
         Object dog=Arrays.stream(kind.getEnumConstants()).filter(k->k.toString().equals("DOG")).findFirst().orElseThrow();
-        call(pet,"createEgg",new Class[]{String.class,kind},"New puppy",dog);call(pet,"save");
+        call(pet,"createEgg",new Class[]{String.class,kind,String.class},"New puppy",dog,"Zoey");call(pet,"save");
         Object restored=create(new Preferences());call(restored,"loadCloud",new Class[]{Map.class},cloud(pet));
         check(life(restored).created&&!life(restored).hatched&&(Boolean)call(restored,"hasCreatedPet"),"Egg isn't eligible for backup/restore");
         check(call(restored,"getName").equals("New puppy"),"Egg identity lost");

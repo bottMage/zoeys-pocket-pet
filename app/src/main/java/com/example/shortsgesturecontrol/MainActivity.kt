@@ -53,6 +53,7 @@ import com.google.firebase.auth.GoogleAuthProvider
 import com.google.firebase.firestore.FieldValue
 import com.google.firebase.firestore.FirebaseFirestore
 import com.google.firebase.firestore.SetOptions
+import com.google.firebase.firestore.Source
 import org.json.JSONObject
 import java.io.File
 import java.io.FileOutputStream
@@ -3722,10 +3723,8 @@ private class PetGameView(context: Context, private val onPetCreated: () -> Unit
             }
             when (result) {
                 CloudRestoreResult.RESTORED -> {
-                    // Cloud stats are already the exact state from the
-                    // other device. Anchor the simulation clock without
-                    // applying this device's offline time to those stats.
-                    pet.anchorClockToNow()
+                    // The restored snapshot has already caught up from its
+                    // own timestamp, never from this device's stale clock.
                     // Do not echo a snapshot just read back to Firestore.
                     // A previous device's final write may still be arriving.
                     cloudSyncReady = !verifyAgain
@@ -3786,10 +3785,8 @@ private class PetGameView(context: Context, private val onPetCreated: () -> Unit
                 setupKind = pet.kind
                 setupName = pet.name
                 setupPlayerName = pet.playerName
-                // The cloud snapshot is the shared source of truth. Keep its
-                // stats exact across devices; only anchor future simulation
-                // time at the moment this device restored it.
-                pet.anchorClockToNow()
+                // CloudSaveManager already advanced the authoritative snapshot
+                // once, including time spent closed on every device.
                 // Restoring must never echo a possibly old read back to the
                 // shared document. A later user action can upload normally.
                 persistPetLocally()
@@ -3957,7 +3954,8 @@ private class PetGameView(context: Context, private val onPetCreated: () -> Unit
             }
             firestore.collection("users").document(user.uid)
                 .collection("pets").document("main")
-                .get()
+                // A cached/offline read must not unlock stale-device uploads.
+                .get(Source.SERVER)
                 .addOnSuccessListener { snapshot ->
                     if (!snapshot.exists()) {
                         cloudSyncReady = true
@@ -3969,8 +3967,7 @@ private class PetGameView(context: Context, private val onPetCreated: () -> Unit
                         val cloudSavedAt = snapshot.getLong("savedAt") ?: 0L
                         when {
                             cloudHasPet && (preferCloud || cloudSavedAt > pet.savedAt) -> {
-                                pet.loadCloud(snapshot.data.orEmpty())
-                                pet.anchorClockToNow()
+                                pet.restoreCloud(snapshot.data.orEmpty(), System.currentTimeMillis())
                                 pet.save()
                                 cloudSyncReady = true
                                 onComplete(CloudRestoreResult.RESTORED)
@@ -4102,13 +4099,19 @@ private class PetGameView(context: Context, private val onPetCreated: () -> Unit
         val deathReady: Boolean get() = life.deathReady()
 
         fun updateFromClock() {
-            val now = System.currentTimeMillis()
+            advanceTo(System.currentTimeMillis())
+        }
+
+        private fun advanceTo(now: Long) {
             life.advance((now - lastUpdate).coerceAtLeast(0), now)
             lastUpdate = now
         }
 
-        fun anchorClockToNow() {
-            lastUpdate = System.currentTimeMillis()
+        fun restoreCloud(data: Map<String, Any>, now: Long) {
+            loadCloud(data)
+            // Replace the local simulation clock before calculating catch-up.
+            // Re-reading the same snapshot projects it again, not cumulatively.
+            advanceTo(now)
         }
 
         fun apply(action: Action): Pair<String, Int> {

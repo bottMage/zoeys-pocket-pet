@@ -1,5 +1,45 @@
 # Zoey's Pocket Pet — cloud handover
 
+## Release v126: offline advancement after cloud restore (publication pending)
+
+Signed local APK SHA-256:
+`6f39095b57b11b54fb049e5990952134228cb6878594d91e91245136091fb408`.
+Build and lint pass (0 errors; existing 154 lint warnings). Signing certificate
+remains `552f2d2f4a8f6e2ddb84306c0183c88ef240ef44acad872e5c3d66df5b566cca`.
+
+The user confirmed that all normal elapsed-time progression must continue
+while closed. This supersedes the older "restore exact stats and anchor to
+now" behavior. Cloud restoration now replaces the local model and advances
+it once from the **snapshot's lastUpdate**, not the stale device's clock.
+Removed all three restore-time clock anchors that discarded offline age,
+incubation, need decay, growth, care history and illness progression. Repeated
+reads project the original snapshot again rather than accumulating elapsed
+time twice. Hatch/evolution/old-age confirmation rules remain unchanged.
+
+Restore requires a Firestore server read (`Source.SERVER`); failed/offline
+reads must not unlock uploads using an old cached cloud document. Existing
+cloud-first resume, upload gating, delayed resume verification and no-echo
+restore behavior remain in place. Signed-out/offline local saves still
+advance normally; reconnect must confirm the shared cloud state before upload.
+Update all devices to v126 so an older build cannot discard offline time again.
+Elapsed intervals already discarded and saved by older versions cannot be
+reconstructed reliably from the latest snapshot; no speculative migration or
+replay of previously handled care intervals is performed.
+
+Regression checks against the actual compiled Kotlin PetState are in
+`tools/PetCloudClockCheck.java`, using the existing PetSaveCheck preference
+harness (whose createEgg reflection signature was updated to match production).
+Passed: 23-minute egg + 2 hours closed = 143 minutes; live age; incubation;
+evolution; all four needs; health/neglect; adult readiness without automatic
+death; repeat restore; delayed verification; two devices projected at the same
+wall time; save/restart; authoritative new egg replacing stale adult; future
+timestamps; deceased pets; local-only catch-up. PetSaveCheck, PetLifeCheck,
+PetHealthCheck, CareReminderCheck, UpdateCheckerCheck and all 148,680
+WholePetCheck bounds cases also pass. These are model/build checks, not a claim
+of testing live Firebase accounts on physical devices. Artwork, eggs, live-pet
+animation, scenery, audio, play dates, notifications and release workflow are
+otherwise unchanged; rejected animation experiments remain outside the repo.
+
 ## Current release: visible egg speech bubbles — v125
 
 Published APK verified byte-for-byte against the signed local build:
