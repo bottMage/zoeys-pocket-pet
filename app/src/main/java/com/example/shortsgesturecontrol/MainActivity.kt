@@ -2162,10 +2162,10 @@ private class PetGameView(context: Context, private val onPetCreated: () -> Unit
             return
         }
         val panel = carePanelRect()
-        // The panel is a soft rounded container. The dark color is reserved
-        // for the shared liquid-tile seams, never for the outside window.
+        // The tile surface fills the available window edge to edge. The dark
+        // color is reserved for the shared liquid-tile seams.
         paint.color = Color.rgb(255, 249, 246)
-        canvas.drawRoundRect(panel, dp(26f), dp(26f), paint)
+        canvas.drawRect(panel, paint)
         if (careCategory == null) {
             for (category in CareCategory.values()) drawCareCategory(canvas, category)
         } else {
@@ -2183,7 +2183,6 @@ private class PetGameView(context: Context, private val onPetCreated: () -> Unit
             }
             drawCareCenterButton(canvas)
         }
-        drawCarePanelEdge(canvas, panel)
     }
 
     private data class BlobControl(val index: Int, val path: Path, val samples: FloatArray,
@@ -2199,7 +2198,7 @@ private class PetGameView(context: Context, private val onPetCreated: () -> Unit
     private var liquidRippleStartedAt = 0L
 
     private fun carePanelRect(): RectF = RectF(
-        dp(2f), statsTop() + dp(158f), width - dp(2f), height - dp(3f)
+        0f, statsTop() + dp(158f), width.toFloat(), height.toFloat()
     )
 
     private fun currentBlobs(): List<BlobControl> {
@@ -2255,20 +2254,6 @@ private class PetGameView(context: Context, private val onPetCreated: () -> Unit
     private fun drawCareCenterButton(canvas: Canvas) {
         drawBlob(canvas, currentBlobs().last(), Color.rgb(86, 48, 108), "‹", "BACK",
             pressedBlob == currentBlobs().lastIndex, light = true)
-    }
-
-    private fun drawCarePanelEdge(canvas: Canvas, panel: RectF) {
-        // Each tile still has a dark contour, but its outside half is hidden
-        // by this pale edge. That leaves a clean rounded window like the
-        // reference instead of a dark rectangle surrounding the controls.
-        paint.shader = null
-        paint.style = Paint.Style.STROKE
-        paint.strokeWidth = dp(8f)
-        paint.strokeJoin = Paint.Join.ROUND
-        paint.color = Color.rgb(255, 249, 246)
-        val edge = RectF(panel.left + dp(2f), panel.top + dp(2f), panel.right - dp(2f), panel.bottom - dp(2f))
-        canvas.drawRoundRect(edge, dp(23f), dp(23f), paint)
-        paint.style = Paint.Style.FILL
     }
 
     private fun startLiquidRipple(x: Float, y: Float) {
@@ -2372,8 +2357,7 @@ private class PetGameView(context: Context, private val onPetCreated: () -> Unit
         val labelShift = liquidDisplacement(blob.x, blob.y, now)
         textPaint.textAlign = Paint.Align.CENTER
         textPaint.typeface = PaintTypeface.bold()
-        val luminance = (Color.red(color) * .299f + Color.green(color) * .587f + Color.blue(color) * .114f) / 255f
-        textPaint.color = if (light || pressed || luminance < .62f) Color.WHITE else Color.rgb(68, 35, 86)
+        textPaint.color = if (light) Color.WHITE else Color.rgb(68, 35, 86)
         textPaint.textSize = 49f * scale
         canvas.drawText(glyph, blob.x + labelShift.first, blob.y + labelShift.second, textPaint)
         textPaint.textSize = 21f * scale
