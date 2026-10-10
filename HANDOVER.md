@@ -1,8 +1,11 @@
 # Zoey's Pocket Pet — cloud handover
 
-## Release v126: offline advancement after cloud restore (publication pending)
+## Current release: offline advancement after cloud restore — v126
 
-Signed local APK SHA-256:
+Published APK downloaded and verified byte-for-byte against the signed local
+build after the release workflow succeeded:
+`https://github.com/bottMage/zoeys-pocket-pet/releases/download/v126/zoeys-pocket-pet-v126.apk?verify=126-3`.
+SHA-256:
 `6f39095b57b11b54fb049e5990952134228cb6878594d91e91245136091fb408`.
 Build and lint pass (0 errors; existing 154 lint warnings). Signing certificate
 remains `552f2d2f4a8f6e2ddb84306c0183c88ef240ef44acad872e5c3d66df5b566cca`.
