@@ -2159,7 +2159,9 @@ private class PetGameView(context: Context, private val onPetCreated: () -> Unit
             return
         }
         val panel = carePanelRect()
-        paint.color = Color.rgb(255, 227, 238)
+        // The underlay is the seam color. This guarantees that adjacent
+        // traced pieces never expose a pink gap between their borders.
+        paint.color = Color.rgb(35, 25, 43)
         canvas.drawRoundRect(RectF(0f, panel.top - dp(3f), width.toFloat(), height.toFloat()),
             dp(24f), dp(24f), paint)
         if (careCategory == null) {
@@ -2253,8 +2255,13 @@ private class PetGameView(context: Context, private val onPetCreated: () -> Unit
         canvas.drawPath(blob.path, paint)
         paint.shader = null
         paint.style = Paint.Style.STROKE
-        paint.strokeWidth = 4f * scale
-        paint.color = Color.rgb(255, 248, 245)
+        // The contours meet over the panel's pink base. A dark shared seam
+        // hides the tiny contour tolerances and makes the pieces read as one
+        // fitted control surface instead of separate floating cards.
+        paint.strokeWidth = max(dp(5f), 9f * scale)
+        paint.strokeJoin = Paint.Join.ROUND
+        paint.strokeCap = Paint.Cap.ROUND
+        paint.color = Color.rgb(35, 25, 43)
         canvas.drawPath(blob.path, paint)
         paint.style = Paint.Style.FILL
         canvas.save()

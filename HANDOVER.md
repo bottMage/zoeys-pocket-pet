@@ -1,6 +1,14 @@
 # Zoey's Pocket Pet — cloud handover
 
-## Current release: traced interlocking care panel — v91
+## Current release candidate: contiguous black-seamed care panel — v92
+
+The v92 candidate corrects the remaining reference mismatch in v91. The care
+panel underlay now uses the dark seam color, and every blob keeps its dark
+rounded border, so contour tolerances cannot expose pink gaps. The colored
+shapes still use the traced outlines, gradients, highlights, and fitted action
+layouts from v91.
+
+## Previous release: traced interlocking care panel — v91
 
 Published APK verified byte-for-byte against the signed local build:
 `https://github.com/bottMage/zoeys-pocket-pet/releases/download/v91/zoeys-pocket-pet-v91.apk?verify=91-2`.
