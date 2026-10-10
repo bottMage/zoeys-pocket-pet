@@ -2067,17 +2067,17 @@ private class PetGameView(context: Context, private val onPetCreated: () -> Unit
 
     private fun drawStats(canvas: Canvas) {
         val top = statsTop()
+        val careTop = carePanelRect().top
         paint.style = Paint.Style.FILL
         paint.shader = LinearGradient(
-            0f, top, 0f, height.toFloat(),
+            0f, top, 0f, careTop,
             intArrayOf(
                 Color.rgb(237, 220, 246),
                 Color.rgb(244, 227, 244),
-                Color.rgb(248, 235, 248),
                 Color.rgb(255, 227, 218),
                 Color.rgb(248, 235, 248)
             ),
-            floatArrayOf(0f, .16f, .30f, .58f, 1f),
+            floatArrayOf(0f, .22f, .66f, 1f),
             Shader.TileMode.CLAMP
         )
         canvas.drawRoundRect(RectF(0f, top, width.toFloat(), height.toFloat()), dp(28f), dp(28f), paint)
@@ -2086,7 +2086,7 @@ private class PetGameView(context: Context, private val onPetCreated: () -> Unit
         // Add a very soft color wash behind the stats, keeping the text and
         // bars clear while making this area feel related to the care palette.
         canvas.save()
-        canvas.clipRect(0f, top + dp(8f), width.toFloat(), height.toFloat())
+        canvas.clipRect(0f, top + dp(8f), width.toFloat(), careTop)
         paint.shader = RadialGradient(
             width * .16f, top + dp(112f), width * .42f,
             Color.argb(38, 255, 86, 170), Color.TRANSPARENT, Shader.TileMode.CLAMP
@@ -2364,7 +2364,7 @@ private class PetGameView(context: Context, private val onPetCreated: () -> Unit
         paint.shader = if (touchesStats) {
             LinearGradient(
                 0f, panel.top, 0f, panel.top + dp(82f),
-                Color.rgb(249, 237, 248), color, Shader.TileMode.CLAMP
+                Color.rgb(248, 235, 248), color, Shader.TileMode.CLAMP
             )
         } else null
         paint.color = fill

@@ -1,6 +1,16 @@
 # Zoey's Pocket Pet — cloud handover
 
-## Current release: per-button stats fade — v104
+## Current release: seamless per-button stats fade — v105
+
+Published APK will be verified byte-for-byte against the signed local build
+after the v105 release asset is available.
+
+The care surface and the stats background now meet at the exact same pale pink
+value, and each upper button starts its individual color fade from that value.
+This removes the lighter horizontal edge while preserving the separate vivid
+button colors.
+
+## Previous release: per-button stats fade — v104
 
 Published APK verified byte-for-byte against the signed local build:
 `https://github.com/bottMage/zoeys-pocket-pet/releases/download/v104/zoeys-pocket-pet-v104.apk?verify=104-2`.
