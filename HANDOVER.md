@@ -1,5 +1,14 @@
 # Zoey's Pocket Pet — cloud handover
 
+## Current release: full-size play-date pets — v116
+
+Pending publication. The play-date renderer now keeps both eggs at the normal
+full egg scale and places them in a stable left/right arrangement. Live friend
+pets use the same rendered width as the local pet, animate with walking frames,
+and reverse at their separation boundary so they do not pass through one
+another. Play-session renderer state is reset cleanly when sessions start or
+end. Build/lint pass; no device or emulator was attached in this workspace.
+
 ## Current release: reliable friend request delivery — v115
 
 Published APK verified byte-for-byte against the signed local build:

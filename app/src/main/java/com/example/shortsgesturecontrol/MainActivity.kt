@@ -533,6 +533,13 @@ private class PetGameView(context: Context, private val onPetCreated: () -> Unit
     private var transitionUntil = 0L
     private var petCenterX = 0f
     private var petGroundY = 0f
+    private var petRenderWidth = 0f
+    private var petEggScale = 1f
+    private var friendRenderCenterX = 0f
+    private var friendRenderWidth = 0f
+    private var friendMotionX = .72f
+    private var friendMotionDirection = -1f
+    private var friendMotionLastAt = SystemClock.uptimeMillis()
     private var motionX = .5f
     private var motionDirection = 1f
     private var motionMode = MotionMode.REST
@@ -901,8 +908,8 @@ private class PetGameView(context: Context, private val onPetCreated: () -> Unit
         }
         drawHeader(canvas)
         drawPlayground(canvas, now)
-        if (playSessionId != null) drawFriendPet(canvas, now)
         drawPet(canvas, now)
+        if (playSessionId != null) drawFriendPet(canvas, now)
         drawActionEffects(canvas, now)
         drawMessage(canvas, now)
         drawStats(canvas)
@@ -925,7 +932,8 @@ private class PetGameView(context: Context, private val onPetCreated: () -> Unit
             playActionUntil > now ||
             pressedBlob >= 0 ||
             liquidRippleStartedAt != 0L && now - liquidRippleStartedAt < LIQUID_RIPPLE_DURATION_MS ||
-            (!pet.dead && motionMode == MotionMode.WALK)
+            (!pet.dead && motionMode == MotionMode.WALK) ||
+            (playSessionId != null && playFriend?.stage?.equals("EGG", true) == false)
         if (highPriority) postInvalidateOnAnimation()
         else postInvalidateDelayed(IDLE_FRAME_DELAY_MS)
     }
@@ -1717,11 +1725,12 @@ private class PetGameView(context: Context, private val onPetCreated: () -> Unit
         if (!pet.hatched) {
             val ground = statsTop() - dp(64f)
             val eggScale = min(dp(1f), min((width - dp(64f)) / 240f, ((ground - dp(125f)) / 166f).coerceAtLeast(0f)))
+            val playCenterX = if (playSessionId != null) width * .32f else width / 2f
             val actionProgress = if (activeAction == Action.SLEEP) sleepPoseProgress(now) else interactionProgress(now)
             val touchProgress = touchProgress(now)
             drawEgg(
                 canvas,
-                width / 2f,
+                playCenterX,
                 ground,
                 pet.kind,
                 (now - animationStart) / 1000.0,
@@ -1734,9 +1743,11 @@ private class PetGameView(context: Context, private val onPetCreated: () -> Unit
             if (transitionKind == TransitionKind.HATCH) drawEmergingBaby(canvas, now, ground, eggScale)
             motionLastAt = now
             motionX = .5f
-            petCenterX = width / 2f
+            petCenterX = playCenterX
             petGroundY = ground
-            drawPetName(canvas, width / 2f, ground + dp(12f))
+            petRenderWidth = dp(188f) * eggScale
+            petEggScale = eggScale
+            drawPetName(canvas, playCenterX, ground + dp(12f))
             return
         }
         preloadWalkArtwork(pet.kind)
@@ -1792,9 +1803,26 @@ private class PetGameView(context: Context, private val onPetCreated: () -> Unit
         val reach = walkEnvelopeCache.getValue(pet.kind).reach * artWidth
         val leftCenter = sceneLeft + dp(6f) + reach
         val rightCenter = sceneRight - dp(6f) - reach
-        val centerX = (leftCenter + motionX * (rightCenter - leftCenter)).toFloat()
+        var centerX = (leftCenter + motionX * (rightCenter - leftCenter)).toFloat()
+        if (playSessionId != null && friendRenderCenterX > 0f && friendRenderWidth > 0f) {
+            val separation = (artWidth + friendRenderWidth) * .43f
+            if (abs(centerX - friendRenderCenterX) < separation) {
+                // Keep the owner's simulation on its side of the other pet as
+                // well as clamping the drawn position. Without reversing the
+                // travel direction here, the hidden motion coordinate could
+                // continue through the friend and make the pet jump across it
+                // when the friend moved away again.
+                motionDirection *= -1f
+                centerX = if (centerX <= friendRenderCenterX) {
+                    friendRenderCenterX - separation
+                } else {
+                    friendRenderCenterX + separation
+                }.coerceIn(sceneLeft + artWidth * .28f, sceneRight - artWidth * .28f)
+            }
+        }
         petCenterX = centerX
         petGroundY = groundY
+        petRenderWidth = artWidth
         val bitmap = walkFrameArtwork(pet.kind, frame)
         val artScale = artWidth / bitmap.width
         // Keep the feet planted while resting.  A whole-body vertical bob reads
@@ -1866,18 +1894,53 @@ private class PetGameView(context: Context, private val onPetCreated: () -> Unit
     private fun drawFriendPet(canvas: Canvas, now: Long) {
         val friend = playFriend ?: return
         val kind = PetKind.values().firstOrNull { it.name == friend.petKind.uppercase() } ?: PetKind.BUNNY
-        val ground = statsTop() - dp(52f)
-        val centerX = width * .73f
-        if (!friend.stage.equals("EGG", true) && friend.petKind.isNotBlank()) {
-            val bitmap = petArtwork(kind)
-            val artWidth = min(width * .30f, dp(150f))
-            val artHeight = artWidth * bitmap.height / bitmap.width.toFloat()
-            paint.color = Color.argb(48, 67, 57, 82)
-            canvas.drawOval(RectF(centerX - artWidth * .24f, ground - dp(2f), centerX + artWidth * .24f, ground + dp(7f)), paint)
-            paint.colorFilter = null
-            canvas.drawBitmap(bitmap, null, RectF(centerX - artWidth / 2f, ground - artHeight, centerX + artWidth / 2f, ground), paint)
+        val ground = petGroundY.takeIf { it > 0f } ?: statsTop() - dp(52f)
+        val egg = friend.stage.equals("EGG", true) || friend.petKind.isBlank()
+        val centerX: Float
+        if (egg) {
+            centerX = if (playSessionId != null) width * .68f else width * .73f
+            drawEgg(canvas, centerX, ground, kind, now / 1000.0, .55, petEggScale)
+            friendRenderCenterX = centerX
+            friendRenderWidth = petRenderWidth
         } else {
-            drawEgg(canvas, centerX, ground, kind, now / 1000.0, .55, .45f)
+            val sceneLeft = dp(18f)
+            val sceneRight = width - dp(18f)
+            val dt = ((now - friendMotionLastAt).coerceAtLeast(0L)).coerceAtMost(120L) / 1000f
+            friendMotionLastAt = now
+            friendMotionX += friendMotionDirection * dt * .09f
+            if (friendMotionX <= .08f) {
+                friendMotionX = .08f
+                friendMotionDirection = 1f
+            }
+            if (friendMotionX >= .92f) {
+                friendMotionX = .92f
+                friendMotionDirection = -1f
+            }
+            val bitmap = walkFrameArtwork(kind, ((now - animationStart) / WALK_FRAME_DURATION_MS % PetSpriteLayout.frameCount(kind.name.lowercase())).toInt())
+            // Keep the remote pet at the same rendered width as the local
+            // pet. A play date must not shrink the second pet into a tiny
+            // thumbnail, especially when both devices are showing eggs.
+            val artWidth = petRenderWidth.takeIf { it > 0f } ?: min(width - dp(42f), dp(296f))
+            val localWidth = petRenderWidth.takeIf { it > 0f } ?: artWidth
+            val separation = (artWidth + localWidth) * .43f
+            var candidate = sceneLeft + friendMotionX * (sceneRight - sceneLeft)
+            if (petCenterX > 0f && abs(candidate - petCenterX) < separation) {
+                friendMotionDirection *= -1f
+                candidate = if (candidate <= petCenterX) petCenterX - separation else petCenterX + separation
+                candidate = candidate.coerceIn(sceneLeft + artWidth * .28f, sceneRight - artWidth * .28f)
+            }
+            centerX = candidate
+            friendRenderCenterX = centerX
+            friendRenderWidth = artWidth
+            val artScale = artWidth / bitmap.width
+            val artHeight = bitmap.height * artScale
+            paint.color = Color.argb(48, 67, 57, 82)
+            canvas.drawOval(RectF(centerX - artWidth * .25f, ground - dp(3f), centerX + artWidth * .25f, ground + dp(7f)), paint)
+            paint.colorFilter = null
+            canvas.save()
+            if (friendMotionDirection > 0f) canvas.scale(-1f, 1f, centerX, ground)
+            canvas.drawBitmap(bitmap, null, RectF(centerX - artWidth / 2f, ground - artHeight, centerX + artWidth / 2f, ground), paint)
+            canvas.restore()
         }
         textPaint.textAlign = Paint.Align.CENTER
         textPaint.typeface = PaintTypeface.bold()
@@ -3094,6 +3157,11 @@ private class PetGameView(context: Context, private val onPetCreated: () -> Unit
         playSubscription?.close()
         playSessionId = sessionId
         playFriend = friend
+        friendRenderCenterX = 0f
+        friendRenderWidth = 0f
+        friendMotionX = .72f
+        friendMotionDirection = -1f
+        friendMotionLastAt = SystemClock.uptimeMillis()
         playEvents = emptyList()
         playActionUntil = 0L
         playSubscription = social.watchSession(
@@ -3138,6 +3206,11 @@ private class PetGameView(context: Context, private val onPetCreated: () -> Unit
         playSubscription = null
         playSessionId = null
         playFriend = null
+        friendRenderCenterX = 0f
+        friendRenderWidth = 0f
+        friendMotionX = .72f
+        friendMotionDirection = -1f
+        friendMotionLastAt = SystemClock.uptimeMillis()
         playEvents = emptyList()
         pressedPlayButton = -1
         invalidate()
