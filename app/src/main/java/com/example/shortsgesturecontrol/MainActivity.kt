@@ -2184,95 +2184,185 @@ private class PetGameView(context: Context, private val onPetCreated: () -> Unit
 
     private fun drawCareMenuButton(canvas: Canvas) {
         val rect = careMenuButtonRect()
+        val scale = (rect.width() / dp(320f)).coerceIn(.72f, 1f)
         paint.color = Color.argb(24, 67, 39, 95)
         canvas.drawRoundRect(RectF(rect.left, rect.top + dp(7f), rect.right, rect.bottom + dp(10f)), dp(28f), dp(28f), paint)
         paint.color = Color.rgb(255, 218, 157)
         canvas.drawRoundRect(rect, dp(28f), dp(28f), paint)
         textPaint.textAlign = Paint.Align.CENTER
         textPaint.typeface = PaintTypeface.bold()
-        textPaint.textSize = dp(34f)
+        textPaint.textSize = dp(34f) * scale
         textPaint.color = Color.rgb(76, 49, 94)
-        canvas.drawText("✦", rect.centerX(), rect.centerY() - dp(18f), textPaint)
-        textPaint.textSize = dp(22f)
-        canvas.drawText("CARE", rect.centerX(), rect.centerY() + dp(17f), textPaint)
-        textPaint.textSize = dp(11f)
+        canvas.drawText("✦", rect.centerX(), rect.centerY() - dp(18f) * scale, textPaint)
+        textPaint.textSize = dp(22f) * scale
+        canvas.drawText("CARE", rect.centerX(), rect.centerY() + dp(17f) * scale, textPaint)
+        textPaint.textSize = dp(11f) * scale
         textPaint.typeface = PaintTypeface.rounded()
-        canvas.drawText("food  •  fun  •  rest  •  clean  •  health", rect.centerX(), rect.bottom - dp(17f), textPaint)
+        canvas.drawText("food  •  fun  •  rest  •  clean  •  health", rect.centerX(), rect.bottom - dp(17f) * scale, textPaint)
     }
 
     private fun drawCareCategory(canvas: Canvas, category: CareCategory) {
         val rect = careCategoryRect(category)
+        val scale = (rect.width() / dp(68f)).coerceIn(.78f, 1.3f)
         paint.color = Color.argb(22, 67, 39, 95)
         canvas.drawRoundRect(RectF(rect.left, rect.top + dp(3f), rect.right, rect.bottom + dp(5f)), dp(14f), dp(14f), paint)
         paint.color = category.fill
         canvas.drawRoundRect(rect, dp(14f), dp(14f), paint)
         textPaint.textAlign = Paint.Align.CENTER
         textPaint.typeface = PaintTypeface.bold()
-        textPaint.textSize = dp(16f)
+        textPaint.textSize = dp(16f) * scale
         textPaint.color = Color.rgb(76, 49, 94)
-        canvas.drawText(category.glyph, rect.centerX(), rect.top + dp(20f), textPaint)
-        textPaint.textSize = dp(8f)
-        canvas.drawText(category.label, rect.centerX(), rect.bottom - dp(7f), textPaint)
+        canvas.drawText(category.glyph, rect.centerX(), rect.top + dp(20f) * scale, textPaint)
+        textPaint.textSize = dp(8f) * scale
+        canvas.drawText(category.label, rect.centerX(), rect.bottom - dp(7f) * scale, textPaint)
     }
 
     private fun drawCareOption(canvas: Canvas, action: CareAction, rect: RectF) {
+        val scale = (rect.width() / dp(76f)).coerceIn(.78f, 1.25f)
         paint.color = Color.argb(22, 67, 39, 95)
         canvas.drawRoundRect(RectF(rect.left, rect.top + dp(3f), rect.right, rect.bottom + dp(5f)), dp(16f), dp(16f), paint)
         paint.color = if (pressedAction == action) Color.WHITE else action.fill
         canvas.drawRoundRect(rect, dp(16f), dp(16f), paint)
         textPaint.textAlign = Paint.Align.CENTER
         textPaint.typeface = PaintTypeface.bold()
-        textPaint.textSize = dp(15f)
+        textPaint.textSize = dp(15f) * scale
         textPaint.color = Color.rgb(76, 49, 94)
-        canvas.drawText(action.glyph, rect.centerX(), rect.top + dp(21f), textPaint)
-        textPaint.textSize = dp(9f)
-        canvas.drawText(action.label, rect.centerX(), rect.bottom - dp(8f), textPaint)
+        canvas.drawText(action.glyph, rect.centerX(), rect.top + dp(21f) * scale, textPaint)
+        textPaint.textSize = dp(9f) * scale
+        canvas.drawText(action.label, rect.centerX(), rect.bottom - dp(8f) * scale, textPaint)
     }
 
     private fun drawCareCenterButton(canvas: Canvas) {
         val rect = careCenterRect()
+        val scale = (rect.width() / dp(132f)).coerceIn(.72f, 1f)
         paint.color = Color.rgb(86, 58, 108)
         canvas.drawRoundRect(rect, dp(19f), dp(19f), paint)
         textPaint.textAlign = Paint.Align.CENTER
         textPaint.typeface = PaintTypeface.bold()
-        textPaint.textSize = dp(11f)
+        textPaint.textSize = dp(11f) * scale
         textPaint.color = Color.WHITE
-        canvas.drawText(if (careCategory == null) "CLOSE" else "BACK", rect.centerX(), rect.centerY() + dp(4f), textPaint)
+        canvas.drawText(if (careCategory == null) "CLOSE" else "BACK", rect.centerX(), rect.centerY() + dp(4f) * scale, textPaint)
     }
 
     private fun careCategoryRect(category: CareCategory): RectF {
-        val point = radialPoint(category.angleDegrees, careRadius())
-        return RectF(point.first - dp(34f), point.second - dp(23f), point.first + dp(34f), point.second + dp(23f))
+        return careCategoryGeometry()[CareCategory.values().indexOf(category)]
     }
 
     private fun careCenterRect(): RectF = RectF(
-        width / 2f - dp(48f), height - dp(84f), width / 2f + dp(48f), height - dp(30f)
+        width / 2f - min(dp(66f), carePanelRect().width() * .36f),
+        carePanelRect().bottom - dp(62f),
+        width / 2f + min(dp(66f), carePanelRect().width() * .36f),
+        carePanelRect().bottom
     )
 
     private fun careOptionRect(action: CareAction, index: Int, count: Int): RectF {
-        val centeredIndex = index - (count - 1) / 2f
-        // Keep secondary actions as a compact cluster along the tangent of
-        // their category's radial direction. They still sit in the correct
-        // part of the wheel, but neighboring choices read as one group.
-        val anchor = radialPoint(action.category.angleDegrees, careRadius())
-        val tangentRadians = Math.toRadians((action.category.angleDegrees + 90f).toDouble())
-        val spacing = dp(83f)
-        val point = (anchor.first + cos(tangentRadians).toFloat() * centeredIndex * spacing) to
-            (anchor.second + sin(tangentRadians).toFloat() * centeredIndex * spacing)
-        return RectF(point.first - dp(38f), point.second - dp(25f), point.first + dp(38f), point.second + dp(25f))
+        return careOptionGeometry(action.category, count)[index]
     }
 
     private fun radialPoint(angleDegrees: Float, radius: Float): Pair<Float, Float> {
         val radians = Math.toRadians(angleDegrees.toDouble())
-        return (width / 2f + cos(radians).toFloat() * radius) to
-            (height - dp(58f) + sin(radians).toFloat() * radius)
+        val center = careCenterRect()
+        return (center.centerX() + cos(radians).toFloat() * radius) to
+            (center.centerY() + sin(radians).toFloat() * radius)
     }
 
-    private fun careRadius(): Float {
-        // The screen is intentionally split roughly 50/50. Keep every radial
-        // button below the stat bars so opening care never hides the check-in.
-        val statsClearance = height - dp(58f) - statsTop() - dp(200f)
-        return min(dp(132f), min(width / 2f - dp(42f), statsClearance)).coerceAtLeast(dp(62f))
+    private fun carePanelRect(): RectF = RectF(
+        dp(12f), statsTop() + dp(176f), width - dp(12f), height - dp(18f)
+    )
+
+    private fun careCategoryGeometry(): List<RectF> {
+        val angles = CareCategory.values().map { it.angleDegrees }
+        val panel = carePanelRect()
+        var widthCandidate = min(dp(108f), panel.width() * .30f)
+        while (widthCandidate >= dp(54f)) {
+            val heightCandidate = widthCandidate * .67f
+            val radius = careRadialRadius(panel, widthCandidate, heightCandidate)
+            val rects = angles.map { angle ->
+                val point = radialPoint(angle, radius)
+                RectF(
+                    point.first - widthCandidate / 2f, point.second - heightCandidate / 2f,
+                    point.first + widthCandidate / 2f, point.second + heightCandidate / 2f
+                )
+            }
+            if (careRectsFit(rects, panel, careCenterRect())) return rects
+            widthCandidate -= dp(2f)
+        }
+        return careFallbackRects(angles, panel)
+    }
+
+    private fun careOptionGeometry(category: CareCategory, count: Int): List<RectF> {
+        val panel = carePanelRect()
+        var widthCandidate = min(dp(126f), panel.width() - dp(24f))
+        while (widthCandidate >= dp(54f)) {
+            val heightCandidate = widthCandidate * .67f
+            val radius = careRadialRadius(panel, widthCandidate, heightCandidate)
+            val anchor = radialPoint(category.angleDegrees, radius)
+            val tangentRadians = Math.toRadians((category.angleDegrees + 90f).toDouble())
+            val gap = dp(6f)
+            val spacing = widthCandidate + gap
+            val rects = (0 until count).map { index ->
+                val centeredIndex = index - (count - 1) / 2f
+                val x = anchor.first + cos(tangentRadians).toFloat() * centeredIndex * spacing
+                val y = anchor.second + sin(tangentRadians).toFloat() * centeredIndex * spacing
+                RectF(
+                    x - widthCandidate / 2f, y - heightCandidate / 2f,
+                    x + widthCandidate / 2f, y + heightCandidate / 2f
+                )
+            }
+            if (careRectsFit(rects, panel, careCenterRect())) return rects
+            widthCandidate -= dp(2f)
+        }
+        return careFallbackRects(listOf(category.angleDegrees), panel, count)
+    }
+
+    private fun careRadialRadius(panel: RectF, buttonWidth: Float, buttonHeight: Float): Float {
+        val center = careCenterRect()
+        return min(
+            dp(170f),
+            min(
+                panel.width() / 2f - buttonWidth / 2f - dp(8f),
+                center.centerY() - panel.top - buttonHeight / 2f - dp(8f)
+            )
+        ).coerceAtLeast(dp(28f))
+    }
+
+    private fun careRectsFit(rects: List<RectF>, panel: RectF, center: RectF): Boolean {
+        val gap = dp(6f)
+        if (rects.any { it.left < panel.left || it.right > panel.right || it.top < panel.top || it.bottom > panel.bottom }) return false
+        for (first in rects.indices) {
+            for (second in first + 1 until rects.size) if (rectsOverlap(rects[first], rects[second], gap)) return false
+            if (rectsOverlap(rects[first], center, gap)) return false
+        }
+        return true
+    }
+
+    private fun rectsOverlap(first: RectF, second: RectF, gap: Float): Boolean =
+        first.left < second.right + gap && first.right + gap > second.left &&
+            first.top < second.bottom + gap && first.bottom + gap > second.top
+
+    private fun careFallbackRects(angles: List<Float>, panel: RectF, tangentCount: Int = 1): List<RectF> {
+        val widthCandidate = min(dp(54f), panel.width() / 3f)
+        val heightCandidate = widthCandidate * .67f
+        val radius = careRadialRadius(panel, widthCandidate, heightCandidate)
+        if (tangentCount > 1 && angles.size == 1) {
+            val anchor = radialPoint(angles.single(), radius)
+            val tangentRadians = Math.toRadians((angles.single() + 90f).toDouble())
+            val spacing = widthCandidate + dp(6f)
+            return (0 until tangentCount).map { index ->
+                val centeredIndex = index - (tangentCount - 1) / 2f
+                val x = anchor.first + cos(tangentRadians).toFloat() * centeredIndex * spacing
+                val y = anchor.second + sin(tangentRadians).toFloat() * centeredIndex * spacing
+                RectF(
+                    x - widthCandidate / 2f, y - heightCandidate / 2f,
+                    x + widthCandidate / 2f, y + heightCandidate / 2f
+                )
+            }
+        }
+        return angles.map { angle ->
+            val point = radialPoint(angle, radius)
+            RectF(point.first - widthCandidate / 2f, point.second - heightCandidate / 2f,
+                point.first + widthCandidate / 2f, point.second + heightCandidate / 2f)
+        }
     }
 
     private fun careOptions(category: CareCategory): List<CareAction> = when (category) {

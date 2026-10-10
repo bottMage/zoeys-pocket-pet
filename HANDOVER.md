@@ -1,6 +1,16 @@
 # Zoey's Pocket Pet — cloud handover
 
-## Current release: compact care actions and full CARE panel — v87
+## Current release candidate: responsive care button sizing — v88
+
+The v88 candidate keeps v87's compact adjacent care-action clusters and large
+CARE panel, but sizes every care button from the available lower-panel space.
+Category and secondary-action geometry is checked for panel bounds, spacing,
+and center-button collisions before the largest safe size is selected. Labels
+scale with the button, and the same calculated rectangles drive touch handling,
+so HEALTH can switch between CHECKUP/VITAMIN and CHECKUP/MEDICINE without
+overlap, clipping, or a missing action if more buttons are added later.
+
+## Previous release: compact care actions and full CARE panel — v87
 
 The v87 release keeps v86's visible HEALTH score and replayable child-friendly
 tutorial. Secondary radial actions now form compact adjacent clusters along
