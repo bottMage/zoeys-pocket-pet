@@ -2,11 +2,14 @@
 
 ## Current release: keep active play sessions from false teardown — v120
 
-Pending publication. Session listeners no longer interpret a partial snapshot
+Published APK verified byte-for-byte against the signed local build:
+`https://github.com/bottMage/zoeys-pocket-pet/releases/download/v120/zoeys-pocket-pet-v120.apk?verify=120-1`.
+SHA-256: `69e44c2a28f8ee1699f87b5e7fc03a36755df581098d53c66528451733434b67`.
+Build/lint pass. Session listeners no longer interpret a partial snapshot
 with a missing status as an ended session. Only an explicit `ended` value
 closes the local play date, and only the user’s play-date CLOSE action writes
 that ended state to Firestore. This prevents accepted play dates from flashing
-and disappearing while the shared session is settling. Build/lint pending.
+and disappearing while the shared session is settling.
 
 ## Current release: preserve play dates through lifecycle pauses — v119
 
