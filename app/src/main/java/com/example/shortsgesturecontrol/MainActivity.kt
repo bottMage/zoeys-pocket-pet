@@ -677,16 +677,15 @@ private class PetGameView(context: Context, private val onPetCreated: () -> Unit
                 if (activityResumed && windowVisibility == View.VISIBLE) showIncomingPlayPrompt(fresh)
                 else showSocialNotification("Playtime request", "${fresh.senderPetName} wants to play!", 8802)
             }
-            // Both sides listen for the shared accepted request. The sender
-            // normally learns the session here; the recipient normally starts
-            // from the accept callback. Keeping this listener symmetrical
-            // covers notification prompts, settings prompts, and listener
-            // timing differences without making either side depend on the
-            // other device's UI remaining open.
+            // The inviter learns the session through its pending -> accepted
+            // transition. The recipient starts only from the explicit ACCEPT
+            // callback, so stale accepted records can never make a pending
+            // request appear to start before the child accepts it.
             val currentUid = FirebaseAuth.getInstance().currentUser?.uid
             requests.firstOrNull {
                 it.status == "accepted" && it.sessionId != null &&
-                    (it.senderUid == currentUid || it.recipientUid == currentUid) &&
+                    it.senderUid == currentUid &&
+                    it.documentPath in previousPending &&
                     it.sessionId != playSessionId
             }?.let { request ->
                 val friend = if (request.senderUid == currentUid) {
@@ -1924,7 +1923,7 @@ private class PetGameView(context: Context, private val onPetCreated: () -> Unit
         val centerX: Float
         if (egg) {
             centerX = if (playSessionId != null) width * .68f else width * .73f
-            drawEgg(canvas, centerX, ground, kind, now / 1000.0, .55, petEggScale)
+            drawEgg(canvas, centerX, ground, kind, now / 1000.0, friend.hatchProgress.toDouble(), petEggScale)
             friendRenderCenterX = centerX
             friendRenderWidth = petRenderWidth
         } else {
@@ -3738,7 +3737,8 @@ private class PetGameView(context: Context, private val onPetCreated: () -> Unit
                 petName = pet.name,
                 petKind = pet.kind.name,
                 stage = pet.stage,
-                hatched = pet.hatched
+                hatched = pet.hatched,
+                hatchProgress = pet.hatchProgress.toFloat()
             )
         )
     }

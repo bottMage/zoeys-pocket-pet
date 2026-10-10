@@ -25,7 +25,8 @@ internal class SocialPlayManager {
         val petName: String,
         val petKind: String,
         val stage: String,
-        val hatched: Boolean
+        val hatched: Boolean,
+        val hatchProgress: Float = 0f
     )
 
     data class Friend(
@@ -35,7 +36,8 @@ internal class SocialPlayManager {
         val petKind: String,
         val stage: String,
         val online: Boolean,
-        val lastSeen: Long
+        val lastSeen: Long,
+        val hatchProgress: Float = 0f
     )
 
     data class FriendRequest(
@@ -456,7 +458,8 @@ internal class SocialPlayManager {
                 petKind = (remote["petKind"] as? String).orEmpty(),
                 stage = (remote["stage"] as? String).orEmpty(),
                 online = remote["online"] == true && lastSeen > 0L && abs(now - lastSeen) < ONLINE_WINDOW_MS,
-                lastSeen = lastSeen
+                lastSeen = lastSeen,
+                hatchProgress = (remote["hatchProgress"] as? Number)?.toFloat()?.coerceIn(0f, 1f) ?: 0f
             )
         }.sortedWith(compareByDescending<Friend> { it.online }.thenBy { it.displayName.lowercase() })
         onFriendsChanged?.invoke(friends)
@@ -472,6 +475,7 @@ internal class SocialPlayManager {
                 "petKind" to currentProfile.petKind,
                 "stage" to currentProfile.stage,
                 "hatched" to currentProfile.hatched,
+                "hatchProgress" to currentProfile.hatchProgress,
                 "online" to online,
                 "lastSeen" to FieldValue.serverTimestamp()
             ), SetOptions.merge()

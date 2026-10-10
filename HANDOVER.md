@@ -1,5 +1,13 @@
 # Zoey's Pocket Pet — cloud handover
 
+## Current release: accept-gated play dates and synced egg cracks — v122
+
+Pending publication. The inviter now starts only when its own request changes
+from pending to accepted; the recipient starts only from the explicit accept
+action, preventing stale accepted requests from opening play early. Public
+profiles now include egg hatch progress, so a remote egg renders the same
+crack/progress as the owner’s egg. Build/lint pending.
+
 ## Current release: stable play sessions and real friend pet names — v121
 
 Published APK verified byte-for-byte against the signed local build:
