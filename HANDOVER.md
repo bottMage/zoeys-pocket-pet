@@ -1,6 +1,6 @@
 # Zoey's Pocket Pet — cloud handover
 
-## Current release candidate: gentle general reminders — v82
+## Current release: gentle general reminders — v82
 
 The v82 candidate keeps v81's threshold-triggered care reminders and adds
 gentle general check-ins while the app is closed. After about two hours away,
@@ -11,8 +11,10 @@ general reminders so the notification stream does not become noisy. The
 existing notification permission, Settings toggle, WorkManager fallback,
 elapsed-time care model, and lightweight threshold alarm are reused.
 
-The v82 APK will use the unchanged cloud certificate; its final public
-checksum will be recorded here after the release asset is verified.
+The v82 APK uses the unchanged cloud certificate and is published at
+`https://github.com/bottMage/zoeys-pocket-pet/releases/download/v82/zoeys-pocket-pet-v82.apk?download=82`.
+Its SHA-256 is
+`78817a6a5c5ca3a428905e63e35457507b1823f903c676a07a2643ab8da0c678`.
 
 ## Previous release: threshold-triggered care reminders — v81
 
@@ -681,7 +683,7 @@ do not claim measured device frame rates or final user-approved visual quality.
 
 ## What the user wants now
 
-The current priority is safe continuation from the published v81 app. Preserve
+The current priority is safe continuation from the published v82 app. Preserve
 the working whole-pet renderer, persistence, lifecycle, scenery, audio, and
 updater while making only well-validated improvements. The user remains
 unhappy with the underlying walk-cel quality: pets can look floaty, rigid,
@@ -697,13 +699,13 @@ release facts are the sections below.
 - Repository: `https://github.com/bottMage/zoeys-pocket-pet` (public).
 - Cloud checkout: `/workspace/zoeys-pocket-pet`.
 - Local branch name is `work`; completed changes are pushed to remote `main` using `git push origin HEAD:main`.
-- Latest pushed app commit: `4b5b4ed Point updater to v81 release`.
-- Latest public release/tag: `v81`.
-- Current Android version: `versionCode = 81`, `versionName = "81.0"` in `app/build.gradle.kts`.
-- The v81 release APK is published at
-  `https://github.com/bottMage/zoeys-pocket-pet/releases/download/v81/zoeys-pocket-pet-v81.apk?download=81`.
-- The v81 APK SHA-256 is
-  `874b66c624033bedcd0bd6dc9430e86fa16c95eeec397ea38dab1d24675030d7`.
+- Latest pushed app commit: `26bccde Add gentle general reminders and prepare v82`.
+- Latest public release/tag: `v82`.
+- Current Android version: `versionCode = 82`, `versionName = "82.0"` in `app/build.gradle.kts`.
+- The v82 release APK is published at
+  `https://github.com/bottMage/zoeys-pocket-pet/releases/download/v82/zoeys-pocket-pet-v82.apk?download=82`.
+- The v82 APK SHA-256 is
+  `78817a6a5c5ca3a428905e63e35457507b1823f903c676a07a2643ab8da0c678`.
 - The v79 care-button change was tested by the user on Zoey's phone and
   removed the repeated-OK-button freeze/ANR: it uses Android's built-in click
   effect rather than constructing a `ToneGenerator` on every tap. v79 did not
