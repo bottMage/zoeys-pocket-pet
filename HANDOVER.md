@@ -2,8 +2,10 @@
 
 ## Current release: contour-aligned upward color bleed — v108
 
-Published APK will be verified byte-for-byte against the signed local build
-after the v108 release asset is available.
+Published APK verified byte-for-byte against the signed local build:
+`https://github.com/bottMage/zoeys-pocket-pet/releases/download/v108/zoeys-pocket-pet-v108.apk?verify=108-2`.
+SHA-256: `6b98d1e031e8672e22bbfcce94f6e0a8439a24e18c7f27a87d5d75727a20dee2`.
+Build/lint pass. Existing signing certificate unchanged.
 
 The upward bleed now uses the exact shared top-segment coordinates from the
 care artwork instead of translating whole blob paths. The offline 592×480
