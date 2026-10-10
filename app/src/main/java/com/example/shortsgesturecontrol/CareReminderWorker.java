@@ -107,7 +107,11 @@ public final class CareReminderWorker extends Worker {
             .setStyle(new NotificationCompat.BigTextStyle().bigText(body))
             .setContentIntent(pending)
             .setAutoCancel(true)
-            .setOnlyAlertOnce(true)
+            // Repeated low-care reminders must make a fresh sound/visual
+            // alert when the child has not completed the needed action. Using
+            // the same notification id keeps the tray tidy, while omitting
+            // setOnlyAlertOnce lets the update alert again.
+            .setDefaults(NotificationCompat.DEFAULT_ALL)
             .setCategory(NotificationCompat.CATEGORY_REMINDER)
             .setPriority(NotificationCompat.PRIORITY_DEFAULT);
         NotificationManagerCompat.from(context).notify(CareReminderScheduler.NOTIFICATION_ID,notification.build());
@@ -120,6 +124,7 @@ public final class CareReminderWorker extends Worker {
     @android.annotation.SuppressLint("MissingPermission")
     private static void sendGeneralNotification(Context context,CareReminderPolicy.Snapshot snapshot,
                                                 SharedPreferences prefs,long now) {
+        CareReminderScheduler.ensureChannel(context);
         String name=prefs.getString("name","Mochi");
         String[] messages=snapshot.hatched
             ? new String[]{
@@ -143,6 +148,7 @@ public final class CareReminderWorker extends Worker {
             .setStyle(new NotificationCompat.BigTextStyle().bigText(body))
             .setContentIntent(pending)
             .setAutoCancel(true)
+            .setDefaults(NotificationCompat.DEFAULT_ALL)
             .setCategory(NotificationCompat.CATEGORY_SOCIAL)
             .setPriority(NotificationCompat.PRIORITY_DEFAULT);
         NotificationManagerCompat.from(context).notify(CareReminderScheduler.GENERAL_NOTIFICATION_ID,notification.build());
@@ -151,6 +157,7 @@ public final class CareReminderWorker extends Worker {
 
     @android.annotation.SuppressLint("MissingPermission")
     private static void sendSicknessNotification(Context context,SharedPreferences prefs,long now) {
+        CareReminderScheduler.ensureChannel(context);
         String name=prefs.getString("name","Mochi");
         String[] symptoms={"tummy ache","feeling lonely","being very sleepy","itchiness"};
         int symptom=prefs.getInt("symptom",PetLife.TUMMY_ACHE);
@@ -167,6 +174,7 @@ public final class CareReminderWorker extends Worker {
             .setStyle(new NotificationCompat.BigTextStyle().bigText(body))
             .setContentIntent(pending)
             .setAutoCancel(true)
+            .setDefaults(NotificationCompat.DEFAULT_ALL)
             .setCategory(NotificationCompat.CATEGORY_REMINDER)
             .setPriority(NotificationCompat.PRIORITY_DEFAULT);
         NotificationManagerCompat.from(context).notify(CareReminderScheduler.SICK_NOTIFICATION_ID,notification.build());

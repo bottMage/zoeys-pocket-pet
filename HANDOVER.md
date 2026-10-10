@@ -1,5 +1,16 @@
 # Zoey's Pocket Pet — cloud handover
 
+## Current release: reliable closed-app notifications — v117
+
+Pending publication. Care notifications now alert again on repeated reminders
+when the necessary action has not been taken, while reusing the same tray item
+so notifications do not pile up. The worker creates its notification channel
+even when the UI process has not been opened, and a boot/package-replaced
+receiver restores the WorkManager and projected-threshold schedules after an
+Android restart. Normal app closure/swiping away remains supported; Android
+does not allow any app to run alarms after the user explicitly force-stops it.
+Build/lint pending.
+
 ## Current release: full-size play-date pets — v116
 
 Published APK verified byte-for-byte against the signed local build:
