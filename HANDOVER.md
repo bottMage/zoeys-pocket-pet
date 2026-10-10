@@ -2,12 +2,15 @@
 
 ## Current release: full-size play-date pets — v116
 
-Pending publication. The play-date renderer now keeps both eggs at the normal
+Published APK verified byte-for-byte against the signed local build:
+`https://github.com/bottMage/zoeys-pocket-pet/releases/download/v116/zoeys-pocket-pet-v116.apk?verify=116-1`.
+SHA-256: `79cf261239ae56548b3bc0b800e7b4a8560ff793a10ebb138358c8e96b27c7fe`.
+Build/lint pass. The play-date renderer now keeps both eggs at the normal
 full egg scale and places them in a stable left/right arrangement. Live friend
 pets use the same rendered width as the local pet, animate with walking frames,
 and reverse at their separation boundary so they do not pass through one
 another. Play-session renderer state is reset cleanly when sessions start or
-end. Build/lint pass; no device or emulator was attached in this workspace.
+end. No device or emulator was attached in this workspace.
 
 ## Current release: reliable friend request delivery — v115
 
