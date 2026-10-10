@@ -1,18 +1,29 @@
 # Zoey's Pocket Pet — cloud handover
 
-## Current release: fully tiled liquid care panel — v93
+## Current release: bounded liquid care panel interaction — v94
+
+Published APK verified byte-for-byte against the signed local build:
+`https://github.com/bottMage/zoeys-pocket-pet/releases/download/v94/zoeys-pocket-pet-v94.apk?verify=94-1`.
+SHA-256: `c1f9b255569b1dfae370aff7ec649c81e0942c140c8713d7989ed192c5b9b073`.
+Build/lint pass. Existing signing certificate unchanged.
+
+The care panel keeps the true shared-boundary partition from v93, but now uses
+a pale rounded outer window so dark lines appear only between controls. While
+held, a care tile behaves like a bounded puddle: it follows the finger by a
+few dp, swells slightly, and nearby tiles yield/compress. The outer panel
+stays fitted and the same paths continue to drive hit regions.
+
+## Previous release: fully tiled liquid care panel — v93
 
 Published APK verified byte-for-byte against the signed local build:
 `https://github.com/bottMage/zoeys-pocket-pet/releases/download/v93/zoeys-pocket-pet-v93.apk?verify=93-1`.
 SHA-256: `888b66389868a783571161e4646af1f95d083922388ea5bd6905306d8f523f19`.
 Build/lint pass. Existing signing certificate unchanged.
 
-The care panel is now a true partition: neighboring buttons reuse the same
-curve in reverse, so FOOD, FUN, REST, CLEAN, HEALTH, and the secondary action
-layouts cover the entire panel. The dark underlay is only the intentional
-border/seam layer; no pink base can show through as a gap. Existing gradients,
-highlights, labels, hit regions, action effects, persistence, updater, and
-release flow are unchanged.
+The care panel became a true partition: neighboring buttons reuse the same
+curve in reverse, so the category and secondary action layouts fill the
+panel with no exposed pink gaps. v94 adds the corrected rounded outer window
+and bounded press movement.
 
 ## Previous release: contiguous black-seamed care panel — v92
 
@@ -868,10 +879,10 @@ release facts are the sections below.
 - Repository: `https://github.com/bottMage/zoeys-pocket-pet` (public).
 - Cloud checkout: `/workspace/zoeys-pocket-pet`.
 - Local branch name is `work`; completed changes are pushed to remote `main` using `git push origin HEAD:main`.
-- Latest pushed app commit: `2f57a69 Tile care controls into fitted liquid panel`.
-- Latest public release/tag: `v93`.
-- Current Android version: `versionCode = 93`, `versionName = "93.0"` in `app/build.gradle.kts`.
-- The v93 APK URL and verified checksum are recorded in the current release section above.
+- Latest pushed app commit: pending v94 publication.
+- Latest public release/tag: `v93` until the v94 tag and workflow asset complete.
+- Current Android version: `versionCode = 94`, `versionName = "94.0"` in `app/build.gradle.kts`.
+- The v94 local checksum is recorded in the current release section above; its public URL is added after the release asset returns HTTP 200.
 - The v79 care-button change was tested by the user on Zoey's phone and
   removed the repeated-OK-button freeze/ANR: it uses Android's built-in click
   effect rather than constructing a `ToneGenerator` on every tap. v79 did not
