@@ -501,13 +501,13 @@ private class PetGameView(context: Context, private val onPetCreated: () -> Unit
         PetKind.HAMSTER to R.drawable.companion_hamster,
         PetKind.DRAGON to R.drawable.companion_dragon
     )
-    private val buttons = ArrayList<ActionButton>()
+    private val buttons = ArrayList<CareButton>()
     private var message = "Hi ${pet.playerName}! I'm so happy to see you!"
     private var messageUntil = 0L
     private var messageColor = Color.WHITE
     private var animationStart = SystemClock.uptimeMillis()
     private var lastSaved = animationStart
-    private var pressedAction: Action? = null
+    private var pressedAction: CareAction? = null
     private var pressedPetTouch = false
     private var activeAction: Action? = null
     private var actionStartedAt = 0L
@@ -543,6 +543,8 @@ private class PetGameView(context: Context, private val onPetCreated: () -> Unit
     private var menuOpen = false
     private var menuAnimationStart = 0L
     private var menuOpening = true
+    private var careMenuOpen = false
+    private var careCategory: CareCategory? = null
     @Volatile private var weather = WeatherState()
     private var weatherLoading = false
     private var weatherStarted = false
@@ -2041,6 +2043,7 @@ private class PetGameView(context: Context, private val onPetCreated: () -> Unit
         val displayedMessage = when {
             pet.dead -> "A little friend, always remembered"
             !pet.hatched && now >= messageUntil -> "A little friend is growing inside"
+            pet.sick && now >= messageUntil -> "${pet.symptomLabel.lowercase().replace('_', ' ')} — medicine can help"
             pet.needsCritical && now >= messageUntil -> "Needs care — growth is slowed"
             else -> message
         }
@@ -2075,6 +2078,14 @@ private class PetGameView(context: Context, private val onPetCreated: () -> Unit
         textPaint.typeface = PaintTypeface.rounded()
         textPaint.color = Color.rgb(111, 82, 123)
         canvas.drawText("${pet.stage} • AGE ${pet.ageLabel} • CARE ${pet.carePercent.roundToInt()}%", dp(22f), top + dp(48f), textPaint)
+        if (pet.sick) {
+            textPaint.textAlign = Paint.Align.RIGHT
+            textPaint.typeface = PaintTypeface.bold()
+            textPaint.textSize = dp(10f)
+            textPaint.color = Color.rgb(185, 96, 104)
+            canvas.drawText(pet.symptomLabel, width - dp(22f), top + dp(48f), textPaint)
+            textPaint.textAlign = Paint.Align.LEFT
+        }
         textPaint.textSize = dp(11f)
         textPaint.typeface = PaintTypeface.bold()
         textPaint.color = Color.rgb(105, 78, 116)
@@ -2143,43 +2154,108 @@ private class PetGameView(context: Context, private val onPetCreated: () -> Unit
             canvas.drawText("Choose NEW PET whenever you're ready", width / 2f, rect.bottom + dp(31f), textPaint)
             return
         }
-        val top = height - dp(160f)
-        val gap = dp(10f)
-        val left = dp(18f)
-        val buttonWidth = (width - left * 2f - gap) / 2f
-        val buttonHeight = dp(55f)
-        // Match each control to the stat directly above it: hunger/warmth,
-        // joy/comfort, energy/rest, then clean/nest.
-        val actions = listOf(Action.FEED, Action.PLAY, Action.SLEEP, Action.BATH)
-        val fills = intArrayOf(Color.rgb(255, 225, 170), Color.rgb(255, 193, 216), Color.rgb(198, 205, 255), Color.rgb(190, 232, 220))
-        val labels = if (pet.hatched) listOf("FEED", "PLAY", "SLEEP", "BATH") else listOf("WARM", "SOOTHE", "REST", "TIDY")
-        val glyphs = listOf("+", "★", "Z", "✦")
-        for (i in actions.indices) {
-            val x = left + (i % 2) * (buttonWidth + gap)
-            val y = top + (i / 2) * (buttonHeight + gap)
-            val rect = RectF(x, y, x + buttonWidth, y + buttonHeight)
-            buttons.add(ActionButton(actions[i], rect))
-            // Draw a full, offset shadow behind the button instead of the
-            // heavy horizontal strip that made the controls look cluttered.
-            paint.color = Color.argb(24, 67, 39, 95)
-            canvas.drawRoundRect(RectF(rect.left, rect.top + dp(4f), rect.right, rect.bottom + dp(7f)), dp(18f), dp(18f), paint)
-            paint.color = if (pressedAction == actions[i]) Color.rgb(255, 255, 255) else fills[i]
-            canvas.drawRoundRect(rect, dp(18f), dp(18f), paint)
-            textPaint.typeface = PaintTypeface.bold()
-            textPaint.textSize = dp(17f)
-            textPaint.color = Color.rgb(76, 49, 94)
-            val iconSlot = dp(22f)
-            textPaint.textSize = dp(13f)
-            val labelWidth = textPaint.measureText(labels[i])
-            val groupWidth = iconSlot + dp(12f) + labelWidth
-            val groupLeft = rect.centerX() - groupWidth / 2f
-            textPaint.textSize = dp(17f)
-            textPaint.textAlign = Paint.Align.CENTER
-            canvas.drawText(glyphs[i], groupLeft + iconSlot / 2f, rect.top + dp(35f), textPaint)
-            textPaint.textSize = dp(13f)
-            textPaint.textAlign = Paint.Align.LEFT
-            canvas.drawText(labels[i], groupLeft + iconSlot + dp(12f), rect.top + dp(35f), textPaint)
+        if (!careMenuOpen) {
+            drawCareMenuButton(canvas)
+            return
         }
+        if (careCategory == null) {
+            for (category in CareCategory.values()) drawCareCategory(canvas, category)
+        } else {
+            val category = careCategory ?: return
+            val options = careOptions(category)
+            textPaint.textAlign = Paint.Align.CENTER
+            textPaint.typeface = PaintTypeface.bold()
+            textPaint.textSize = dp(11f)
+            textPaint.color = Color.rgb(111, 82, 123)
+            canvas.drawText("CHOOSE ${category.label}", width / 2f, height - dp(181f), textPaint)
+            val spacing = dp(102f)
+            val center = (options.size - 1) / 2f
+            for (index in options.indices) {
+                val action = options[index]
+                val x = width / 2f + (index - center) * spacing
+                val y = height - dp(137f)
+                val rect = RectF(x - dp(46f), y - dp(25f), x + dp(46f), y + dp(25f))
+                buttons.add(CareButton(action, rect))
+                drawCareOption(canvas, action, rect)
+            }
+        }
+        drawCareCenterButton(canvas)
+    }
+
+    private fun drawCareMenuButton(canvas: Canvas) {
+        val rect = RectF(width / 2f - dp(88f), height - dp(143f), width / 2f + dp(88f), height - dp(77f))
+        paint.color = Color.argb(24, 67, 39, 95)
+        canvas.drawRoundRect(RectF(rect.left, rect.top + dp(5f), rect.right, rect.bottom + dp(8f)), dp(24f), dp(24f), paint)
+        paint.color = Color.rgb(255, 218, 157)
+        canvas.drawRoundRect(rect, dp(24f), dp(24f), paint)
+        textPaint.textAlign = Paint.Align.CENTER
+        textPaint.typeface = PaintTypeface.bold()
+        textPaint.textSize = dp(18f)
+        textPaint.color = Color.rgb(76, 49, 94)
+        canvas.drawText("✦  CARE", rect.centerX(), rect.centerY() + dp(6f), textPaint)
+        textPaint.textSize = dp(10f)
+        textPaint.typeface = PaintTypeface.rounded()
+        canvas.drawText("choose something kind", rect.centerX(), rect.bottom - dp(9f), textPaint)
+    }
+
+    private fun drawCareCategory(canvas: Canvas, category: CareCategory) {
+        val rect = careCategoryRect(category)
+        paint.color = Color.argb(22, 67, 39, 95)
+        canvas.drawRoundRect(RectF(rect.left, rect.top + dp(3f), rect.right, rect.bottom + dp(5f)), dp(14f), dp(14f), paint)
+        paint.color = category.fill
+        canvas.drawRoundRect(rect, dp(14f), dp(14f), paint)
+        textPaint.textAlign = Paint.Align.CENTER
+        textPaint.typeface = PaintTypeface.bold()
+        textPaint.textSize = dp(16f)
+        textPaint.color = Color.rgb(76, 49, 94)
+        canvas.drawText(category.glyph, rect.centerX(), rect.top + dp(20f), textPaint)
+        textPaint.textSize = dp(8f)
+        canvas.drawText(category.label, rect.centerX(), rect.bottom - dp(7f), textPaint)
+    }
+
+    private fun drawCareOption(canvas: Canvas, action: CareAction, rect: RectF) {
+        paint.color = Color.argb(22, 67, 39, 95)
+        canvas.drawRoundRect(RectF(rect.left, rect.top + dp(3f), rect.right, rect.bottom + dp(5f)), dp(16f), dp(16f), paint)
+        paint.color = if (pressedAction == action) Color.WHITE else action.fill
+        canvas.drawRoundRect(rect, dp(16f), dp(16f), paint)
+        textPaint.textAlign = Paint.Align.CENTER
+        textPaint.typeface = PaintTypeface.bold()
+        textPaint.textSize = dp(15f)
+        textPaint.color = Color.rgb(76, 49, 94)
+        canvas.drawText(action.glyph, rect.centerX(), rect.top + dp(21f), textPaint)
+        textPaint.textSize = dp(9f)
+        canvas.drawText(action.label, rect.centerX(), rect.bottom - dp(8f), textPaint)
+    }
+
+    private fun drawCareCenterButton(canvas: Canvas) {
+        val rect = careCenterRect()
+        paint.color = Color.rgb(86, 58, 108)
+        canvas.drawRoundRect(rect, dp(19f), dp(19f), paint)
+        textPaint.textAlign = Paint.Align.CENTER
+        textPaint.typeface = PaintTypeface.bold()
+        textPaint.textSize = dp(11f)
+        textPaint.color = Color.WHITE
+        canvas.drawText(if (careCategory == null) "CLOSE" else "BACK", rect.centerX(), rect.centerY() + dp(4f), textPaint)
+    }
+
+    private fun careCategoryRect(category: CareCategory): RectF {
+        val index = CareCategory.values().indexOf(category)
+        val x = dp(36f) + index * (width - dp(72f)) / 4f
+        val y = height - dp(137f)
+        return RectF(x - dp(33f), y - dp(24f), x + dp(33f), y + dp(24f))
+    }
+
+    private fun careCenterRect(): RectF = RectF(
+        width / 2f - dp(48f), height - dp(72f), width / 2f + dp(48f), height - dp(22f)
+    )
+
+    private fun careOptions(category: CareCategory): List<CareAction> = when (category) {
+        CareCategory.FOOD -> listOf(CareAction.MEAL, CareAction.TREAT)
+        CareCategory.FUN -> listOf(CareAction.PLAY, CareAction.TOY, CareAction.CUDDLE)
+        CareCategory.REST -> listOf(CareAction.NAP, CareAction.SLEEP)
+        CareCategory.CLEAN -> listOf(CareAction.BATH, CareAction.TIDY)
+        CareCategory.HEALTH -> if (pet.sick) listOf(CareAction.CHECKUP, CareAction.MEDICINE)
+        else listOf(CareAction.CHECKUP, CareAction.VITAMIN)
     }
 
     private fun drawMenu(canvas: Canvas, now: Long) {
@@ -2303,6 +2379,8 @@ private class PetGameView(context: Context, private val onPetCreated: () -> Unit
         cloudSave.signOut()
         pet.resetLocal()
         CareReminderScheduler.clearNotification(appContext)
+        CareReminderScheduler.clearGeneralNotification(appContext)
+        CareReminderScheduler.clearSickNotification(appContext)
         setupMode = true
         setupKind = pet.kind
         setupName = pet.name
@@ -2338,13 +2416,24 @@ private class PetGameView(context: Context, private val onPetCreated: () -> Unit
 
     private fun statsTop(): Float = height - dp(330f)
 
+    private fun careMenuButtonRect(): RectF = RectF(
+        width / 2f - dp(88f), height - dp(143f), width / 2f + dp(88f), height - dp(77f)
+    )
+
     override fun onTouchEvent(event: MotionEvent): Boolean {
         if (menuOpen || menuAnimationStart != 0L) return handleMenuTouch(event)
         if (setupMode) return handleSetupTouch(event)
+        if (careMenuOpen) return handleCareMenuTouch(event)
         when (event.actionMasked) {
             MotionEvent.ACTION_DOWN -> {
                 if (menuButtonRect().contains(event.x, event.y)) {
                     setMenuOpen(true)
+                    return true
+                }
+                if (careMenuButtonRect().contains(event.x, event.y)) {
+                    careMenuOpen = true
+                    careCategory = null
+                    invalidate()
                     return true
                 }
                 pressedAction = buttons.firstOrNull { it.rect.contains(event.x, event.y) }?.action
@@ -2371,6 +2460,42 @@ private class PetGameView(context: Context, private val onPetCreated: () -> Unit
             MotionEvent.ACTION_CANCEL -> {
                 pressedAction = null
                 pressedPetTouch = false
+                invalidate()
+                return true
+            }
+        }
+        return true
+    }
+
+    private fun handleCareMenuTouch(event: MotionEvent): Boolean {
+        when (event.actionMasked) {
+            MotionEvent.ACTION_DOWN -> {
+                pressedAction = buttons.firstOrNull { it.rect.contains(event.x, event.y) }?.action
+                invalidate()
+                return true
+            }
+            MotionEvent.ACTION_UP -> {
+                if (careCenterRect().contains(event.x, event.y)) {
+                    if (careCategory == null) careMenuOpen = false else careCategory = null
+                } else if (careCategory == null) {
+                    val category = CareCategory.values().firstOrNull {
+                        careCategoryRect(it).contains(event.x, event.y)
+                    }
+                    if (category != null) careCategory = category else careMenuOpen = false
+                } else {
+                    val action = buttons.firstOrNull { it.rect.contains(event.x, event.y) }?.action
+                    if (action != null && action == pressedAction) {
+                        perform(action)
+                        careMenuOpen = false
+                        careCategory = null
+                    }
+                }
+                pressedAction = null
+                invalidate()
+                return true
+            }
+            MotionEvent.ACTION_CANCEL -> {
+                pressedAction = null
                 invalidate()
                 return true
             }
@@ -2496,25 +2621,26 @@ private class PetGameView(context: Context, private val onPetCreated: () -> Unit
             .show()
     }
 
-    private fun perform(action: Action) {
+    private fun perform(action: CareAction) {
         if (pet.dead) return
-        val result = pet.apply(action)
+        val result = pet.applyCare(action)
         if (pet.dead) { savePet(); invalidate(); return }
-        activeAction = action
+        activeAction = action.motionAction
         actionStartedAt = SystemClock.uptimeMillis()
-        actionUntil = actionStartedAt + if (action == Action.SLEEP) 60_000L else 1600L
+        actionUntil = actionStartedAt + action.durationMillis
         touchReactionStartedAt = 0L
         touchReactionUntil = 0L
         message = result.first
         messageColor = result.second
         messageUntil = SystemClock.uptimeMillis() + 3500L
-        playInteractionSound(action)
-        if (action == Action.SLEEP) startSleepAmbient() else stopInteractionSound()
+        playInteractionSound(action.motionAction)
+        if (action == CareAction.SLEEP) startSleepAmbient() else stopInteractionSound()
         savePet()
     }
 
     fun savePet(uploadCloud: Boolean = true) {
         pet.save()
+        if (!pet.sick) CareReminderScheduler.clearSickNotification(appContext)
         CareReminderScheduler.scheduleNextThreshold(appContext)
         val now = SystemClock.uptimeMillis()
         if (uploadCloud || now - lastCloudUploadAt >= CLOUD_UPLOAD_INTERVAL_MS) {
@@ -2609,7 +2735,7 @@ private class PetGameView(context: Context, private val onPetCreated: () -> Unit
 
     private fun dp(value: Float): Float = value * resources.displayMetrics.density
 
-    private data class ActionButton(val action: Action, val rect: RectF)
+    private data class CareButton(val action: CareAction, val rect: RectF)
 
     private data class WeatherState(
         val available: Boolean = false,
@@ -2622,6 +2748,40 @@ private class PetGameView(context: Context, private val onPetCreated: () -> Unit
     )
 
     private enum class Action { FEED, PLAY, BATH, SLEEP }
+
+    private enum class CareCategory(val label: String, val glyph: String, val fill: Int) {
+        FOOD("FOOD", "+", Color.rgb(255, 225, 170)),
+        FUN("FUN", "★", Color.rgb(255, 193, 216)),
+        REST("REST", "Z", Color.rgb(198, 205, 255)),
+        CLEAN("CLEAN", "✦", Color.rgb(190, 232, 220)),
+        HEALTH("HEALTH", "♥", Color.rgb(244, 208, 214))
+    }
+
+    private enum class CareAction(
+        val category: CareCategory,
+        val label: String,
+        val glyph: String,
+        val motionAction: Action,
+        val durationMillis: Long,
+        val fill: Int,
+        val primaryNeed: Int = -1,
+        val primaryBoost: Float = 0f,
+        val secondaryNeed: Int = -1,
+        val secondaryBoost: Float = 0f
+    ) {
+        MEAL(CareCategory.FOOD, "MEAL", "+", Action.FEED, 1600L, Color.rgb(255, 225, 170), 0, 18f),
+        TREAT(CareCategory.FOOD, "TREAT", "♥", Action.FEED, 1600L, Color.rgb(255, 214, 157), 0, 10f, 1, 5f),
+        PLAY(CareCategory.FUN, "PLAY", "★", Action.PLAY, 1600L, Color.rgb(255, 193, 216), 1, 16f),
+        TOY(CareCategory.FUN, "TOY", "●", Action.PLAY, 1600L, Color.rgb(255, 211, 227), 1, 10f),
+        CUDDLE(CareCategory.FUN, "CUDDLE", "♥", Action.PLAY, 1600L, Color.rgb(255, 202, 218), 1, 8f, 2, 4f),
+        NAP(CareCategory.REST, "NAP", "z", Action.SLEEP, 12000L, Color.rgb(211, 216, 255), 2, 12f),
+        SLEEP(CareCategory.REST, "SLEEP", "Zz", Action.SLEEP, 60000L, Color.rgb(198, 205, 255), 2, 22f),
+        BATH(CareCategory.CLEAN, "BATH", "✦", Action.BATH, 1600L, Color.rgb(190, 232, 220), 3, 25f),
+        TIDY(CareCategory.CLEAN, "TIDY", "✧", Action.BATH, 1600L, Color.rgb(207, 239, 226), 3, 12f),
+        CHECKUP(CareCategory.HEALTH, "CHECKUP", "♡", Action.PLAY, 1600L, Color.rgb(244, 208, 214)),
+        MEDICINE(CareCategory.HEALTH, "MEDICINE", "+", Action.FEED, 1600L, Color.rgb(239, 195, 207)),
+        VITAMIN(CareCategory.HEALTH, "VITAMIN", "●", Action.FEED, 1600L, Color.rgb(247, 220, 177), 2, 5f, 0, 5f)
+    }
 
     private enum class TransitionKind { HATCH, EVOLUTION, DEATH }
 
@@ -2751,6 +2911,11 @@ private class PetGameView(context: Context, private val onPetCreated: () -> Unit
             hatched = prefs.getBoolean("hatched", false)
             dead = prefs.getBoolean("dead", false)
             diedAt = prefs.getLong("died_at", 0L)
+            sick = prefs.getBoolean("sick", false)
+            symptom = prefs.getInt("symptom", PetLife.NO_SYMPTOM)
+            poorCareMillis = prefs.getLong("poor_care_millis", 0L).coerceAtLeast(0)
+            lowNeedMillis = prefs.getLong("low_need_millis", 0L).coerceAtLeast(0)
+            sickAt = prefs.getLong("sick_at", 0L).coerceAtLeast(0)
             oldAgeDeclined = prefs.getBoolean("old_age_declined", false)
             eggAgeMillis = prefs.getLong("egg_age_millis", 0L)
             eggProgressMillis = prefs.getLong("egg_progress_millis", 0L).toDouble()
@@ -2768,6 +2933,8 @@ private class PetGameView(context: Context, private val onPetCreated: () -> Unit
         val created: Boolean get() = life.created
         val hatched: Boolean get() = life.hatched
         val dead: Boolean get() = life.dead
+        val sick: Boolean get() = life.sick
+        val symptomLabel: String get() = life.symptomLabel()
         val needsCritical: Boolean get() = life.needsCritical()
         var name = prefs.getString("name", "Mochi") ?: "Mochi"
         var playerName = prefs.getString("player_name", "Zoey") ?: "Zoey"
@@ -2831,6 +2998,38 @@ private class PetGameView(context: Context, private val onPetCreated: () -> Unit
                 Action.PLAY -> (if (hatched) "Wheee! That was fun!" else "That made me wiggle!") to Color.rgb(191, 54, 112)
                 Action.BATH -> (if (hatched) "Sparkly clean!" else "Nest is nice and tidy!") to Color.rgb(39, 135, 119)
                 Action.SLEEP -> (if (hatched) "Sweet dreams, little one." else "Sleepy and safe.") to Color.rgb(75, 78, 173)
+            }
+        }
+
+        fun applyCare(action: CareAction): Pair<String, Int> {
+            updateFromClock()
+            when (action) {
+                CareAction.CHECKUP -> return if (sick) {
+                    "${name} needs a little medicine." to Color.rgb(185, 96, 104)
+                } else {
+                    "${name} looks happy and healthy!" to Color.rgb(73, 139, 112)
+                }
+                CareAction.MEDICINE -> {
+                    life.cure()
+                    return "Medicine helped! Feeling better!" to Color.rgb(185, 96, 104)
+                }
+                else -> {
+                    if (action.primaryNeed >= 0) life.careNeed(action.primaryNeed, action.primaryBoost)
+                    if (action.secondaryNeed >= 0) life.careNeed(action.secondaryNeed, action.secondaryBoost)
+                }
+            }
+            return when (action) {
+                CareAction.MEAL -> (if (hatched) "Nom nom! A lovely meal!" else "Toasty and warm!") to Color.rgb(172, 86, 40)
+                CareAction.TREAT -> (if (hatched) "A tiny tasty treat!" else "A cozy little treat!") to Color.rgb(172, 86, 40)
+                CareAction.PLAY -> (if (hatched) "Wheee! That was fun!" else "That made me wiggle!") to Color.rgb(191, 54, 112)
+                CareAction.TOY -> "A favorite toy!" to Color.rgb(191, 54, 112)
+                CareAction.CUDDLE -> "A warm cuddle!" to Color.rgb(191, 54, 112)
+                CareAction.NAP -> "A short, cozy nap." to Color.rgb(75, 78, 173)
+                CareAction.SLEEP -> "Sweet dreams, little one." to Color.rgb(75, 78, 173)
+                CareAction.BATH -> (if (hatched) "Sparkly clean!" else "Nest is nice and tidy!") to Color.rgb(39, 135, 119)
+                CareAction.TIDY -> (if (hatched) "Everything is tidy!" else "A lovely tidy nest!") to Color.rgb(39, 135, 119)
+                CareAction.VITAMIN -> "A little healthy boost!" to Color.rgb(185, 96, 104)
+                CareAction.CHECKUP, CareAction.MEDICINE -> "" to Color.WHITE
             }
         }
 
@@ -2920,6 +3119,8 @@ private class PetGameView(context: Context, private val onPetCreated: () -> Unit
             "evolutionMillis" to life.evolutionMillis.toLong(), "adultAgeMillis" to life.adultAgeMillis,
             "adultClockReady" to life.adultClockReady,
             "oldAgeDeclined" to life.oldAgeDeclined,
+            "sick" to life.sick, "symptom" to life.symptom.toLong(),
+            "poorCareMillis" to life.poorCareMillis, "lowNeedMillis" to life.lowNeedMillis, "sickAt" to life.sickAt,
             "dead" to dead, "diedAt" to life.diedAt, "petId" to petId, "createdAt" to createdAt, "historyJson" to historyJson
         )
 
@@ -2951,6 +3152,12 @@ private class PetGameView(context: Context, private val onPetCreated: () -> Unit
             life.adultAgeMillis = long("adultAgeMillis", 0)
             life.adultClockReady = data["adultClockReady"] as? Boolean ?: (generation < 2 || data.containsKey("adultAgeMillis"))
             life.oldAgeDeclined = data["oldAgeDeclined"] as? Boolean ?: false
+            life.sick = data["sick"] as? Boolean ?: false
+            life.symptom = long("symptom", PetLife.NO_SYMPTOM.toLong()).toInt()
+                .coerceIn(PetLife.NO_SYMPTOM, PetLife.ITCHY)
+            life.poorCareMillis = long("poorCareMillis", 0L).coerceAtLeast(0)
+            life.lowNeedMillis = long("lowNeedMillis", 0L).coerceAtLeast(0)
+            life.sickAt = long("sickAt", 0L).coerceAtLeast(0)
             lastUpdate = long("lastUpdate", lastUpdate)
             lastSavedAt = long("savedAt", lastSavedAt)
             petId = data["petId"] as? String ?: petId
@@ -2973,6 +3180,8 @@ private class PetGameView(context: Context, private val onPetCreated: () -> Unit
                 .putLong("evolution_millis", life.evolutionMillis.toLong()).putLong("adult_age_millis", life.adultAgeMillis)
                 .putBoolean("adult_clock_ready", life.adultClockReady)
                 .putBoolean("old_age_declined", life.oldAgeDeclined)
+                .putBoolean("sick", life.sick).putInt("symptom", life.symptom)
+                .putLong("poor_care_millis", life.poorCareMillis).putLong("low_need_millis", life.lowNeedMillis).putLong("sick_at", life.sickAt)
                 .putBoolean("dead", dead).putLong("died_at", life.diedAt)
                 .putString("pet_id", petId).putLong("created_at", createdAt).putString("history_json", historyJson)
                 .apply()

@@ -49,6 +49,10 @@ public final class CareReminderCheck {
             "General reminder did not arrive after the idle period");
         require(!CareReminderPolicy.shouldSendGeneralReminder(true,false,now,now-3*HOUR,now-60*60*1000L),
             "General reminder ignored its repeat cadence");
-        System.out.println("PASS: low threshold duration, overall care risk, cooldown and recovery");
+        require(CareReminderPolicy.shouldSendSicknessReminder(true,now,0),
+            "Sickness reminder did not send initially");
+        require(!CareReminderPolicy.shouldSendSicknessReminder(true,now,now-2*HOUR),
+            "Sickness reminder repeated too quickly");
+        System.out.println("PASS: low threshold duration, overall care risk, cooldown, recovery and sickness reminders");
     }
 }

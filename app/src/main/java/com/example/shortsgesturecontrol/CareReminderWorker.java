@@ -37,9 +37,18 @@ public final class CareReminderWorker extends Worker {
             prefs.getLong("last_update",now));
         long lastSent=prefs.getLong(CareReminderScheduler.PREF_LAST_SENT,0L);
         CareReminderPolicy.Evaluation evaluation=CareReminderPolicy.evaluate(snapshot,now,lastSent);
+        boolean sick=prefs.getBoolean("sick",false);
         if(evaluation.recovered) {
             prefs.edit().remove(CareReminderScheduler.PREF_LAST_SENT).apply();
             CareReminderScheduler.clearNotification(context);
+        }
+        if(!sick) {
+            prefs.edit().remove(CareReminderScheduler.PREF_LAST_SICK_SENT).apply();
+            CareReminderScheduler.clearSickNotification(context);
+        } else if(snapshot.created&&!snapshot.dead&&CareReminderPolicy.shouldSendSicknessReminder(
+            true,now,prefs.getLong(CareReminderScheduler.PREF_LAST_SICK_SENT,0L))) {
+            sendSicknessNotification(context,prefs,now);
+            return finish(context);
         }
         if(evaluation.shouldNotify) {
             sendCareNotification(context,snapshot,evaluation,prefs,now);
@@ -138,6 +147,31 @@ public final class CareReminderWorker extends Worker {
             .setPriority(NotificationCompat.PRIORITY_DEFAULT);
         NotificationManagerCompat.from(context).notify(CareReminderScheduler.GENERAL_NOTIFICATION_ID,notification.build());
         prefs.edit().putLong(CareReminderScheduler.PREF_LAST_GENERAL_SENT,now).apply();
+    }
+
+    @android.annotation.SuppressLint("MissingPermission")
+    private static void sendSicknessNotification(Context context,SharedPreferences prefs,long now) {
+        String name=prefs.getString("name","Mochi");
+        String[] symptoms={"tummy ache","feeling lonely","being very sleepy","itchiness"};
+        int symptom=prefs.getInt("symptom",PetLife.TUMMY_ACHE);
+        symptom=Math.max(0,Math.min(symptoms.length-1,symptom));
+        String body=name+" isn't feeling well — I have a "+symptoms[symptom]+". Please give me medicine.";
+        Intent intent=new Intent(context,MainActivity.class)
+            .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK|Intent.FLAG_ACTIVITY_CLEAR_TOP);
+        PendingIntent pending=PendingIntent.getActivity(context,CareReminderScheduler.SICK_NOTIFICATION_ID,intent,
+            PendingIntent.FLAG_UPDATE_CURRENT|PendingIntent.FLAG_IMMUTABLE);
+        NotificationCompat.Builder notification=new NotificationCompat.Builder(context,CareReminderScheduler.CHANNEL_ID)
+            .setSmallIcon(R.drawable.ic_notification)
+            .setContentTitle("MochiGotchi needs a little help")
+            .setContentText(body)
+            .setStyle(new NotificationCompat.BigTextStyle().bigText(body))
+            .setContentIntent(pending)
+            .setAutoCancel(true)
+            .setCategory(NotificationCompat.CATEGORY_REMINDER)
+            .setPriority(NotificationCompat.PRIORITY_DEFAULT);
+        NotificationManagerCompat.from(context).notify(CareReminderScheduler.SICK_NOTIFICATION_ID,notification.build());
+        prefs.edit().putLong(CareReminderScheduler.PREF_LAST_SICK_SENT,now)
+            .putLong(CareReminderScheduler.PREF_LAST_GENERAL_SENT,now).apply();
     }
 
     private static Result finish(Context context) {

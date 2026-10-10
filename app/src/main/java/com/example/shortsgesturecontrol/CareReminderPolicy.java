@@ -14,6 +14,7 @@ public final class CareReminderPolicy {
     /** Severe projected needs can worsen materially before the next normal check-in. */
     public static final long SEVERE_REPEAT_AFTER_MILLIS=90*60*1000L;
     public static final long GENERAL_REMINDER_AFTER_MILLIS=2*60*60*1000L;
+    public static final long SICK_REMINDER_AFTER_MILLIS=3*60*60*1000L;
     private static final float SEVERE_NEED_THRESHOLD=10f;
     private static final float SEVERE_AVERAGE_THRESHOLD=50f;
     private static final long MAX_ELAPSED_MILLIS=3650L*PetGrowth.DAY_MILLIS;
@@ -99,6 +100,10 @@ public final class CareReminderPolicy {
         if(!created||dead||lastActivityAt<=0)return false;
         return now-lastActivityAt>=GENERAL_REMINDER_AFTER_MILLIS&&
             (lastSentAt<=0||now-lastSentAt>=GENERAL_REMINDER_AFTER_MILLIS);
+    }
+
+    public static boolean shouldSendSicknessReminder(boolean sick,long now,long lastSentAt) {
+        return sick&&(lastSentAt<=0||now-lastSentAt>=SICK_REMINDER_AFTER_MILLIS);
     }
 
     private static float averageOf(float[] values) {

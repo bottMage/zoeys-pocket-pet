@@ -1,8 +1,30 @@
 # Zoey's Pocket Pet — cloud handover
 
-## Current release: gentle general reminders — v82
+## Current release candidate: radial care menu and gentle health state — v83
 
-The v82 candidate keeps v81's threshold-triggered care reminders and adds
+The v83 candidate keeps v82's threshold, sickness, and gentle general reminder
+work while replacing the four-button bottom strip with a kid-friendly two-level
+care menu. A central CARE button opens FOOD, FUN, REST, CLEAN, and HEALTH
+categories; each category then offers focused actions such as meals and treats,
+toys and cuddles, naps and sleep, bath and tidy, or checkup, medicine, and
+vitamin. Existing pet/scenery artwork, animation, audio, saves, Firebase sync,
+updater, and release signing are unchanged. The menu reuses the existing action
+motion and feedback paths, so the visible change is confined to the bottom UI.
+
+The health model remains elapsed-time based and offline-safe. If overall care is
+poor for about four hours, or one need remains critically low for about two
+hours, the pet becomes sick with a gentle symptom state; medicine clears it and
+restores normal growth. Health state is saved locally and in Firestore. Closed
+app reminders can repeat sickness help every three hours until medicine is
+given, while existing stat-threshold and cute two-hour general reminders remain
+rate-limited and battery-conscious.
+
+The v83 APK will use the unchanged cloud certificate and will be published at
+`https://github.com/bottMage/zoeys-pocket-pet/releases/download/v83/zoeys-pocket-pet-v83.apk?download=83`.
+
+## Previous release: gentle general reminders — v82
+
+The v82 release kept v81's threshold-triggered care reminders and added
 gentle general check-ins while the app is closed. After about two hours away,
 the pet or egg can send a short, age-appropriate message, repeating no more
 often than every two hours. The idle timer resets when the app returns to the
@@ -683,7 +705,7 @@ do not claim measured device frame rates or final user-approved visual quality.
 
 ## What the user wants now
 
-The current priority is safe continuation from the published v82 app. Preserve
+The current priority is safe continuation from the v83 app. Preserve
 the working whole-pet renderer, persistence, lifecycle, scenery, audio, and
 updater while making only well-validated improvements. The user remains
 unhappy with the underlying walk-cel quality: pets can look floaty, rigid,
@@ -700,8 +722,8 @@ release facts are the sections below.
 - Cloud checkout: `/workspace/zoeys-pocket-pet`.
 - Local branch name is `work`; completed changes are pushed to remote `main` using `git push origin HEAD:main`.
 - Latest pushed app commit: `26bccde Add gentle general reminders and prepare v82`.
-- Latest public release/tag: `v82`.
-- Current Android version: `versionCode = 82`, `versionName = "82.0"` in `app/build.gradle.kts`.
+- Latest public release/tag: `v82` (v83 is the current release candidate).
+- Current Android version: `versionCode = 83`, `versionName = "83.0"` in `app/build.gradle.kts`.
 - The v82 release APK is published at
   `https://github.com/bottMage/zoeys-pocket-pet/releases/download/v82/zoeys-pocket-pet-v82.apk?download=82`.
 - The v82 APK SHA-256 is

@@ -8,6 +8,9 @@ public final class PetLife {
     public boolean oldAgeDeclined;
     public int generation;
     public long ageMillis,eggAgeMillis,adultAgeMillis,goodCareMillis,totalCareMillis,diedAt;
+    public long poorCareMillis,lowNeedMillis,sickAt;
+    public boolean sick;
+    public int symptom=NO_SYMPTOM;
     public double eggProgressMillis,evolutionMillis;
     private static final long HOUR=60*60*1000L;
     private static final float[] BOOST={18,16,22,25};
@@ -18,6 +21,15 @@ public final class PetLife {
     // care a recurring part of the day without making neglect lethal.
     private static final double[] LIVE_DECAY={.14,.090,.110,.060};
     private static final double[] EGG_DECAY={.040,.025,.030,.018};
+    private static final double SICK_AVERAGE_THRESHOLD=45.0;
+    private static final float LOW_NEED_SICK_THRESHOLD=8f;
+    private static final long SICK_AFTER_MILLIS=4*HOUR;
+    private static final long LOW_NEED_SICK_AFTER_MILLIS=2*HOUR;
+    public static final int NO_SYMPTOM=-1;
+    public static final int TUMMY_ACHE=0;
+    public static final int LONELY=1;
+    public static final int VERY_SLEEPY=2;
+    public static final int ITCHY=3;
 
     public double average() {return (needs[0]+needs[1]+needs[2]+needs[3])/4.0;}
     public double carePercent() {return totalCareMillis==0?0:100.0*goodCareMillis/totalCareMillis;}
@@ -35,6 +47,7 @@ public final class PetLife {
     public void createEgg() {
         created=true;hatched=false;dead=false;generation=0;
         ageMillis=eggAgeMillis=adultAgeMillis=goodCareMillis=totalCareMillis=diedAt=0;
+        poorCareMillis=lowNeedMillis=sickAt=0;sick=false;symptom=NO_SYMPTOM;
         eggProgressMillis=evolutionMillis=0;adultClockReady=true;
         hatchEvent=evolutionEvent=deathEvent=false;oldAgeDeclined=false;
         needs[0]=82;needs[1]=88;needs[2]=84;needs[3]=92;
@@ -56,6 +69,7 @@ public final class PetLife {
         if(!hatchReady())return;
         hatched=true;hatchEvent=false;ageMillis=0;
         goodCareMillis=totalCareMillis=0;evolutionMillis=0;adultAgeMillis=0;
+        poorCareMillis=lowNeedMillis=sickAt=0;sick=false;symptom=NO_SYMPTOM;
         needs[0]=82;needs[1]=88;needs[2]=84;needs[3]=92;
     }
 
@@ -80,7 +94,28 @@ public final class PetLife {
         if(!created||dead)return;
         int need=NEED_FOR_ACTION[action];
         // Exactly one metric changes. Feeding never affects play or rest, etc.
-        needs[need]=Math.min(100,needs[need]+BOOST[action]);
+        careNeed(need,BOOST[action]);
+    }
+
+    public void careNeed(int need,float boost) {
+        if(need<0||need>=needs.length)throw new IllegalArgumentException("Unknown need index");
+        if(!created||dead)return;
+        needs[need]=Math.min(100,needs[need]+Math.max(0,boost));
+    }
+
+    public void cure() {
+        if(!created||dead)return;
+        sick=false;symptom=NO_SYMPTOM;poorCareMillis=lowNeedMillis=0;
+    }
+
+    public String symptomLabel() {
+        switch(symptom) {
+            case TUMMY_ACHE:return "TUMMY ACHE";
+            case LONELY:return "LONELY";
+            case VERY_SLEEPY:return "VERY SLEEPY";
+            case ITCHY:return "ITCHY";
+            default:return "UNDER THE WEATHER";
+        }
     }
 
     public void advance(long elapsedMillis,long now) {
@@ -96,9 +131,11 @@ public final class PetLife {
             double[] decay=hatched?LIVE_DECAY:EGG_DECAY;
             for(int i=0;i<needs.length;i++)needs[i]=(float)Math.max(0,needs[i]-step/60000.0*decay[i]);
             double after=average();
+            updateHealth(after,step,clock+step);
             totalCareMillis+=step;
             if((before+after)*.5>=65)goodCareMillis+=step;
             double growing=step*(PetGrowth.careSpeed(before)+PetGrowth.careSpeed(after))*.5;
+            if(sick)growing*=.6;
             if(!liveAtStart) {
                 eggAgeMillis+=step;eggProgressMillis+=growing;
                 if(eggProgressMillis>=PetGrowth.INCUBATION_MILLIS) {
@@ -119,6 +156,20 @@ public final class PetLife {
                 }
             }
             clock+=step;remaining-=step;
+        }
+    }
+
+    private void updateHealth(double averageAfter,long step,long healthAt) {
+        if(averageAfter<SICK_AVERAGE_THRESHOLD)poorCareMillis+=step;
+        else poorCareMillis=Math.max(0,poorCareMillis-step);
+        float lowest=100f;int lowestIndex=TUMMY_ACHE;
+        for(int index=0;index<needs.length;index++)if(needs[index]<lowest) {
+            lowest=needs[index];lowestIndex=index;
+        }
+        if(lowest<=LOW_NEED_SICK_THRESHOLD)lowNeedMillis+=step;
+        else lowNeedMillis=Math.max(0,lowNeedMillis-step);
+        if(!sick&&(poorCareMillis>=SICK_AFTER_MILLIS||lowNeedMillis>=LOW_NEED_SICK_AFTER_MILLIS)) {
+            sick=true;symptom=lowestIndex;sickAt=healthAt;
         }
     }
 }
