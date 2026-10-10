@@ -2,8 +2,10 @@
 
 ## Current release: seamless per-button stats fade — v105
 
-Published APK will be verified byte-for-byte against the signed local build
-after the v105 release asset is available.
+Published APK verified byte-for-byte against the signed local build:
+`https://github.com/bottMage/zoeys-pocket-pet/releases/download/v105/zoeys-pocket-pet-v105.apk?verify=105-2`.
+SHA-256: `95b9fdcfb85cc19e61315146bb546c931f2e1f99bc57ccc60eab54923fabbf4c`.
+Build/lint pass. Existing signing certificate unchanged.
 
 The care surface and the stats background now meet at the exact same pale pink
 value, and each upper button starts its individual color fade from that value.
