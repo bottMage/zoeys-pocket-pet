@@ -1,6 +1,11 @@
 # Zoey's Pocket Pet — cloud handover
 
-## Current release candidate: contiguous black-seamed care panel — v92
+## Current release: contiguous black-seamed care panel — v92
+
+Published APK verified byte-for-byte against the signed local build:
+`https://github.com/bottMage/zoeys-pocket-pet/releases/download/v92/zoeys-pocket-pet-v92.apk?verify=92-2`.
+SHA-256: `5dcdd42d062aaef87b9a3310cd07082ed893561c65802a5e4a5433a5a25f158f`.
+Build/lint pass. Existing signing certificate unchanged.
 
 The v92 candidate corrects the remaining reference mismatch in v91. The care
 panel underlay now uses the dark seam color, and every blob keeps its dark
@@ -833,7 +838,7 @@ do not claim measured device frame rates or final user-approved visual quality.
 
 ## What the user wants now
 
-The current priority is safe continuation from the v91 app. Preserve
+The current priority is safe continuation from the v92 app. Preserve
 the working whole-pet renderer, persistence, lifecycle, scenery, audio, and
 updater while making only well-validated improvements. The user remains
 unhappy with the underlying walk-cel quality: pets can look floaty, rigid,
@@ -849,10 +854,10 @@ release facts are the sections below.
 - Repository: `https://github.com/bottMage/zoeys-pocket-pet` (public).
 - Cloud checkout: `/workspace/zoeys-pocket-pet`.
 - Local branch name is `work`; completed changes are pushed to remote `main` using `git push origin HEAD:main`.
-- Latest pushed app commit: `9f42846 Trace interlocking care controls from reference, prepare v91`.
-- Latest public release/tag: `v91`.
-- Current Android version: `versionCode = 91`, `versionName = "91.0"` in `app/build.gradle.kts`.
-- The v91 APK URL and verified checksum are recorded in the current release section above.
+- Latest pushed app commit: `4603fa8 Close care shape seams with dark interlocking borders`.
+- Latest public release/tag: `v92`.
+- Current Android version: `versionCode = 92`, `versionName = "92.0"` in `app/build.gradle.kts`.
+- The v92 APK URL and verified checksum are recorded in the current release section above.
 - The v79 care-button change was tested by the user on Zoey's phone and
   removed the repeated-OK-button freeze/ANR: it uses Android's built-in click
   effect rather than constructing a `ToneGenerator` on every tap. v79 did not
