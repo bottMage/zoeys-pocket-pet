@@ -2202,8 +2202,8 @@ private class PetGameView(context: Context, private val onPetCreated: () -> Unit
             val panel = carePanelRect()
             val definitions = when (count) {
                 0 -> CareBlobArt.categories
-                2 -> CareBlobArt.two + CareBlobArt.back
-                else -> CareBlobArt.three + CareBlobArt.back
+                2 -> CareBlobArt.two + listOf(CareBlobArt.backTwo)
+                else -> CareBlobArt.three + listOf(CareBlobArt.backThree)
             }
             val matrix = android.graphics.Matrix().apply {
                 setScale(panel.width() / 592f, panel.height() / 400f)
