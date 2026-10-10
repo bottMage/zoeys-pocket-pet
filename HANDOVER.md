@@ -1,6 +1,19 @@
 # Zoey's Pocket Pet — cloud handover
 
-## Current release: contour-aligned upward color bleed — v108
+## Current release: resume-safe cloud snapshot sync — v109
+
+Published APK verified byte-for-byte against the signed local build:
+`https://github.com/bottMage/zoeys-pocket-pet/releases/download/v109/zoeys-pocket-pet-v109.apk?verify=109-1`.
+SHA-256: `bff756a9115d65846852f2c9fe92410fa7fe78683e8bdd449e043fe2511cc101`.
+Build/lint pass. Existing signing certificate unchanged.
+
+When the app returns to the foreground, it now refreshes the signed-in
+account's shared snapshot before allowing local saves to upload. Firestore
+uploads are also blocked while that restore is in flight, preventing a stale
+backgrounded device from overwriting newer progress made on another device.
+The winning snapshot is then advanced for elapsed time and saved normally.
+
+## Previous release: contour-aligned upward color bleed — v108
 
 Published APK verified byte-for-byte against the signed local build:
 `https://github.com/bottMage/zoeys-pocket-pet/releases/download/v108/zoeys-pocket-pet-v108.apk?verify=108-2`.

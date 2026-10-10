@@ -127,6 +127,10 @@ class MainActivity : Activity() {
         if (::gameView.isInitialized) {
             CareReminderScheduler.markActivityVisible(this)
             gameView.resumeForActivity()
+            // A second device may have advanced the shared pet while this
+            // activity was in the background. Read that snapshot before any
+            // resumed interaction is allowed to upload local state.
+            if (gameView.hasCloudAccount()) gameView.refreshCloudOnResume()
             gameView.resumePendingInstall()
         }
     }
@@ -543,6 +547,9 @@ private class PetGameView(context: Context, private val onPetCreated: () -> Unit
     // Never write to Firestore until the first read for this session succeeds.
     // This protects an existing backup from onPause(), retries, and setup UI.
     private var cloudSyncReady = false
+    // Returning from the background must finish its read before a local save
+    // can upload; otherwise a stale second device can overwrite newer work.
+    private var cloudRestoreInFlight = false
     private var menuOpen = false
     private var menuAnimationStart = 0L
     private var menuOpening = true
@@ -2896,7 +2903,7 @@ private class PetGameView(context: Context, private val onPetCreated: () -> Unit
 
     fun syncCloud() {
         val restoringFreshInstall = preferCloudRestore
-        cloudSave.restore(preferCloud = restoringFreshInstall) { result ->
+        requestCloudRestore(restoringFreshInstall) { result ->
             if (restoringFreshInstall) {
                 finishCloudRestore(result)
             } else {
@@ -2908,15 +2915,51 @@ private class PetGameView(context: Context, private val onPetCreated: () -> Unit
         }
     }
 
+    fun refreshCloudOnResume() {
+        val restoringFreshInstall = preferCloudRestore
+        requestCloudRestore(restoringFreshInstall) { result ->
+            if (restoringFreshInstall) {
+                finishCloudRestore(result)
+                return@requestCloudRestore
+            }
+            when (result) {
+                CloudRestoreResult.RESTORED,
+                CloudRestoreResult.KEPT_LOCAL,
+                CloudRestoreResult.NO_CLOUD_BACKUP -> {
+                    // Apply time spent away after selecting the winning
+                    // snapshot, then persist that caught-up state.
+                    pet.updateFromClock()
+                    savePet()
+                    invalidate()
+                }
+                CloudRestoreResult.FAILED -> {
+                    Toast.makeText(appContext, "Cloud backup could not sync yet; this phone still has its progress.", Toast.LENGTH_LONG).show()
+                }
+            }
+        }
+    }
+
     fun restoreCloudAtStartup() {
-        cloudSave.restore(preferCloud = preferCloudRestore) { result ->
+        requestCloudRestore(preferCloudRestore) { result ->
             finishCloudRestore(result)
         }
     }
 
     fun restoreAfterSignIn() {
-        cloudSave.restore(preferCloud = preferCloudRestore) { result ->
+        requestCloudRestore(preferCloudRestore) { result ->
             finishCloudRestore(result)
+        }
+    }
+
+    private fun requestCloudRestore(
+        preferCloud: Boolean,
+        onComplete: (CloudRestoreResult) -> Unit
+    ) {
+        if (cloudRestoreInFlight) return
+        cloudRestoreInFlight = true
+        cloudSave.restore(preferCloud = preferCloud) { result ->
+            cloudRestoreInFlight = false
+            onComplete(result)
         }
     }
 
@@ -3070,7 +3113,7 @@ private class PetGameView(context: Context, private val onPetCreated: () -> Unit
 
         fun upload() {
             val user = auth.currentUser ?: return
-            if (!cloudSyncReady || !pet.hasCreatedPet()) return
+            if (!cloudSyncReady || cloudRestoreInFlight || !pet.hasCreatedPet()) return
             if (pet.savedAt == 0L) pet.save()
             val data = pet.cloudData().toMutableMap()
             data["updatedAt"] = FieldValue.serverTimestamp()
