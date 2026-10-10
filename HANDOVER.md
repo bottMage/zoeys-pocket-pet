@@ -2,8 +2,10 @@
 
 ## Current release: upward color bleed into stats — v106
 
-Published APK will be verified byte-for-byte against the signed local build
-after the v106 release asset is available.
+Published APK verified byte-for-byte against the signed local build:
+`https://github.com/bottMage/zoeys-pocket-pet/releases/download/v106/zoeys-pocket-pet-v106.apk?verify=106-2`.
+SHA-256: `9401d61de3bc8123387ca58239f3deea75df4112481ca1aca447ca951975d9ef`.
+Build/lint pass. Existing signing certificate unchanged.
 
 The upper care buttons are now saturated at their real top contour. A short,
 per-button transparent color extension dissolves upward into the stats panel,
