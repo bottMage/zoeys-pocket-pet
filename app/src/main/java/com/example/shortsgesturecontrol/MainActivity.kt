@@ -2358,7 +2358,18 @@ private class PetGameView(context: Context, private val onPetCreated: () -> Unit
         paint.strokeJoin = Paint.Join.ROUND
         paint.strokeCap = Paint.Cap.ROUND
         paint.color = Color.rgb(35, 25, 43)
+        // The care surface is flush with the stats area and the screen edges.
+        // Keep the dark stroke only on internal joins; clipping its outer half
+        // prevents a second, heavy frame from being drawn over the blend.
+        val panel = carePanelRect()
+        val strokeInset = paint.strokeWidth + dp(1f)
+        canvas.save()
+        canvas.clipRect(
+            panel.left + strokeInset, panel.top + strokeInset,
+            panel.right - strokeInset, panel.bottom - strokeInset
+        )
         canvas.drawPath(path, paint)
+        canvas.restore()
         paint.style = Paint.Style.FILL
         canvas.save()
         canvas.clipPath(path)

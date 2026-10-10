@@ -1,6 +1,15 @@
 # Zoey's Pocket Pet — cloud handover
 
-## Current release: blended stats and care panel — v100
+## Current release: flush stats-to-care transition — v101
+
+Published APK will be verified byte-for-byte against the signed local build
+after the v101 release asset is available.
+
+The care tile stroke is now clipped at the outer panel contour, keeping dark
+internal liquid seams while removing the heavy frame between the stats and
+care areas. The existing stats gradient supplies the visual transition.
+
+## Previous release: blended stats and care panel — v100
 
 Published APK verified byte-for-byte against the signed local build:
 `https://github.com/bottMage/zoeys-pocket-pet/releases/download/v100/zoeys-pocket-pet-v100.apk?verify=100-3`.
