@@ -2,12 +2,14 @@
 
 ## Current release: stable play sessions and real friend pet names — v121
 
-Pending publication. Play sessions now end only from the explicit CLOSE action
+Published APK verified byte-for-byte against the signed local build:
+`https://github.com/bottMage/zoeys-pocket-pet/releases/download/v121/zoeys-pocket-pet-v121.apk?verify=121-1`.
+SHA-256: `98e78f6ed575f588f6108fee551c8968e01b6127b8644c031449de9ca4e61821`.
+Build/lint pass. Play sessions now end only from the explicit CLOSE action
 or a real remote `goodbye` event; session status updates are no longer used as
 a teardown signal. Play-request creation resolves the recipient's public
 profile first, and active sessions refresh their remote pet data when that
-profile arrives, preventing blank or generic `Mochi` labels. Build/lint
-pending.
+profile arrives, preventing blank or generic `Mochi` labels.
 
 ## Current release: keep active play sessions from false teardown — v120
 
