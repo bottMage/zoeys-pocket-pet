@@ -2,8 +2,10 @@
 
 ## Current release: top-button stats fade — v103
 
-Published APK will be verified byte-for-byte against the signed local build
-after the v103 release asset is available.
+Published APK verified byte-for-byte against the signed local build:
+`https://github.com/bottMage/zoeys-pocket-pet/releases/download/v103/zoeys-pocket-pet-v103.apk?verify=103-2`.
+SHA-256: `485e5eb8216d7e1738b4c2ebda3c5555f17733b16aee94b421e676ec40097ddc`.
+Build/lint pass. Existing signing certificate unchanged.
 
 Upper care buttons on both the category and action screens now fade from the
 stats panel's pale pink into their own vivid color over the first 82dp. Lower
