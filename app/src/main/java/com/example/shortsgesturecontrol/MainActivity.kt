@@ -737,7 +737,12 @@ private class PetGameView(context: Context, private val onPetCreated: () -> Unit
         activityResumed = false
         weatherHandler.removeCallbacks(weatherRefresh)
         social.stopPresence()
-        leavePlaySession(sendGoodbye = false)
+        // A focus/lifecycle pause can happen while a play request dialog is
+        // being accepted. Detach the session listener, but do not end the
+        // shared session: the other device must not lose its play date just
+        // because this activity briefly lost focus.
+        playSubscription?.close()
+        playSubscription = null
         stopAmbientSound()
         stopInteractionSound()
     }
@@ -746,6 +751,9 @@ private class PetGameView(context: Context, private val onPetCreated: () -> Unit
         activityResumed = true
         motionLastAt = SystemClock.uptimeMillis()
         startSocialPresenceIfReady()
+        if (playSessionId != null && playFriend != null && playSubscription == null) {
+            attachPlaySession()
+        }
         if (weatherStarted) refreshWeather()
         invalidate()
     }
@@ -3166,7 +3174,10 @@ private class PetGameView(context: Context, private val onPetCreated: () -> Unit
     }
 
     private fun startPlaySession(sessionId: String, friend: SocialPlayManager.Friend) {
-        if (playSessionId == sessionId) return
+        if (playSessionId == sessionId) {
+            if (playSubscription == null) attachPlaySession()
+            return
+        }
         playSubscription?.close()
         playSessionId = sessionId
         playFriend = friend
@@ -3177,6 +3188,17 @@ private class PetGameView(context: Context, private val onPetCreated: () -> Unit
         friendMotionLastAt = SystemClock.uptimeMillis()
         playEvents = emptyList()
         playActionUntil = 0L
+        attachPlaySession()
+        message = "Playtime with ${friend.petName} has started!"
+        messageColor = Color.rgb(113, 67, 156)
+        messageUntil = SystemClock.uptimeMillis() + 3500L
+        invalidate()
+    }
+
+    private fun attachPlaySession() {
+        val sessionId = playSessionId ?: return
+        val friend = playFriend ?: return
+        playSubscription?.close()
         playSubscription = social.watchSession(
             sessionId,
             onEvents = { events ->
@@ -3195,10 +3217,6 @@ private class PetGameView(context: Context, private val onPetCreated: () -> Unit
                 if (status != "active" && playSessionId == sessionId) leavePlaySession(sendGoodbye = false)
             }
         )
-        message = "Playtime with ${friend.petName} has started!"
-        messageColor = Color.rgb(113, 67, 156)
-        messageUntil = SystemClock.uptimeMillis() + 3500L
-        invalidate()
     }
 
     private fun sendPlayAction(action: String) {

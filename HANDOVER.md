@@ -1,5 +1,13 @@
 # Zoey's Pocket Pet — cloud handover
 
+## Current release: preserve play dates through lifecycle pauses — v119
+
+Pending publication. Play sessions are no longer ended by an activity pause,
+which can occur while an acceptance dialog changes focus. The session listener
+is detached and reattached across pause/resume, while the explicit play-date
+CLOSE action remains the session-ending path. This prevents both eggs from
+flashing briefly and disappearing. Build/lint pending.
+
 ## Current release: two-way play-date joining and matching badges — v118
 
 Published APK verified byte-for-byte against the signed local build:
