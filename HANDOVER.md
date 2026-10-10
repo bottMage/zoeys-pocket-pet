@@ -2,11 +2,14 @@
 
 ## Current release: two-way play-date joining and matching badges — v118
 
-Pending publication. Both participants now listen for the shared accepted play
+Published APK verified byte-for-byte against the signed local build:
+`https://github.com/bottMage/zoeys-pocket-pet/releases/download/v118/zoeys-pocket-pet-v118.apk?verify=118-1`.
+SHA-256: `bbbaf9daa3c007e63bbc76fde37d8aa5aac5108eb654906f984edfacb843ef3a`.
+Build/lint pass. Both participants now listen for the shared accepted play
 session, so either side joins even when the acceptance prompt/listener timing
 differs. Duplicate starts for the same session are ignored. The remote pet's
 name now uses the same rounded white badge, sizing, and typography as the
-local pet. Build/lint pending.
+local pet.
 
 ## Current release: reliable closed-app notifications — v117
 
