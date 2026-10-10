@@ -335,7 +335,12 @@ internal class SocialPlayManager {
     ): SessionSubscription {
         val sessionRef = firestore.collection("playSessions").document(sessionId)
         val sessionRegistration = sessionRef.addSnapshotListener { snapshot, _ ->
-            if (snapshot != null && snapshot.exists()) onStatus(snapshot.getString("status") ?: "ended")
+            // A cached/partial snapshot can briefly omit a field while the
+            // accepted batch is settling. Missing status is not proof that a
+            // live session ended; only an explicit status is actionable.
+            if (snapshot != null && snapshot.exists()) {
+                snapshot.getString("status")?.takeIf { it.isNotBlank() }?.let(onStatus)
+            }
         }
         val eventsRegistration = sessionRef.collection("events")
             .orderBy("createdAt")

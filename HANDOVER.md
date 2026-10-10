@@ -1,5 +1,13 @@
 # Zoey's Pocket Pet — cloud handover
 
+## Current release: keep active play sessions from false teardown — v120
+
+Pending publication. Session listeners no longer interpret a partial snapshot
+with a missing status as an ended session. Only an explicit `ended` value
+closes the local play date, and only the user’s play-date CLOSE action writes
+that ended state to Firestore. This prevents accepted play dates from flashing
+and disappearing while the shared session is settling. Build/lint pending.
+
 ## Current release: preserve play dates through lifecycle pauses — v119
 
 Published APK verified byte-for-byte against the signed local build:

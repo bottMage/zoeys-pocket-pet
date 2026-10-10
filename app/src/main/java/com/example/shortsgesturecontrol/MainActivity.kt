@@ -3214,7 +3214,7 @@ private class PetGameView(context: Context, private val onPetCreated: () -> Unit
                 invalidate()
             },
             onStatus = { status ->
-                if (status != "active" && playSessionId == sessionId) leavePlaySession(sendGoodbye = false)
+                if (status == "ended" && playSessionId == sessionId) leavePlaySession(sendGoodbye = false)
             }
         )
     }
@@ -3231,8 +3231,10 @@ private class PetGameView(context: Context, private val onPetCreated: () -> Unit
 
     private fun leavePlaySession(sendGoodbye: Boolean) {
         val sessionId = playSessionId ?: return
-        if (sendGoodbye) social.sendPlayEvent(sessionId, "goodbye")
-        social.endPlaySession(sessionId)
+        if (sendGoodbye) {
+            social.sendPlayEvent(sessionId, "goodbye")
+            social.endPlaySession(sessionId)
+        }
         playSubscription?.close()
         playSubscription = null
         playSessionId = null
