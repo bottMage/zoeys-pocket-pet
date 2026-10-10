@@ -1,6 +1,20 @@
 # Zoey's Pocket Pet — cloud handover
 
-## Current release: exact cloud snapshot restore across devices — v110
+## Current release: prevent stale background cloud overwrites — v111
+
+Published APK verified byte-for-byte against the signed local build:
+`https://github.com/bottMage/zoeys-pocket-pet/releases/download/v111/zoeys-pocket-pet-v111.apk?verify=111-1`.
+SHA-256: `4d0e81a88d3c2f983a44f894459cb26999a6b426b3b5f36246b2b411d7ab3aee`.
+Build/lint pass. Existing signing certificate unchanged.
+
+Hidden activities no longer react to connectivity callbacks by syncing or
+uploading stale local state. Only the explicit lifecycle save on pause may
+flush a background upload. Cloud restores now persist locally without echoing
+the just-read snapshot back to Firestore, preventing an old read from
+overwriting a newer device write that is still arriving. Foreground restores
+perform a second verification read before uploads are re-enabled.
+
+## Previous release: exact cloud snapshot restore across devices — v110
 
 Published APK verified byte-for-byte against the signed local build:
 `https://github.com/bottMage/zoeys-pocket-pet/releases/download/v110/zoeys-pocket-pet-v110.apk?verify=110-2`.

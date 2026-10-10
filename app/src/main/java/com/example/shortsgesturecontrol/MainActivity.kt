@@ -73,7 +73,10 @@ class MainActivity : Activity() {
             runOnUiThread {
                 if (::gameView.isInitialized) {
                     gameView.refreshWeather()
-                    if (gameView.hasCloudAccount()) gameView.syncCloud()
+                    // A hidden activity may still receive connectivity
+                    // callbacks. Do not let its stale local pet upload while
+                    // another device is the one being used.
+                    if (gameView.isActivityResumed() && gameView.hasCloudAccount()) gameView.syncCloud()
                 }
             }
         }
@@ -114,7 +117,9 @@ class MainActivity : Activity() {
 
     override fun onPause() {
         gameView.pauseForActivity()
-        gameView.savePet()
+        // The explicit lifecycle flush is the one hidden-state upload that
+        // is allowed. Subsequent background saves/sync callbacks are not.
+        gameView.savePet(allowCloudWhilePaused = true)
         CareReminderScheduler.markActivityHidden(this)
         // Check immediately on exit so a stat that reached 20% during the
         // visible session does not wait for the periodic background check.
@@ -2890,15 +2895,23 @@ private class PetGameView(context: Context, private val onPetCreated: () -> Unit
     }
 
     fun savePet(uploadCloud: Boolean = true) {
+        savePet(uploadCloud, allowCloudWhilePaused = false)
+    }
+
+    fun savePet(uploadCloud: Boolean = true, allowCloudWhilePaused: Boolean) {
+        persistPetLocally()
+        val now = SystemClock.uptimeMillis()
+        if (uploadCloud || now - lastCloudUploadAt >= CLOUD_UPLOAD_INTERVAL_MS) {
+            cloudSave.upload(allowWhilePaused = allowCloudWhilePaused)
+            lastCloudUploadAt = now
+        }
+    }
+
+    private fun persistPetLocally() {
         pet.save()
         if (!pet.sick) CareReminderScheduler.clearSickNotification(appContext)
         CareReminderScheduler.scheduleNextThreshold(appContext)
-        val now = SystemClock.uptimeMillis()
-        if (uploadCloud || now - lastCloudUploadAt >= CLOUD_UPLOAD_INTERVAL_MS) {
-            cloudSave.upload()
-            lastCloudUploadAt = now
-        }
-        lastSaved = now
+        lastSaved = SystemClock.uptimeMillis()
     }
 
     fun syncCloud() {
@@ -2918,7 +2931,7 @@ private class PetGameView(context: Context, private val onPetCreated: () -> Unit
         }
     }
 
-    fun refreshCloudOnResume() {
+    fun refreshCloudOnResume(verifyAgain: Boolean = true) {
         // The shared snapshot is authoritative when switching devices. Do
         // not let a stale local savedAt value make this device win merely
         // because it was left open longer than the device that was used last.
@@ -2926,6 +2939,10 @@ private class PetGameView(context: Context, private val onPetCreated: () -> Unit
         requestCloudRestore(preferCloud = true) { result ->
             if (preferCloudRestore) {
                 finishCloudRestore(result)
+                if (result == CloudRestoreResult.RESTORED && verifyAgain) {
+                    cloudSyncReady = false
+                    scheduleCloudResumeVerification()
+                }
                 return@requestCloudRestore
             }
             when (result) {
@@ -2934,8 +2951,12 @@ private class PetGameView(context: Context, private val onPetCreated: () -> Unit
                     // other device. Anchor the simulation clock without
                     // applying this device's offline time to those stats.
                     pet.anchorClockToNow()
-                    savePet()
+                    // Do not echo a snapshot just read back to Firestore.
+                    // A previous device's final write may still be arriving.
+                    cloudSyncReady = !verifyAgain
+                    persistPetLocally()
                     invalidate()
+                    if (verifyAgain) scheduleCloudResumeVerification()
                 }
                 CloudRestoreResult.KEPT_LOCAL,
                 CloudRestoreResult.NO_CLOUD_BACKUP -> {
@@ -2950,6 +2971,12 @@ private class PetGameView(context: Context, private val onPetCreated: () -> Unit
                 }
             }
         }
+    }
+
+    private fun scheduleCloudResumeVerification() {
+        postDelayed({
+            if (activityResumed && hasCloudAccount()) refreshCloudOnResume(verifyAgain = false)
+        }, 1800L)
     }
 
     fun restoreCloudAtStartup() {
@@ -2989,7 +3016,9 @@ private class PetGameView(context: Context, private val onPetCreated: () -> Unit
                 // stats exact across devices; only anchor future simulation
                 // time at the moment this device restored it.
                 pet.anchorClockToNow()
-                savePet()
+                // Restoring must never echo a possibly old read back to the
+                // shared document. A later user action can upload normally.
+                persistPetLocally()
                 invalidate()
                 Toast.makeText(appContext, "Cloud progress restored.", Toast.LENGTH_LONG).show()
             }
@@ -3022,6 +3051,8 @@ private class PetGameView(context: Context, private val onPetCreated: () -> Unit
     fun hasCreatedPet(): Boolean = pet.created
 
     fun hasCloudAccount(): Boolean = cloudSave.isSignedIn()
+
+    fun isActivityResumed(): Boolean = activityResumed
 
     fun petName(): String = pet.name
 
@@ -3124,8 +3155,9 @@ private class PetGameView(context: Context, private val onPetCreated: () -> Unit
             cloudSyncReady = false
         }
 
-        fun upload() {
+        fun upload(allowWhilePaused: Boolean = false) {
             val user = auth.currentUser ?: return
+            if (!activityResumed && !allowWhilePaused) return
             if (!cloudSyncReady || cloudRestoreInFlight || !pet.hasCreatedPet()) return
             if (pet.savedAt == 0L) pet.save()
             val data = pet.cloudData().toMutableMap()
