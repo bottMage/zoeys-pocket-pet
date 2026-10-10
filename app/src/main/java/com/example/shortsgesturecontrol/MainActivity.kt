@@ -2166,11 +2166,6 @@ private class PetGameView(context: Context, private val onPetCreated: () -> Unit
         // for the shared liquid-tile seams, never for the outside window.
         paint.color = Color.rgb(255, 249, 246)
         canvas.drawRoundRect(panel, dp(26f), dp(26f), paint)
-        paint.color = Color.rgb(35, 25, 43)
-        canvas.drawRoundRect(
-            RectF(panel.left + dp(3f), panel.top + dp(3f), panel.right - dp(3f), panel.bottom - dp(3f)),
-            dp(23f), dp(23f), paint
-        )
         if (careCategory == null) {
             for (category in CareCategory.values()) drawCareCategory(canvas, category)
         } else {
@@ -2369,8 +2364,8 @@ private class PetGameView(context: Context, private val onPetCreated: () -> Unit
     }
 
     private fun darkenBlob(color: Int): Int = Color.rgb(
-        (Color.red(color) * .78f).toInt(), (Color.green(color) * .72f).toInt(),
-        (Color.blue(color) * .86f).toInt()
+        (Color.red(color) * .87f).toInt(), (Color.green(color) * .82f).toInt(),
+        (Color.blue(color) * .92f).toInt()
     )
 
     private fun careOptionRect(action: CareAction, index: Int, count: Int): RectF =

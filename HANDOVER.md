@@ -1,18 +1,27 @@
 # Zoey's Pocket Pet — cloud handover
 
-## Current release: tap-ripple liquid care panel — v95
+## Current release: bright tap-ripple care panel — v96
+
+Published APK verified byte-for-byte against the signed local build:
+`https://github.com/bottMage/zoeys-pocket-pet/releases/download/v96/zoeys-pocket-pet-v96.apk?verify=96-1`.
+SHA-256: `78eebeceb45ceea0a6233939fe0f17eec30ede90e05062a02e16a112ba229e8c`.
+Build/lint pass. Existing signing certificate unchanged.
+
+The care panel keeps the true shared-boundary partition and pale rounded
+window, with a visible 620 ms shared-boundary ripple after each tap. The
+exposed dark animation underlay was removed so the rounded outside corners
+stay pale and the tile gradients remain colorful. Gradient contrast is
+balanced for brighter fills while the thin internal seams stay dark.
+
+## Previous release: tap-ripple liquid care panel — v95
 
 Published APK verified byte-for-byte against the signed local build:
 `https://github.com/bottMage/zoeys-pocket-pet/releases/download/v95/zoeys-pocket-pet-v95.apk?verify=95-1`.
 SHA-256: `136e2e95b0e118b2ff7d9acbd6bb47e59c78ed66405ca21584978696f4985c66`.
 Build/lint pass. Existing signing certificate unchanged.
 
-The care panel keeps the true shared-boundary partition and pale rounded
-window, but a tap now launches a visible 620 ms ripple. Every sampled tile
-boundary receives the same radial displacement field, so the pressed puddle
-pushes neighboring puddles together rather than stretching one rigid outline.
-The gradients and gloss highlights are stronger, while hit regions and the
-rest of the care/action workflow remain unchanged.
+v95 added the visible post-tap ripple and stronger gradients; v96 removes the
+dark underlay that could show through during deformation.
 
 ## Previous release: bounded liquid care panel interaction — v94
 
@@ -890,10 +899,10 @@ release facts are the sections below.
 - Repository: `https://github.com/bottMage/zoeys-pocket-pet` (public).
 - Cloud checkout: `/workspace/zoeys-pocket-pet`.
 - Local branch name is `work`; completed changes are pushed to remote `main` using `git push origin HEAD:main`.
-- Latest pushed app commit: `a92b506 Animate care taps as shared liquid ripples`.
-- Latest public release/tag: `v95`.
-- Current Android version: `versionCode = 95`, `versionName = "95.0"` in `app/build.gradle.kts`.
-- The v95 APK URL and verified checksum are recorded in the current release section above.
+- Latest pushed app commit: pending v96 publication.
+- Latest public release/tag: `v95` until the v96 tag and workflow asset complete.
+- Current Android version: `versionCode = 96`, `versionName = "96.0"` in `app/build.gradle.kts`.
+- The v96 local checksum is recorded in the current release section above; its public URL is added after the release asset returns HTTP 200.
 - The v79 care-button change was tested by the user on Zoey's phone and
   removed the repeated-OK-button freeze/ANR: it uses Android's built-in click
   effect rather than constructing a `ToneGenerator` on every tap. v79 did not
