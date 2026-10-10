@@ -1,5 +1,15 @@
 # Zoey's Pocket Pet — cloud handover
 
+## Current release: visible egg speech bubbles — v125 candidate
+
+This release corrects play-date speech-bubble placement for eggs. Egg artwork
+uses authoring-pixel coordinates inside its scale transform; the previous
+release applied density conversion a second time, placing the bubbles off the
+visible scene on density-scaled devices. Egg bubbles now use the same scaled
+coordinate system as the egg renderer. Live-pet bubbles, play acceptance,
+session cleanup, care seams, progress, sync, notifications, updater, and
+release signing are unchanged.
+
 ## Current release: play-date speech bubbles and edge-to-edge care seams — v124
 
 Published APK verified byte-for-byte against the signed local build:

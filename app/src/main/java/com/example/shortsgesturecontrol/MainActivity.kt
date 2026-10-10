@@ -1979,7 +1979,10 @@ private class PetGameView(context: Context, private val onPetCreated: () -> Unit
         val localAction = localPlayAction
         if (!localAction.isNullOrBlank() && now < playActionUntil) {
             val anchor = if (!pet.hatched) {
-                petGroundY - dp(156f) * petEggScale
+                // drawEgg uses authoring-pixel coordinates inside its scale;
+                // do not apply dp() a second time or the bubble leaves the
+                // scene on density-scaled devices.
+                petGroundY - 156f * petEggScale
             } else {
                 petGroundY - max(dp(172f), petRenderWidth * .62f)
             }
@@ -1992,7 +1995,7 @@ private class PetGameView(context: Context, private val onPetCreated: () -> Unit
             val egg = friend.stage.equals("EGG", true) || friend.petKind.isBlank()
             val scale = petEggScale.takeIf { it > 0f } ?: 1f
             val anchor = if (egg) {
-                petGroundY - dp(156f) * scale
+                petGroundY - 156f * scale
             } else {
                 petGroundY - max(dp(172f), friendRenderWidth * .62f)
             }
