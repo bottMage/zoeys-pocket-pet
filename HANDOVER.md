@@ -1,6 +1,15 @@
 # Zoey's Pocket Pet — cloud handover
 
-## Current release: solid vivid care palette — v99
+## Current release: blended stats and care panel — v100
+
+Published APK will be verified byte-for-byte against the signed local build
+after the v100 release asset is available.
+
+The stats area now transitions into the colorful care panel with a subtle
+lavender gradient and a softened top blend, reducing the hard visual seam
+without changing the care controls, scenery, animations, or interactions.
+
+## Previous release: solid vivid care palette — v99
 
 Published APK verified byte-for-byte against the signed local build:
 `https://github.com/bottMage/zoeys-pocket-pet/releases/download/v99/zoeys-pocket-pet-v99.apk?verify=99-1`.

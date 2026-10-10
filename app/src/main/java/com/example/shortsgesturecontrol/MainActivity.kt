@@ -2067,8 +2067,13 @@ private class PetGameView(context: Context, private val onPetCreated: () -> Unit
 
     private fun drawStats(canvas: Canvas) {
         val top = statsTop()
-        paint.color = Color.argb(245, 255, 249, 246)
+        paint.shader = LinearGradient(
+            0f, top, 0f, height.toFloat(),
+            Color.argb(248, 255, 249, 246), Color.argb(252, 248, 235, 248),
+            Shader.TileMode.CLAMP
+        )
         canvas.drawRoundRect(RectF(0f, top, width.toFloat(), height.toFloat()), dp(28f), dp(28f), paint)
+        paint.shader = null
 
         val reset = newPetRect()
         val title = "${pet.name.uppercase()}'S LITTLE CHECK-IN"
@@ -2145,6 +2150,19 @@ private class PetGameView(context: Context, private val onPetCreated: () -> Unit
         }
     }
 
+    private fun drawCareStatsBlend(canvas: Canvas, panel: RectF) {
+        // Soften only the outer top contour of the first row. Internal seams
+        // remain crisp, while the stats card and colorful tiles read as one
+        // continuous lower panel.
+        val blendHeight = dp(18f)
+        paint.shader = LinearGradient(
+            0f, panel.top - dp(2f), 0f, panel.top + blendHeight,
+            Color.rgb(249, 237, 248), Color.TRANSPARENT, Shader.TileMode.CLAMP
+        )
+        canvas.drawRect(0f, panel.top - dp(2f), width.toFloat(), panel.top + blendHeight, paint)
+        paint.shader = null
+    }
+
     private fun drawActions(canvas: Canvas) {
         buttons.clear()
         if (pet.dead) {
@@ -2164,7 +2182,7 @@ private class PetGameView(context: Context, private val onPetCreated: () -> Unit
         val panel = carePanelRect()
         // The tile surface fills the available window edge to edge. The dark
         // color is reserved for the shared liquid-tile seams.
-        paint.color = Color.rgb(255, 249, 246)
+        paint.color = Color.rgb(248, 235, 248)
         canvas.drawRect(panel, paint)
         if (careCategory == null) {
             for (category in CareCategory.values()) drawCareCategory(canvas, category)
@@ -2183,6 +2201,7 @@ private class PetGameView(context: Context, private val onPetCreated: () -> Unit
             }
             drawCareCenterButton(canvas)
         }
+        drawCareStatsBlend(canvas, panel)
     }
 
     private data class BlobControl(val index: Int, val path: Path, val samples: FloatArray,
