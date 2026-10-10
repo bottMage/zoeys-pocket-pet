@@ -2370,11 +2370,17 @@ private class PetGameView(context: Context, private val onPetCreated: () -> Unit
         val path = liquidPath(blob, now)
         paint.style = Paint.Style.FILL
         val fill = if (pressed) Color.WHITE else color
-        // Keep the care palette genuinely saturated. The previous radial
-        // fill could wash large tiles toward white on some devices; the
-        // glossy highlight below supplies polish without changing the base
-        // hue or value.
-        paint.shader = null
+        // Only the buttons that meet the stats area fade down from the same
+        // pale pink as that panel. This applies to both the category screen
+        // and the action screen, while lower buttons retain their vivid fill.
+        val panel = carePanelRect()
+        val touchesStats = !pressed && blob.bounds.top <= panel.top + dp(3f)
+        paint.shader = if (touchesStats) {
+            LinearGradient(
+                0f, panel.top, 0f, panel.top + dp(82f),
+                Color.rgb(249, 237, 248), color, Shader.TileMode.CLAMP
+            )
+        } else null
         paint.color = fill
         canvas.drawPath(path, paint)
         paint.shader = null
@@ -2386,7 +2392,6 @@ private class PetGameView(context: Context, private val onPetCreated: () -> Unit
         // The care surface is flush with the stats area and the screen edges.
         // Keep the dark stroke only on internal joins; clipping its outer half
         // prevents a second, heavy frame from being drawn over the blend.
-        val panel = carePanelRect()
         val strokeInset = paint.strokeWidth + dp(1f)
         canvas.save()
         canvas.clipRect(
