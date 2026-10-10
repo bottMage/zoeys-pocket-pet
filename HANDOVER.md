@@ -3,7 +3,7 @@
 ## Current release: exact cloud snapshot restore across devices — v110
 
 Published APK verified byte-for-byte against the signed local build:
-`https://github.com/bottMage/zoeys-pocket-pet/releases/download/v110/zoeys-pocket-pet-v110.apk?verify=110-1`.
+`https://github.com/bottMage/zoeys-pocket-pet/releases/download/v110/zoeys-pocket-pet-v110.apk?verify=110-2`.
 SHA-256: `381d308226f2724e644e572795838c48028612a40a6f21cfc33b2f18a118a23f`.
 Build/lint pass. Existing signing certificate unchanged.
 
