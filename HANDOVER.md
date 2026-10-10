@@ -1,13 +1,18 @@
 # Zoey's Pocket Pet — cloud handover
 
-## Current release candidate: protected stats and persistent care actions — v85
+## Current release: protected stats and persistent care actions — v85
 
-The v85 candidate keeps v84's true radial CARE menu but gives the lower care
+The v85 release keeps v84's true radial CARE menu but gives the lower care
 area a roughly 50/50 share of the phone screen. The scenery is shorter, the
 stat check-in stays readable while care is open, and the radial radius adapts
 to the available lower space. REST's NAP and SLEEP choices use a wider fan so
 they do not overlap. Choosing an action leaves the category menu open for the
 next action; the player closes it deliberately with the center CARE control.
+
+The v85 APK uses the unchanged cloud certificate and is published at
+`https://github.com/bottMage/zoeys-pocket-pet/releases/download/v85/zoeys-pocket-pet-v85.apk?download=85`.
+Its verified SHA-256 is
+`49266956b668cc9c1584a8b2aa29a1fc5e9a5e4d71c9c474e33dc20a570b46f1`.
 
 ## Previous release: true radial care menu and persistent opening — v84
 
@@ -728,7 +733,7 @@ do not claim measured device frame rates or final user-approved visual quality.
 
 ## What the user wants now
 
-The current priority is safe continuation from the v84 app. Preserve
+The current priority is safe continuation from the v85 app. Preserve
 the working whole-pet renderer, persistence, lifecycle, scenery, audio, and
 updater while making only well-validated improvements. The user remains
 unhappy with the underlying walk-cel quality: pets can look floaty, rigid,
@@ -744,13 +749,13 @@ release facts are the sections below.
 - Repository: `https://github.com/bottMage/zoeys-pocket-pet` (public).
 - Cloud checkout: `/workspace/zoeys-pocket-pet`.
 - Local branch name is `work`; completed changes are pushed to remote `main` using `git push origin HEAD:main`.
-- Latest pushed app commit: `2883ab5 Make care menu radial and persistent, prepare v84`.
-- Latest public release/tag: `v84`.
-- Current Android version: `versionCode = 84`, `versionName = "84.0"` in `app/build.gradle.kts`.
-- The v84 release APK is published at
-  `https://github.com/bottMage/zoeys-pocket-pet/releases/download/v84/zoeys-pocket-pet-v84.apk?download=84`.
-- The v84 APK SHA-256 is
-  `07486949a7c410e03f63857f412f37e634f8037035558b80dfb054f41730a021`.
+- Latest pushed app commit: `b1b2eee Give care menu space and keep actions open, prepare v85`.
+- Latest public release/tag: `v85`.
+- Current Android version: `versionCode = 85`, `versionName = "85.0"` in `app/build.gradle.kts`.
+- The v85 release APK is published at
+  `https://github.com/bottMage/zoeys-pocket-pet/releases/download/v85/zoeys-pocket-pet-v85.apk?download=85`.
+- The v85 APK SHA-256 is
+  `49266956b668cc9c1584a8b2aa29a1fc5e9a5e4d71c9c474e33dc20a570b46f1`.
 - The v79 care-button change was tested by the user on Zoey's phone and
   removed the repeated-OK-button freeze/ANR: it uses Android's built-in click
   effect rather than constructing a `ToneGenerator` on every tap. v79 did not
