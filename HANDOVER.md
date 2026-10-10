@@ -2,11 +2,17 @@
 
 ## Current release: child-safe friend play sessions — v113
 
-Pending publication. This release adds short invite codes, friend requests,
-online/offline presence, play requests, and a two-pet live play session with
-fixed actions (SAY HI, WAVE, DANCE, and HEART). It uses no contacts permission
-or free-form chat. Firestore rules for the social collections were deployed to
-the `zoey-s-pets` project before this release was prepared.
+Published APK verified byte-for-byte against the signed local build:
+`https://github.com/bottMage/zoeys-pocket-pet/releases/download/v113/zoeys-pocket-pet-v113.apk?verify=113-1`.
+SHA-256: `e2e33620b318ece0d22f2bfbb538b7166f2fd4aec5eccdf0651c54cc555210e9`.
+Build/lint pass. Existing signing certificate unchanged. Firestore rules for
+the social collections were deployed to the `zoey-s-pets` project before the
+release.
+
+This release adds short invite codes, friend requests, online/offline
+presence, play requests, and a two-pet live play session with fixed actions
+(SAY HI, WAVE, DANCE, and HEART). It uses no contacts permission or free-form
+chat.
 
 ## Previous release: quiet sync and egg-specific care controls — v112
 
