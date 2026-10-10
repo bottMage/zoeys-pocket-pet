@@ -1,6 +1,14 @@
 # Zoey's Pocket Pet — cloud handover
 
-## Current release: quiet sync and egg-specific care controls — v112
+## Current release: child-safe friend play sessions — v113
+
+Pending publication. This release adds short invite codes, friend requests,
+online/offline presence, play requests, and a two-pet live play session with
+fixed actions (SAY HI, WAVE, DANCE, and HEART). It uses no contacts permission
+or free-form chat. Firestore rules for the social collections were deployed to
+the `zoey-s-pets` project before this release was prepared.
+
+## Previous release: quiet sync and egg-specific care controls — v112
 
 Published APK verified byte-for-byte against the signed local build:
 `https://github.com/bottMage/zoeys-pocket-pet/releases/download/v112/zoeys-pocket-pet-v112.apk?verify=112-2`.
