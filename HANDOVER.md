@@ -1,6 +1,20 @@
 # Zoey's Pocket Pet — cloud handover
 
-## Current release: resume-safe cloud snapshot sync — v109
+## Current release: exact cloud snapshot restore across devices — v110
+
+Published APK verified byte-for-byte against the signed local build:
+`https://github.com/bottMage/zoeys-pocket-pet/releases/download/v110/zoeys-pocket-pet-v110.apk?verify=110-1`.
+SHA-256: `381d308226f2724e644e572795838c48028612a40a6f21cfc33b2f18a118a23f`.
+Build/lint pass. Existing signing certificate unchanged.
+
+Cloud restore is now authoritative when a device starts or returns to the
+foreground. A remote pet snapshot is applied regardless of the stale local
+device's saved timestamp, and its stats are kept exact: restore only anchors
+the future simulation clock and does not apply the restoring device's offline
+elapsed time. Uploads remain locked after a failed refresh until a cloud read
+succeeds, preventing a stale offline copy from overwriting the shared state.
+
+## Previous release: resume-safe cloud snapshot sync — v109
 
 Published APK verified byte-for-byte against the signed local build:
 `https://github.com/bottMage/zoeys-pocket-pet/releases/download/v109/zoeys-pocket-pet-v109.apk?verify=109-2`.

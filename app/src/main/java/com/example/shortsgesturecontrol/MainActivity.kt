@@ -2902,7 +2902,10 @@ private class PetGameView(context: Context, private val onPetCreated: () -> Unit
     }
 
     fun syncCloud() {
-        val restoringFreshInstall = preferCloudRestore
+        // A failed foreground refresh leaves uploads locked until a later
+        // read succeeds. Keep preferring the shared snapshot on retry so a
+        // stale offline copy cannot become the next cloud winner.
+        val restoringFreshInstall = preferCloudRestore || !cloudSyncReady
         requestCloudRestore(restoringFreshInstall) { result ->
             if (restoringFreshInstall) {
                 finishCloudRestore(result)
@@ -2916,18 +2919,28 @@ private class PetGameView(context: Context, private val onPetCreated: () -> Unit
     }
 
     fun refreshCloudOnResume() {
-        val restoringFreshInstall = preferCloudRestore
-        requestCloudRestore(restoringFreshInstall) { result ->
-            if (restoringFreshInstall) {
+        // The shared snapshot is authoritative when switching devices. Do
+        // not let a stale local savedAt value make this device win merely
+        // because it was left open longer than the device that was used last.
+        cloudSyncReady = false
+        requestCloudRestore(preferCloud = true) { result ->
+            if (preferCloudRestore) {
                 finishCloudRestore(result)
                 return@requestCloudRestore
             }
             when (result) {
-                CloudRestoreResult.RESTORED,
+                CloudRestoreResult.RESTORED -> {
+                    // Cloud stats are already the exact state from the
+                    // other device. Anchor the simulation clock without
+                    // applying this device's offline time to those stats.
+                    pet.anchorClockToNow()
+                    savePet()
+                    invalidate()
+                }
                 CloudRestoreResult.KEPT_LOCAL,
                 CloudRestoreResult.NO_CLOUD_BACKUP -> {
-                    // Apply time spent away after selecting the winning
-                    // snapshot, then persist that caught-up state.
+                    // There was no remote pet snapshot to restore, so the
+                    // local pet remains the only available source of truth.
                     pet.updateFromClock()
                     savePet()
                     invalidate()
@@ -2940,7 +2953,7 @@ private class PetGameView(context: Context, private val onPetCreated: () -> Unit
     }
 
     fun restoreCloudAtStartup() {
-        requestCloudRestore(preferCloudRestore) { result ->
+        requestCloudRestore(preferCloud = true) { result ->
             finishCloudRestore(result)
         }
     }
@@ -2972,10 +2985,10 @@ private class PetGameView(context: Context, private val onPetCreated: () -> Unit
                 setupKind = pet.kind
                 setupName = pet.name
                 setupPlayerName = pet.playerName
-                // The cloud snapshot may have been saved before the phone
-                // went offline. Apply elapsed time after restoring it, then
-                // save that caught-up state back to both stores.
-                pet.updateFromClock()
+                // The cloud snapshot is the shared source of truth. Keep its
+                // stats exact across devices; only anchor future simulation
+                // time at the moment this device restored it.
+                pet.anchorClockToNow()
                 savePet()
                 invalidate()
                 Toast.makeText(appContext, "Cloud progress restored.", Toast.LENGTH_LONG).show()
@@ -3143,6 +3156,7 @@ private class PetGameView(context: Context, private val onPetCreated: () -> Unit
                         when {
                             cloudHasPet && (preferCloud || cloudSavedAt > pet.savedAt) -> {
                                 pet.loadCloud(snapshot.data.orEmpty())
+                                pet.anchorClockToNow()
                                 pet.save()
                                 cloudSyncReady = true
                                 onComplete(CloudRestoreResult.RESTORED)
@@ -3277,6 +3291,10 @@ private class PetGameView(context: Context, private val onPetCreated: () -> Unit
             val now = System.currentTimeMillis()
             life.advance((now - lastUpdate).coerceAtLeast(0), now)
             lastUpdate = now
+        }
+
+        fun anchorClockToNow() {
+            lastUpdate = System.currentTimeMillis()
         }
 
         fun apply(action: Action): Pair<String, Int> {
