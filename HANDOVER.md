@@ -1,6 +1,21 @@
 # Zoey's Pocket Pet — cloud handover
 
-## Current release candidate: idle rendering and sync optimization — v80
+## Current release candidate: threshold-triggered care reminders — v81
+
+The v81 candidate adds battery-conscious offline care reminders without a live
+background service. WorkManager provides a periodic fallback, while a single
+AlarmManager wakeup is scheduled for the next projected stat crossing at 20%.
+The app also checks immediately as it leaves the foreground, so a stat that
+reached the threshold during the visible session does not wait for the fallback
+interval. Reminder repeats are bounded at six hours for ordinary low stats,
+three hours when overall care is affecting growth, and 90 minutes for severe
+projected needs. Existing progress, updater, Firebase sync, animation,
+scenery, audio, and release signing workflows remain unchanged.
+
+The v81 APK is built with the unchanged cloud certificate; its final public
+checksum will be recorded here after the release asset is verified.
+
+## Previous release: idle rendering and sync optimization — v80
 
 The v80 candidate keeps v79's non-blocking care-button feedback and all
 existing pet, lifecycle, scenery, audio, updater, local-save, and Firebase

@@ -81,6 +81,7 @@ class MainActivity : Activity() {
     companion object {
         private const val GOOGLE_SIGN_IN_REQUEST = 7401
         private const val WEATHER_PERMISSION_REQUEST = 7402
+        private const val CARE_NOTIFICATION_PERMISSION_REQUEST = 7403
     }
 
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -90,12 +91,17 @@ class MainActivity : Activity() {
         window.decorView.systemUiVisibility = View.SYSTEM_UI_FLAG_LIGHT_STATUS_BAR.inv()
         auth = FirebaseAuth.getInstance()
         googleSignInClient = buildGoogleSignInClient()
-        gameView = PetGameView(this) { maybePromptForCloudBackup() }
+        gameView = PetGameView(this) {
+            maybePromptForCloudBackup()
+            gameView.postDelayed({ maybeRequestCareReminderPermission() }, 1200L)
+        }
         setContentView(gameView)
+        CareReminderScheduler.ensureScheduled(this)
         connectivityManager = getSystemService(ConnectivityManager::class.java)
         connectivityManager.registerDefaultNetworkCallback(networkCallback)
         gameView.postDelayed({ startWeatherSync() }, 3200L)
         gameView.postDelayed({ gameView.checkForUpdates(showNoUpdate = false) }, 650L)
+        gameView.postDelayed({ maybeRequestCareReminderPermission() }, 4200L)
         gameView.postDelayed({
             if (auth.currentUser != null) gameView.restoreCloudAtStartup()
             else if (gameView.hasCreatedPet()) maybePromptForCloudBackup()
@@ -106,6 +112,9 @@ class MainActivity : Activity() {
     override fun onPause() {
         gameView.pauseForActivity()
         gameView.savePet()
+        // Check immediately on exit so a stat that reached 20% during the
+        // visible session does not wait for the periodic background check.
+        CareReminderScheduler.enqueueImmediateCheck(this)
         super.onPause()
     }
 
@@ -135,6 +144,22 @@ class MainActivity : Activity() {
     override fun onRequestPermissionsResult(requestCode: Int, permissions: Array<out String>, grantResults: IntArray) {
         super.onRequestPermissionsResult(requestCode, permissions, grantResults)
         if (requestCode == WEATHER_PERMISSION_REQUEST) gameView.refreshWeather()
+    }
+
+    fun maybeRequestCareReminderPermission(force: Boolean = false) {
+        if (!::gameView.isInitialized || !gameView.hasCreatedPet()) return
+        CareReminderScheduler.ensureScheduled(this)
+        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.TIRAMISU ||
+            checkSelfPermission(Manifest.permission.POST_NOTIFICATIONS) == PackageManager.PERMISSION_GRANTED
+        ) return
+        val promptPrefs = getSharedPreferences("zoey_pet", Context.MODE_PRIVATE)
+        if (!force && promptPrefs.getBoolean("care_notification_prompted", false)) return
+        if (!hasWindowFocus()) {
+            gameView.postDelayed({ maybeRequestCareReminderPermission(force) }, 1500L)
+            return
+        }
+        promptPrefs.edit().putBoolean("care_notification_prompted", true).apply()
+        requestPermissions(arrayOf(Manifest.permission.POST_NOTIFICATIONS), CARE_NOTIFICATION_PERMISSION_REQUEST)
     }
 
     private fun buildGoogleSignInClient(): GoogleSignInClient? {
@@ -2207,13 +2232,38 @@ private class PetGameView(context: Context, private val onPetCreated: () -> Unit
 
     private fun showSettings() {
         val activity = appContext as? Activity ?: return
+        val remindersOn = CareReminderScheduler.isEnabled(appContext)
+        val choices = arrayOf(
+            "CHANGE NAME",
+            if (remindersOn) "TURN OFF CARE REMINDERS" else "TURN ON CARE REMINDERS",
+            "RESET DATA"
+        )
         AlertDialog.Builder(activity)
             .setTitle("Settings")
-            .setMessage(if (cloudSave.isSignedIn()) "Google backup is connected." else "Google backup is not connected yet.")
+            .setMessage(
+                (if (cloudSave.isSignedIn()) "Google backup is connected." else "Google backup is not connected yet.") +
+                    "\nCare reminders are ${if (remindersOn) "on" else "off"}."
+            )
+            .setItems(choices) { _, which ->
+                when (which) {
+                    0 -> editPlayerName()
+                    1 -> toggleCareReminders()
+                    else -> showResetChoices()
+                }
+            }
             .setNegativeButton("CLOSE", null)
-            .setNeutralButton("CHANGE NAME") { _, _ -> editPlayerName() }
-            .setPositiveButton("RESET DATA") { _, _ -> showResetChoices() }
             .show()
+    }
+
+    private fun toggleCareReminders() {
+        if (CareReminderScheduler.isEnabled(appContext)) {
+            CareReminderScheduler.disable(appContext)
+            Toast.makeText(appContext, "Care reminders turned off.", Toast.LENGTH_SHORT).show()
+        } else {
+            CareReminderScheduler.enable(appContext)
+            (appContext as? MainActivity)?.maybeRequestCareReminderPermission(force = true)
+            Toast.makeText(appContext, "Care reminders turned on.", Toast.LENGTH_SHORT).show()
+        }
     }
 
     private fun showResetChoices() {
@@ -2250,6 +2300,7 @@ private class PetGameView(context: Context, private val onPetCreated: () -> Unit
     private fun resetLocalData(showToast: Boolean = true) {
         cloudSave.signOut()
         pet.resetLocal()
+        CareReminderScheduler.clearNotification(appContext)
         setupMode = true
         setupKind = pet.kind
         setupName = pet.name
@@ -2462,6 +2513,7 @@ private class PetGameView(context: Context, private val onPetCreated: () -> Unit
 
     fun savePet(uploadCloud: Boolean = true) {
         pet.save()
+        CareReminderScheduler.scheduleNextThreshold(appContext)
         val now = SystemClock.uptimeMillis()
         if (uploadCloud || now - lastCloudUploadAt >= CLOUD_UPLOAD_INTERVAL_MS) {
             cloudSave.upload()
@@ -2534,6 +2586,9 @@ private class PetGameView(context: Context, private val onPetCreated: () -> Unit
                 Toast.makeText(appContext, "Cloud backup could not sync yet; this phone still has its local progress.", Toast.LENGTH_LONG).show()
             }
         }
+        postDelayed({
+            (appContext as? MainActivity)?.maybeRequestCareReminderPermission()
+        }, 900L)
     }
 
     fun hasCreatedPet(): Boolean = pet.created

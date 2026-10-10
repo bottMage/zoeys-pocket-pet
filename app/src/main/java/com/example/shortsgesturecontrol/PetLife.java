@@ -26,6 +26,12 @@ public final class PetLife {
         return false;
     }
 
+    /** Points lost per minute for a need while the pet is away. */
+    public static double decayPerMinute(boolean hatched,int needIndex) {
+        if(needIndex<0||needIndex>=4)throw new IllegalArgumentException("Unknown need index");
+        return (hatched?LIVE_DECAY:EGG_DECAY)[needIndex];
+    }
+
     public void createEgg() {
         created=true;hatched=false;dead=false;generation=0;
         ageMillis=eggAgeMillis=adultAgeMillis=goodCareMillis=totalCareMillis=diedAt=0;
