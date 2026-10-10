@@ -1,6 +1,6 @@
 # Zoey's Pocket Pet — cloud handover
 
-## Current release candidate: permanent organic care controls — v90
+## Current release: permanent organic care controls — v90
 
 The v90 candidate removes the large CARE opener entirely. The five care
 categories stay visible as large, softly irregular organic buttons that fill
@@ -8,6 +8,11 @@ the lower panel, and their actions use the same style. Selecting a category
 temporarily swaps in its actions with a BACK control; the existing action
 effects, sickness/Medicine behavior, persistence, and menu/settings flows are
 unchanged.
+
+The v90 APK uses the unchanged cloud certificate and is published at
+`https://github.com/bottMage/zoeys-pocket-pet/releases/download/v90/zoeys-pocket-pet-v90.apk?download=90`.
+Its verified SHA-256 is
+`6707adf40466f76eb94ad25bae46e103b191f5b4cf352555f96e807d1b0582f3`.
 
 ## Previous release: fuller responsive care button sizing — v89
 
@@ -798,7 +803,7 @@ do not claim measured device frame rates or final user-approved visual quality.
 
 ## What the user wants now
 
-The current priority is safe continuation from the v89 app. Preserve
+The current priority is safe continuation from the v90 app. Preserve
 the working whole-pet renderer, persistence, lifecycle, scenery, audio, and
 updater while making only well-validated improvements. The user remains
 unhappy with the underlying walk-cel quality: pets can look floaty, rigid,
@@ -814,13 +819,13 @@ release facts are the sections below.
 - Repository: `https://github.com/bottMage/zoeys-pocket-pet` (public).
 - Cloud checkout: `/workspace/zoeys-pocket-pet`.
 - Local branch name is `work`; completed changes are pushed to remote `main` using `git push origin HEAD:main`.
-- Latest pushed app commit: `97f2476 Restore fuller care button sizing, prepare v89`.
-- Latest public release/tag: `v89`.
-- Current Android version: `versionCode = 89`, `versionName = "89.0"` in `app/build.gradle.kts`.
-- The v89 release APK is published at
-  `https://github.com/bottMage/zoeys-pocket-pet/releases/download/v89/zoeys-pocket-pet-v89.apk?download=89`.
-- The v89 APK SHA-256 is
-  `ca3582cae12a6b9c8a6b60919ba377b5086032cd30ae87fa9a7f3abfa08c372c`.
+- Latest pushed app commit: `2275392 Make organic care controls permanent, prepare v90`.
+- Latest public release/tag: `v90`.
+- Current Android version: `versionCode = 90`, `versionName = "90.0"` in `app/build.gradle.kts`.
+- The v90 release APK is published at
+  `https://github.com/bottMage/zoeys-pocket-pet/releases/download/v90/zoeys-pocket-pet-v90.apk?download=90`.
+- The v90 APK SHA-256 is
+  `6707adf40466f76eb94ad25bae46e103b191f5b4cf352555f96e807d1b0582f3`.
 - The v79 care-button change was tested by the user on Zoey's phone and
   removed the repeated-OK-button freeze/ANR: it uses Android's built-in click
   effect rather than constructing a `ToneGenerator` on every tap. v79 did not
