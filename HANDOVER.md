@@ -1,6 +1,6 @@
 # Zoey's Pocket Pet — cloud handover
 
-## Current release candidate: responsive care button sizing — v88
+## Current release: responsive care button sizing — v88
 
 The v88 candidate keeps v87's compact adjacent care-action clusters and large
 CARE panel, but sizes every care button from the available lower-panel space.
@@ -9,6 +9,11 @@ and center-button collisions before the largest safe size is selected. Labels
 scale with the button, and the same calculated rectangles drive touch handling,
 so HEALTH can switch between CHECKUP/VITAMIN and CHECKUP/MEDICINE without
 overlap, clipping, or a missing action if more buttons are added later.
+
+The v88 APK uses the unchanged cloud certificate and is published at
+`https://github.com/bottMage/zoeys-pocket-pet/releases/download/v88/zoeys-pocket-pet-v88.apk?download=88`.
+Its verified SHA-256 is
+`0cfab22dafcbe280641ffe64f9d65f1dfb7cb3576398267158aa33374b419910`.
 
 ## Previous release: compact care actions and full CARE panel — v87
 
@@ -771,7 +776,7 @@ do not claim measured device frame rates or final user-approved visual quality.
 
 ## What the user wants now
 
-The current priority is safe continuation from the v87 app. Preserve
+The current priority is safe continuation from the v88 app. Preserve
 the working whole-pet renderer, persistence, lifecycle, scenery, audio, and
 updater while making only well-validated improvements. The user remains
 unhappy with the underlying walk-cel quality: pets can look floaty, rigid,
@@ -787,13 +792,13 @@ release facts are the sections below.
 - Repository: `https://github.com/bottMage/zoeys-pocket-pet` (public).
 - Cloud checkout: `/workspace/zoeys-pocket-pet`.
 - Local branch name is `work`; completed changes are pushed to remote `main` using `git push origin HEAD:main`.
-- Latest pushed app commit: `366c4ae Compact care actions and expand CARE panel, prepare v87`.
-- Latest public release/tag: `v87`.
-- Current Android version: `versionCode = 87`, `versionName = "87.0"` in `app/build.gradle.kts`.
-- The v87 release APK is published at
-  `https://github.com/bottMage/zoeys-pocket-pet/releases/download/v87/zoeys-pocket-pet-v87.apk?download=87`.
-- The v87 APK SHA-256 is
-  `ef0d9d6b8da44fbb3524d88c3bf442ab5b0f375f791f98102b5c050b13d8244f`.
+- Latest pushed app commit: `4fac47b Responsive care button sizing, prepare v88`.
+- Latest public release/tag: `v88`.
+- Current Android version: `versionCode = 88`, `versionName = "88.0"` in `app/build.gradle.kts`.
+- The v88 release APK is published at
+  `https://github.com/bottMage/zoeys-pocket-pet/releases/download/v88/zoeys-pocket-pet-v88.apk?download=88`.
+- The v88 APK SHA-256 is
+  `0cfab22dafcbe280641ffe64f9d65f1dfb7cb3576398267158aa33374b419910`.
 - The v79 care-button change was tested by the user on Zoey's phone and
   removed the repeated-OK-button freeze/ANR: it uses Android's built-in click
   effect rather than constructing a `ToneGenerator` on every tap. v79 did not
