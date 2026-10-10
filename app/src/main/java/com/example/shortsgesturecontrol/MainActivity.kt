@@ -2187,8 +2187,7 @@ private class PetGameView(context: Context, private val onPetCreated: () -> Unit
 
     private data class BlobControl(val index: Int, val path: Path, val samples: FloatArray,
                                    val hit: android.graphics.Region, val bounds: RectF,
-                                   val x: Float, val y: Float,
-                                   var shadeColor: Int = 0, var shade: Shader? = null)
+                                   val x: Float, val y: Float)
     private var blobCacheKey = ""
     private var blobControls = emptyList<BlobControl>()
     private var pressedBlob = -1
@@ -2327,12 +2326,12 @@ private class PetGameView(context: Context, private val onPetCreated: () -> Unit
         val path = liquidPath(blob, now)
         paint.style = Paint.Style.FILL
         val fill = if (pressed) Color.WHITE else color
-        if (blob.shade == null || blob.shadeColor != fill) {
-            blob.shadeColor = fill
-            blob.shade = RadialGradient(blob.x - 30f * scale, blob.y - 45f * scale,
-                max(blob.bounds.width(), blob.bounds.height()), fill, darkenBlob(color), Shader.TileMode.CLAMP)
-        }
-        paint.shader = blob.shade
+        // Keep the care palette genuinely saturated. The previous radial
+        // fill could wash large tiles toward white on some devices; the
+        // glossy highlight below supplies polish without changing the base
+        // hue or value.
+        paint.shader = null
+        paint.color = fill
         canvas.drawPath(path, paint)
         paint.shader = null
         paint.style = Paint.Style.STROKE
@@ -2363,11 +2362,6 @@ private class PetGameView(context: Context, private val onPetCreated: () -> Unit
         textPaint.textSize = 21f * scale
         canvas.drawText(label, blob.x + labelShift.first, blob.y + labelShift.second + 32f * scale, textPaint)
     }
-
-    private fun darkenBlob(color: Int): Int = Color.rgb(
-        (Color.red(color) * .82f).toInt(), (Color.green(color) * .78f).toInt(),
-        (Color.blue(color) * .88f).toInt()
-    )
 
     private fun careOptionRect(action: CareAction, index: Int, count: Int): RectF =
         currentBlobs()[index].bounds

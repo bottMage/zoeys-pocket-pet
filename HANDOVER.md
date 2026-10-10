@@ -1,18 +1,28 @@
 # Zoey's Pocket Pet — cloud handover
 
-## Current release: edge-to-edge vivid care panel — v98
+## Current release: solid vivid care palette — v99
+
+Published APK verified byte-for-byte against the signed local build:
+`https://github.com/bottMage/zoeys-pocket-pet/releases/download/v99/zoeys-pocket-pet-v99.apk?verify=99-1`.
+SHA-256: `c0cb432f92bd50e4ada4c1257804cb374ba345f7843d940bb8d817929c35d536`.
+Build/lint pass. Existing signing certificate unchanged.
+
+The care panel keeps the true shared-boundary partition and vivid palette, with
+a visible 620 ms shared-boundary ripple after each tap. Care tiles now use
+solid saturated base fills rather than a radial shader that could wash them
+toward white on-device; only the small gloss highlight is translucent. The
+outer geometry remains edge-to-edge with no rounded top curls or pale margin,
+and all tile icons/labels use readable dark contrast.
+
+## Previous release: edge-to-edge vivid care panel — v98
 
 Published APK verified byte-for-byte against the signed local build:
 `https://github.com/bottMage/zoeys-pocket-pet/releases/download/v98/zoeys-pocket-pet-v98.apk?verify=98-1`.
 SHA-256: `1ac3bcd2a68ef95d6de5aac356c246c487f8d6bef2316142d11ebd24fb46331d`.
 Build/lint pass. Existing signing certificate unchanged.
 
-The care panel keeps the true shared-boundary partition and vivid palette, with
-a visible 620 ms shared-boundary ripple after each tap. The outer geometry is
-now edge-to-edge: no rounded top curls, no pale perimeter margin, and no
-outside ripple. Tiles meet the left/right/bottom window edges directly, and
-all tile icons/labels use readable dark contrast. Category-to-path mapping is
-FUN, REST, CLEAN, FOOD, HEALTH.
+v98 removed the outer curls/margins and forced readable labels. v99 removes
+the wash-out-prone care fill shader.
 
 ## Previous release: vivid bounded-ripple care panel — v97
 
@@ -921,10 +931,10 @@ release facts are the sections below.
 - Repository: `https://github.com/bottMage/zoeys-pocket-pet` (public).
 - Cloud checkout: `/workspace/zoeys-pocket-pet`.
 - Local branch name is `work`; completed changes are pushed to remote `main` using `git push origin HEAD:main`.
-- Latest pushed app commit: `a9f1b66 Make care panel edge-to-edge and readable`.
-- Latest public release/tag: `v98`.
-- Current Android version: `versionCode = 98`, `versionName = "98.0"` in `app/build.gradle.kts`.
-- The v98 APK URL and verified checksum are recorded in the current release section above.
+- Latest pushed app commit: pending v99 publication.
+- Latest public release/tag: `v98` until the v99 tag and workflow asset complete.
+- Current Android version: `versionCode = 99`, `versionName = "99.0"` in `app/build.gradle.kts`.
+- The v99 local checksum is recorded in the current release section above; its public URL is added after the release asset returns HTTP 200.
 - The v79 care-button change was tested by the user on Zoey's phone and
   removed the repeated-OK-button freeze/ANR: it uses Android's built-in click
   effect rather than constructing a `ToneGenerator` on every tap. v79 did not
