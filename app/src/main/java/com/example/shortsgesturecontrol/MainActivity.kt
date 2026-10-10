@@ -644,6 +644,11 @@ private class PetGameView(context: Context, private val onPetCreated: () -> Unit
         isFocusable = true
         social.onFriendsChanged = { friends ->
             socialFriends = friends
+            playFriend?.let { activeFriend ->
+                friends.firstOrNull { it.uid == activeFriend.uid }?.let { refreshedFriend ->
+                    playFriend = refreshedFriend
+                }
+            }
             renderSocialDialog()
             invalidate()
         }
@@ -3205,7 +3210,12 @@ private class PetGameView(context: Context, private val onPetCreated: () -> Unit
                 val oldRemote = playEvents.lastOrNull { it.actorUid != FirebaseAuth.getInstance().currentUser?.uid }?.id
                 playEvents = events
                 val newestRemote = events.lastOrNull { it.actorUid != FirebaseAuth.getInstance().currentUser?.uid }
-                if (newestRemote != null && newestRemote.id != oldRemote) {
+                if (newestRemote?.action == "goodbye" && newestRemote.id != oldRemote) {
+                    // A real remote exit is carried as an event. Do not use
+                    // the session document's transient status as a teardown
+                    // signal: that status can race the accepted batch.
+                    if (playSessionId == sessionId) leavePlaySession(sendGoodbye = false)
+                } else if (newestRemote != null && newestRemote.id != oldRemote) {
                     message = "${friend.petName} says ${playActionLabel(newestRemote.action)}!"
                     messageColor = friend.uid.hashCode().let { Color.rgb(93 + abs(it % 70), 65, 145) }
                     messageUntil = SystemClock.uptimeMillis() + 3000L
@@ -3213,9 +3223,9 @@ private class PetGameView(context: Context, private val onPetCreated: () -> Unit
                 }
                 invalidate()
             },
-            onStatus = { status ->
-                if (status == "ended" && playSessionId == sessionId) leavePlaySession(sendGoodbye = false)
-            }
+            // Session status is informational only. Explicit goodbye events
+            // above are the reliable user-driven end signal.
+            onStatus = { _ -> }
         )
     }
 

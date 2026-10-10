@@ -1,5 +1,14 @@
 # Zoey's Pocket Pet — cloud handover
 
+## Current release: stable play sessions and real friend pet names — v121
+
+Pending publication. Play sessions now end only from the explicit CLOSE action
+or a real remote `goodbye` event; session status updates are no longer used as
+a teardown signal. Play-request creation resolves the recipient's public
+profile first, and active sessions refresh their remote pet data when that
+profile arrives, preventing blank or generic `Mochi` labels. Build/lint
+pending.
+
 ## Current release: keep active play sessions from false teardown — v120
 
 Published APK verified byte-for-byte against the signed local build:

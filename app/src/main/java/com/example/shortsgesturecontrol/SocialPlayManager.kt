@@ -257,24 +257,34 @@ internal class SocialPlayManager {
             onComplete(false, "Sign in with Google first.")
             return
         }
-        val request = mapOf(
-            "senderUid" to uid,
-            "recipientUid" to friend.uid,
-            "senderName" to currentProfile.displayName,
-            "senderPetName" to currentProfile.petName,
-            "recipientName" to friend.displayName,
-            "recipientPetName" to friend.petName,
-            "status" to "pending",
-            "createdAt" to FieldValue.serverTimestamp(),
-            "updatedAt" to FieldValue.serverTimestamp()
-        )
-        val outbox = userCollection(uid).collection("playRequests").document(friend.uid)
-        val inbox = userCollection(friend.uid).collection("incomingPlayRequests").document(uid)
-        firestore.runBatch { batch ->
-            batch.set(outbox, request, SetOptions.merge())
-            batch.set(inbox, request, SetOptions.merge())
-        }.addOnSuccessListener { onComplete(true, "Play request sent!") }
-            .addOnFailureListener { onComplete(false, "I couldn't send a play request yet.") }
+        // The friend list can briefly contain a profile with an empty pet
+        // name while its public profile is still loading. Resolve it once at
+        // request time so both devices have the real label in the session,
+        // rather than falling back to the generic "Mochi" name.
+        profileRef(friend.uid).get().addOnSuccessListener { remote ->
+            val recipientName = remote.getString("displayName").orEmpty().ifBlank { friend.displayName }
+            val recipientPetName = remote.getString("petName").orEmpty().ifBlank { friend.petName }
+            val request = mapOf(
+                "senderUid" to uid,
+                "recipientUid" to friend.uid,
+                "senderName" to currentProfile.displayName,
+                "senderPetName" to currentProfile.petName,
+                "recipientName" to recipientName,
+                "recipientPetName" to recipientPetName,
+                "status" to "pending",
+                "createdAt" to FieldValue.serverTimestamp(),
+                "updatedAt" to FieldValue.serverTimestamp()
+            )
+            val outbox = userCollection(uid).collection("playRequests").document(friend.uid)
+            val inbox = userCollection(friend.uid).collection("incomingPlayRequests").document(uid)
+            firestore.runBatch { batch ->
+                batch.set(outbox, request, SetOptions.merge())
+                batch.set(inbox, request, SetOptions.merge())
+            }.addOnSuccessListener { onComplete(true, "Play request sent!") }
+                .addOnFailureListener { onComplete(false, "I couldn't send a play request yet.") }
+        }.addOnFailureListener {
+            onComplete(false, "I couldn't load your friend's pet yet.")
+        }
     }
 
     fun acceptPlayRequest(request: PlayRequest, onComplete: (String?) -> Unit = {}) {
@@ -442,7 +452,7 @@ internal class SocialPlayManager {
                 displayName = (remote["displayName"] as? String)
                     ?: (base["displayName"] as? String).orEmpty().ifBlank { "Friend" },
                 petName = (remote["petName"] as? String)
-                    ?: (base["petName"] as? String).orEmpty().ifBlank { "Mochi" },
+                    ?: (base["petName"] as? String).orEmpty().ifBlank { "Friend's pet" },
                 petKind = (remote["petKind"] as? String).orEmpty(),
                 stage = (remote["stage"] as? String).orEmpty(),
                 online = remote["online"] == true && lastSeen > 0L && abs(now - lastSeen) < ONLINE_WINDOW_MS,
@@ -504,9 +514,9 @@ internal class SocialPlayManager {
             senderUid = senderUid,
             recipientUid = recipientUid,
             senderName = document.getString("senderName").orEmpty().ifBlank { "A friend" },
-            senderPetName = document.getString("senderPetName").orEmpty().ifBlank { "Mochi" },
+            senderPetName = document.getString("senderPetName").orEmpty().ifBlank { "Friend's pet" },
             recipientName = document.getString("recipientName").orEmpty().ifBlank { "Friend" },
-            recipientPetName = document.getString("recipientPetName").orEmpty().ifBlank { "Mochi" },
+            recipientPetName = document.getString("recipientPetName").orEmpty().ifBlank { "Friend's pet" },
             status = document.getString("status").orEmpty(),
             sessionId = document.getString("sessionId"),
             documentPath = document.reference.path
