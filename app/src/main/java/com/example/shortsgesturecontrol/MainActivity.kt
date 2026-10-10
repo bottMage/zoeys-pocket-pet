@@ -545,9 +545,9 @@ private class PetGameView(context: Context, private val onPetCreated: () -> Unit
     private var menuOpen = false
     private var menuAnimationStart = 0L
     private var menuOpening = true
-    private var careMenuOpen = false
+    // The care categories are always available; the old giant CARE opener is
+    // intentionally gone. Selecting a category temporarily shows its actions.
     private var careCategory: CareCategory? = null
-    private var careOpeningTouch = false
     private var tutorialShowing = false
     @Volatile private var weather = WeatherState()
     private var weatherLoading = false
@@ -2158,10 +2158,6 @@ private class PetGameView(context: Context, private val onPetCreated: () -> Unit
             canvas.drawText("Choose NEW PET whenever you're ready", width / 2f, rect.bottom + dp(31f), textPaint)
             return
         }
-        if (!careMenuOpen) {
-            drawCareMenuButton(canvas)
-            return
-        }
         if (careCategory == null) {
             for (category in CareCategory.values()) drawCareCategory(canvas, category)
         } else {
@@ -2178,70 +2174,94 @@ private class PetGameView(context: Context, private val onPetCreated: () -> Unit
                 buttons.add(CareButton(action, rect))
                 drawCareOption(canvas, action, rect)
             }
+            drawCareCenterButton(canvas)
         }
-        drawCareCenterButton(canvas)
-    }
-
-    private fun drawCareMenuButton(canvas: Canvas) {
-        val rect = careMenuButtonRect()
-        val scale = (rect.width() / dp(320f)).coerceIn(.72f, 1f)
-        paint.color = Color.argb(24, 67, 39, 95)
-        canvas.drawRoundRect(RectF(rect.left, rect.top + dp(7f), rect.right, rect.bottom + dp(10f)), dp(28f), dp(28f), paint)
-        paint.color = Color.rgb(255, 218, 157)
-        canvas.drawRoundRect(rect, dp(28f), dp(28f), paint)
-        textPaint.textAlign = Paint.Align.CENTER
-        textPaint.typeface = PaintTypeface.bold()
-        textPaint.textSize = dp(34f) * scale
-        textPaint.color = Color.rgb(76, 49, 94)
-        canvas.drawText("✦", rect.centerX(), rect.centerY() - dp(18f) * scale, textPaint)
-        textPaint.textSize = dp(22f) * scale
-        canvas.drawText("CARE", rect.centerX(), rect.centerY() + dp(17f) * scale, textPaint)
-        textPaint.textSize = dp(11f) * scale
-        textPaint.typeface = PaintTypeface.rounded()
-        canvas.drawText("food  •  fun  •  rest  •  clean  •  health", rect.centerX(), rect.bottom - dp(17f) * scale, textPaint)
     }
 
     private fun drawCareCategory(canvas: Canvas, category: CareCategory) {
         val rect = careCategoryRect(category)
-        val scale = (rect.width() / dp(68f)).coerceIn(.78f, 1.3f)
-        paint.color = Color.argb(22, 67, 39, 95)
-        canvas.drawRoundRect(RectF(rect.left, rect.top + dp(3f), rect.right, rect.bottom + dp(5f)), dp(14f), dp(14f), paint)
-        paint.color = category.fill
-        canvas.drawRoundRect(rect, dp(14f), dp(14f), paint)
+        drawOrganicButton(canvas, rect, category.fill, CareCategory.values().indexOf(category), pressed = false)
+        val scale = min(rect.width() / dp(68f), rect.height() / dp(58f)).coerceIn(.78f, 1.45f)
         textPaint.textAlign = Paint.Align.CENTER
         textPaint.typeface = PaintTypeface.bold()
         textPaint.textSize = dp(16f) * scale
         textPaint.color = Color.rgb(76, 49, 94)
-        canvas.drawText(category.glyph, rect.centerX(), rect.top + dp(20f) * scale, textPaint)
+        canvas.drawText(category.glyph, rect.centerX(), rect.top + rect.height() * .43f, textPaint)
         textPaint.textSize = dp(8f) * scale
-        canvas.drawText(category.label, rect.centerX(), rect.bottom - dp(7f) * scale, textPaint)
+        canvas.drawText(category.label, rect.centerX(), rect.top + rect.height() * .75f, textPaint)
     }
 
     private fun drawCareOption(canvas: Canvas, action: CareAction, rect: RectF) {
-        val scale = (rect.width() / dp(76f)).coerceIn(.78f, 1.25f)
-        paint.color = Color.argb(22, 67, 39, 95)
-        canvas.drawRoundRect(RectF(rect.left, rect.top + dp(3f), rect.right, rect.bottom + dp(5f)), dp(16f), dp(16f), paint)
-        paint.color = if (pressedAction == action) Color.WHITE else action.fill
-        canvas.drawRoundRect(rect, dp(16f), dp(16f), paint)
+        val scale = min(rect.width() / dp(76f), rect.height() / dp(58f)).coerceIn(.78f, 1.3f)
+        drawOrganicButton(canvas, rect, if (pressedAction == action) Color.WHITE else action.fill, action.ordinal, pressedAction == action)
         textPaint.textAlign = Paint.Align.CENTER
         textPaint.typeface = PaintTypeface.bold()
         textPaint.textSize = dp(15f) * scale
         textPaint.color = Color.rgb(76, 49, 94)
-        canvas.drawText(action.glyph, rect.centerX(), rect.top + dp(21f) * scale, textPaint)
+        canvas.drawText(action.glyph, rect.centerX(), rect.top + rect.height() * .43f, textPaint)
         textPaint.textSize = dp(9f) * scale
-        canvas.drawText(action.label, rect.centerX(), rect.bottom - dp(8f) * scale, textPaint)
+        canvas.drawText(action.label, rect.centerX(), rect.top + rect.height() * .75f, textPaint)
     }
 
     private fun drawCareCenterButton(canvas: Canvas) {
         val rect = careCenterRect()
         val scale = (rect.width() / dp(132f)).coerceIn(.72f, 1f)
-        paint.color = Color.rgb(86, 58, 108)
-        canvas.drawRoundRect(rect, dp(19f), dp(19f), paint)
+        drawOrganicButton(canvas, rect, Color.rgb(86, 58, 108), 9, pressed = false)
         textPaint.textAlign = Paint.Align.CENTER
         textPaint.typeface = PaintTypeface.bold()
         textPaint.textSize = dp(11f) * scale
         textPaint.color = Color.WHITE
         canvas.drawText(if (careCategory == null) "CLOSE" else "BACK", rect.centerX(), rect.centerY() + dp(4f) * scale, textPaint)
+    }
+
+    private fun drawOrganicButton(canvas: Canvas, rect: RectF, color: Int, variant: Int, pressed: Boolean) {
+        val path = organicButtonPath(rect, variant)
+        canvas.save()
+        canvas.translate(0f, dp(6f))
+        paint.style = Paint.Style.FILL
+        paint.color = Color.argb(if (pressed) 18 else 30, 67, 39, 95)
+        canvas.drawPath(path, paint)
+        canvas.restore()
+        paint.style = Paint.Style.FILL
+        paint.color = color
+        canvas.drawPath(path, paint)
+        paint.style = Paint.Style.STROKE
+        paint.strokeWidth = dp(3f)
+        paint.color = Color.WHITE
+        canvas.drawPath(path, paint)
+        paint.style = Paint.Style.FILL
+        paint.color = Color.argb(52, 255, 255, 255)
+        canvas.drawCircle(rect.left + rect.width() * .22f, rect.top + rect.height() * .2f, min(rect.width(), rect.height()) * .075f, paint)
+    }
+
+    private fun organicButtonPath(rect: RectF, variant: Int): Path {
+        val w = rect.width()
+        val h = rect.height()
+        val wobble = ((variant % 5) - 2) * .018f
+        val path = Path()
+        path.moveTo(rect.left + w * (.5f + wobble), rect.top)
+        path.cubicTo(
+            rect.left + w * .78f, rect.top - h * .025f,
+            rect.right + w * .025f, rect.top + h * .12f,
+            rect.right, rect.top + h * .43f
+        )
+        path.cubicTo(
+            rect.right + w * .02f, rect.top + h * .73f,
+            rect.right - w * .16f, rect.bottom + h * .02f,
+            rect.left + w * .52f, rect.bottom
+        )
+        path.cubicTo(
+            rect.left + w * .2f, rect.bottom + h * .025f,
+            rect.left - w * .025f, rect.bottom - h * .18f,
+            rect.left, rect.top + h * .52f
+        )
+        path.cubicTo(
+            rect.left - w * .01f, rect.top + h * .2f,
+            rect.left + w * .2f, rect.top + h * .02f,
+            rect.left + w * (.5f + wobble), rect.top
+        )
+        path.close()
+        return path
     }
 
     private fun careCategoryRect(category: CareCategory): RectF {
@@ -2271,26 +2291,26 @@ private class PetGameView(context: Context, private val onPetCreated: () -> Unit
     )
 
     private fun careCategoryGeometry(): List<RectF> {
-        val angles = CareCategory.values().map { it.angleDegrees }
         val panel = carePanelRect()
-        // The old fixed wheel used roughly 68dp buttons. Keep that visual
-        // weight as the baseline instead of letting a conservative AABB
-        // check collapse the whole wheel into tiny pills.
-        var widthCandidate = min(dp(82f), panel.width() * .26f)
-        while (widthCandidate >= dp(48f)) {
-            val heightCandidate = widthCandidate * .62f
-            val radius = careRadialRadius(panel, widthCandidate, heightCandidate)
-            val rects = angles.map { angle ->
-                val point = radialPoint(angle, radius)
-                RectF(
-                    point.first - widthCandidate / 2f, point.second - heightCandidate / 2f,
-                    point.first + widthCandidate / 2f, point.second + heightCandidate / 2f
-                )
-            }
-            if (careRectsFit(rects, panel, careCenterRect())) return rects
-            widthCandidate -= dp(2f)
-        }
-        return careFallbackRects(angles, panel)
+        val gap = dp(3f)
+        val top = panel.top + dp(2f)
+        val bottom = panel.bottom - dp(2f)
+        val totalHeight = bottom - top
+        val centerWidth = (panel.width() * .34f).coerceAtLeast(dp(92f))
+        val sideWidth = ((panel.width() - centerWidth - gap * 2f) / 2f).coerceAtLeast(dp(48f))
+        val left = panel.left
+        val centerLeft = left + sideWidth + gap
+        val right = centerLeft + centerWidth + gap
+        val topHeight = (totalHeight * .46f).coerceAtLeast(dp(72f))
+        val bottomTop = top + topHeight + gap
+        val sideRects = listOf(
+            RectF(left, bottomTop, left + sideWidth, bottom),
+            RectF(left, top, left + sideWidth, bottomTop),
+            RectF(centerLeft, top, centerLeft + centerWidth, bottom),
+            RectF(right, top, right + sideWidth, bottomTop),
+            RectF(right, bottomTop, right + sideWidth, bottom)
+        )
+        return sideRects
     }
 
     private fun careOptionGeometry(category: CareCategory, count: Int): List<RectF> {
@@ -2585,25 +2605,14 @@ private class PetGameView(context: Context, private val onPetCreated: () -> Unit
 
     private fun statsTop(): Float = height * 0.5f
 
-    private fun careMenuButtonRect(): RectF = RectF(
-        dp(18f), statsTop() + dp(176f), width - dp(18f), height - dp(18f)
-    )
-
     override fun onTouchEvent(event: MotionEvent): Boolean {
         if (menuOpen || menuAnimationStart != 0L) return handleMenuTouch(event)
         if (setupMode) return handleSetupTouch(event)
-        if (careMenuOpen) return handleCareMenuTouch(event)
+        if (event.y >= carePanelRect().top) return handleCareMenuTouch(event)
         when (event.actionMasked) {
             MotionEvent.ACTION_DOWN -> {
                 if (menuButtonRect().contains(event.x, event.y)) {
                     setMenuOpen(true)
-                    return true
-                }
-                if (careMenuButtonRect().contains(event.x, event.y)) {
-                    careMenuOpen = true
-                    careCategory = null
-                    careOpeningTouch = true
-                    invalidate()
                     return true
                 }
                 pressedAction = buttons.firstOrNull { it.rect.contains(event.x, event.y) }?.action
@@ -2645,19 +2654,13 @@ private class PetGameView(context: Context, private val onPetCreated: () -> Unit
                 return true
             }
             MotionEvent.ACTION_UP -> {
-                if (careOpeningTouch) {
-                    careOpeningTouch = false
-                    pressedAction = null
-                    invalidate()
-                    return true
-                }
-                if (careCenterRect().contains(event.x, event.y)) {
-                    if (careCategory == null) careMenuOpen = false else careCategory = null
+                if (careCategory != null && careCenterRect().contains(event.x, event.y)) {
+                    careCategory = null
                 } else if (careCategory == null) {
                     val category = CareCategory.values().firstOrNull {
                         careCategoryRect(it).contains(event.x, event.y)
                     }
-                    if (category != null) careCategory = category else careMenuOpen = false
+                    if (category != null) careCategory = category
                 } else {
                     val action = buttons.firstOrNull { it.rect.contains(event.x, event.y) }?.action
                     if (action != null && action == pressedAction) {
@@ -2669,7 +2672,6 @@ private class PetGameView(context: Context, private val onPetCreated: () -> Unit
                 return true
             }
             MotionEvent.ACTION_CANCEL -> {
-                careOpeningTouch = false
                 pressedAction = null
                 invalidate()
                 return true

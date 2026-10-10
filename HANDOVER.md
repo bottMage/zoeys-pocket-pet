@@ -1,6 +1,15 @@
 # Zoey's Pocket Pet — cloud handover
 
-## Current release: fuller responsive care button sizing — v89
+## Current release candidate: permanent organic care controls — v90
+
+The v90 candidate removes the large CARE opener entirely. The five care
+categories stay visible as large, softly irregular organic buttons that fill
+the lower panel, and their actions use the same style. Selecting a category
+temporarily swaps in its actions with a BACK control; the existing action
+effects, sickness/Medicine behavior, persistence, and menu/settings flows are
+unchanged.
+
+## Previous release: fuller responsive care button sizing — v89
 
 The v89 candidate corrects v88's over-conservative fit calculation. The radial
 categories keep a comfortable Tamagotchi-sized baseline, while secondary
