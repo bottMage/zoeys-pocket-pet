@@ -2,11 +2,14 @@
 
 ## Current release: accept-gated play dates and synced egg cracks — v122
 
-Pending publication. The inviter now starts only when its own request changes
+Published APK verified byte-for-byte against the signed local build:
+`https://github.com/bottMage/zoeys-pocket-pet/releases/download/v122/zoeys-pocket-pet-v122.apk?verify=122-1`.
+SHA-256: `43873f824136699c0ef210cb337b138e89e4db0bc97789aada9af35fb7b48b85`.
+Build/lint pass. The inviter now starts only when its own request changes
 from pending to accepted; the recipient starts only from the explicit accept
 action, preventing stale accepted requests from opening play early. Public
 profiles now include egg hatch progress, so a remote egg renders the same
-crack/progress as the owner’s egg. Build/lint pending.
+crack/progress as the owner’s egg.
 
 ## Current release: stable play sessions and real friend pet names — v121
 
