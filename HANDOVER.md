@@ -2,10 +2,14 @@
 
 ## Current release: reliable friend request delivery — v115
 
-Pending publication. Friend and play requests now write a direct recipient-
-owned inbox as well as the sender's outbox, so delivery uses a deterministic
-listener instead of a cross-user collection-group query. The corresponding
-Firestore inbox rules were deployed before this release.
+Published APK verified byte-for-byte against the signed local build:
+`https://github.com/bottMage/zoeys-pocket-pet/releases/download/v115/zoeys-pocket-pet-v115.apk?verify=115-1`.
+SHA-256: `a9aa29201c98b88946fd54ea23e0d2776d0b1808d8e5186399f2eb752fc14d9e`.
+Build/lint pass. Existing signing certificate unchanged. Friend and play
+requests now write a direct recipient-owned inbox as well as the sender's
+outbox, so delivery uses a deterministic listener instead of a cross-user
+collection-group query. The corresponding Firestore inbox rules were
+deployed before the release.
 
 ## Previous release: always-visible settings actions — v114
 
