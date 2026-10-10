@@ -1,6 +1,15 @@
 # Zoey's Pocket Pet — cloud handover
 
-## Current release: correctly mapped upward color bleed — v107
+## Current release: contour-aligned upward color bleed — v108
+
+Published APK will be verified byte-for-byte against the signed local build
+after the v108 release asset is available.
+
+The upward bleed now uses the exact shared top-segment coordinates from the
+care artwork instead of translating whole blob paths. The offline 592×480
+preview confirms the fade edges align with FUN, REST, and CLEAN contours.
+
+## Previous release: correctly mapped upward color bleed — v107
 
 Published APK verified byte-for-byte against the signed local build:
 `https://github.com/bottMage/zoeys-pocket-pet/releases/download/v107/zoeys-pocket-pet-v107.apk?verify=107-2`.

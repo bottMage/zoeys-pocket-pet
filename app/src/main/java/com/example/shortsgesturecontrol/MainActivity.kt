@@ -2230,19 +2230,23 @@ private class PetGameView(context: Context, private val onPetCreated: () -> Unit
     private fun drawCareTopBleeds(canvas: Canvas, panel: RectF, colors: List<Int>) {
         val blobs = currentBlobs()
         val fadeHeight = dp(16f)
-        val topCount = if (blobs.size == 5) 3 else blobs.size - 1
-        val topColors = colors.take(topCount)
-        for (index in topColors.indices) {
-            val blob = blobs[index]
-            val color = topColors[index]
-            val bleedPath = Path(blob.path)
-            android.graphics.Matrix().apply {
-                setTranslate(0f, -fadeHeight)
-                bleedPath.transform(this)
-            }
+        // These are the exact straight top contours in CareBlobArt. Drawing
+        // the bleed from these shared edges keeps its lower boundary aligned
+        // with the real blobs; translating a whole blob distorts that edge.
+        val xEdges = if (blobs.size == 5) {
+            floatArrayOf(0f, 185f, 395f, 592f)
+        } else {
+            floatArrayOf(0f, 296f, 592f)
+        }
+        val topCount = min(colors.size, xEdges.size - 1)
+        val scaleX = panel.width() / 592f
+        for (index in 0 until topCount) {
+            val color = colors[index]
             val red = Color.red(color)
             val green = Color.green(color)
             val blue = Color.blue(color)
+            val left = panel.left + xEdges[index] * scaleX
+            val right = panel.left + xEdges[index + 1] * scaleX
             canvas.save()
             canvas.clipRect(panel.left, panel.top - fadeHeight, panel.right, panel.top)
             paint.style = Paint.Style.FILL
@@ -2251,7 +2255,7 @@ private class PetGameView(context: Context, private val onPetCreated: () -> Unit
                 Color.argb(0, red, green, blue), Color.rgb(red, green, blue),
                 Shader.TileMode.CLAMP
             )
-            canvas.drawPath(bleedPath, paint)
+            canvas.drawRect(left, panel.top - fadeHeight, right, panel.top, paint)
             canvas.restore()
             paint.shader = null
         }
