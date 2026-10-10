@@ -2,8 +2,8 @@
 
 ## Current release: radial care menu and gentle health state — v83
 
-The v83 candidate keeps v82's threshold, sickness, and gentle general reminder
-work while replacing the four-button bottom strip with a kid-friendly two-level
+The v83 release keeps v82's threshold and gentle general reminder work while
+adding a gentle elapsed-time health state, then replaces the four-button bottom strip with a kid-friendly two-level
 care menu. A central CARE button opens FOOD, FUN, REST, CLEAN, and HEALTH
 categories; each category then offers focused actions such as meals and treats,
 toys and cuddles, naps and sleep, bath and tidy, or checkup, medicine, and
