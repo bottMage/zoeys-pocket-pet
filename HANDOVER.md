@@ -3,7 +3,7 @@
 ## Current release: quiet sync and egg-specific care controls — v112
 
 Published APK verified byte-for-byte against the signed local build:
-`https://github.com/bottMage/zoeys-pocket-pet/releases/download/v112/zoeys-pocket-pet-v112.apk?verify=112-1`.
+`https://github.com/bottMage/zoeys-pocket-pet/releases/download/v112/zoeys-pocket-pet-v112.apk?verify=112-2`.
 SHA-256: `daeda6f550d36d9e9fb3a224856c416bd206791fc4f131e23b8879522fd66703`.
 Build/lint pass. Existing signing certificate unchanged.
 
