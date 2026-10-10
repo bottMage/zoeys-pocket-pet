@@ -1,6 +1,14 @@
 # Zoey's Pocket Pet — cloud handover
 
-## Current release: visible health and kid-friendly tutorial — v86
+## Current release candidate: compact care actions and full CARE panel — v87
+
+The v87 candidate keeps v86's visible HEALTH score and replayable child-friendly
+tutorial. Secondary radial actions now form compact adjacent clusters along
+their category direction, with a small gap instead of a widely spaced fan. The
+closed-state CARE control expands into a large styled panel filling the space
+below the stat bars, so the lower section remains intentional and easy to tap.
+
+## Previous release: visible health and kid-friendly tutorial — v86
 
 The v86 release relabels the visible header score from CARE to HEALTH. The
 displayed value now reflects the pet's current needs and drops clearly when

@@ -2171,7 +2171,7 @@ private class PetGameView(context: Context, private val onPetCreated: () -> Unit
             textPaint.typeface = PaintTypeface.bold()
             textPaint.textSize = dp(11f)
             textPaint.color = Color.rgb(111, 82, 123)
-            canvas.drawText("CHOOSE ${category.label}", width / 2f, height - dp(190f), textPaint)
+            canvas.drawText("CHOOSE ${category.label}", width / 2f, statsTop() + dp(165f), textPaint)
             for (index in options.indices) {
                 val action = options[index]
                 val rect = careOptionRect(action, index, options.size)
@@ -2183,19 +2183,21 @@ private class PetGameView(context: Context, private val onPetCreated: () -> Unit
     }
 
     private fun drawCareMenuButton(canvas: Canvas) {
-        val rect = RectF(width / 2f - dp(88f), height - dp(92f), width / 2f + dp(88f), height - dp(24f))
+        val rect = careMenuButtonRect()
         paint.color = Color.argb(24, 67, 39, 95)
-        canvas.drawRoundRect(RectF(rect.left, rect.top + dp(5f), rect.right, rect.bottom + dp(8f)), dp(24f), dp(24f), paint)
+        canvas.drawRoundRect(RectF(rect.left, rect.top + dp(7f), rect.right, rect.bottom + dp(10f)), dp(28f), dp(28f), paint)
         paint.color = Color.rgb(255, 218, 157)
-        canvas.drawRoundRect(rect, dp(24f), dp(24f), paint)
+        canvas.drawRoundRect(rect, dp(28f), dp(28f), paint)
         textPaint.textAlign = Paint.Align.CENTER
         textPaint.typeface = PaintTypeface.bold()
-        textPaint.textSize = dp(18f)
+        textPaint.textSize = dp(34f)
         textPaint.color = Color.rgb(76, 49, 94)
-        canvas.drawText("✦  CARE", rect.centerX(), rect.centerY() + dp(6f), textPaint)
-        textPaint.textSize = dp(10f)
+        canvas.drawText("✦", rect.centerX(), rect.centerY() - dp(18f), textPaint)
+        textPaint.textSize = dp(22f)
+        canvas.drawText("CARE", rect.centerX(), rect.centerY() + dp(17f), textPaint)
+        textPaint.textSize = dp(11f)
         textPaint.typeface = PaintTypeface.rounded()
-        canvas.drawText("choose something kind", rect.centerX(), rect.bottom - dp(9f), textPaint)
+        canvas.drawText("food  •  fun  •  rest  •  clean  •  health", rect.centerX(), rect.bottom - dp(17f), textPaint)
     }
 
     private fun drawCareCategory(canvas: Canvas, category: CareCategory) {
@@ -2248,12 +2250,15 @@ private class PetGameView(context: Context, private val onPetCreated: () -> Unit
     )
 
     private fun careOptionRect(action: CareAction, index: Int, count: Int): RectF {
-        // Two choices need a much wider fan: a narrow two-point arc around
-        // REST puts both buttons almost on top of each other at the top of
-        // the wheel. Three choices already have enough separation at 35°.
-        val spread = if (count <= 1) 0f else if (count == 2) 70f else 35f
         val centeredIndex = index - (count - 1) / 2f
-        val point = radialPoint(action.category.angleDegrees + centeredIndex * spread, careRadius())
+        // Keep secondary actions as a compact cluster along the tangent of
+        // their category's radial direction. They still sit in the correct
+        // part of the wheel, but neighboring choices read as one group.
+        val anchor = radialPoint(action.category.angleDegrees, careRadius())
+        val tangentRadians = Math.toRadians((action.category.angleDegrees + 90f).toDouble())
+        val spacing = dp(83f)
+        val point = (anchor.first + cos(tangentRadians).toFloat() * centeredIndex * spacing) to
+            (anchor.second + sin(tangentRadians).toFloat() * centeredIndex * spacing)
         return RectF(point.first - dp(38f), point.second - dp(25f), point.first + dp(38f), point.second + dp(25f))
     }
 
@@ -2266,7 +2271,7 @@ private class PetGameView(context: Context, private val onPetCreated: () -> Unit
     private fun careRadius(): Float {
         // The screen is intentionally split roughly 50/50. Keep every radial
         // button below the stat bars so opening care never hides the check-in.
-        val statsClearance = height - dp(58f) - statsTop() - dp(180f)
+        val statsClearance = height - dp(58f) - statsTop() - dp(200f)
         return min(dp(132f), min(width / 2f - dp(42f), statsClearance)).coerceAtLeast(dp(62f))
     }
 
@@ -2485,7 +2490,7 @@ private class PetGameView(context: Context, private val onPetCreated: () -> Unit
     private fun statsTop(): Float = height * 0.5f
 
     private fun careMenuButtonRect(): RectF = RectF(
-        width / 2f - dp(88f), height - dp(92f), width / 2f + dp(88f), height - dp(24f)
+        dp(18f), statsTop() + dp(176f), width - dp(18f), height - dp(18f)
     )
 
     override fun onTouchEvent(event: MotionEvent): Boolean {
