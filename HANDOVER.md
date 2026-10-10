@@ -2,8 +2,10 @@
 
 ## Current release: colorful stats-to-care transition — v102
 
-Published APK will be verified byte-for-byte against the signed local build
-after the v102 release asset is available.
+Published APK verified byte-for-byte against the signed local build:
+`https://github.com/bottMage/zoeys-pocket-pet/releases/download/v102/zoeys-pocket-pet-v102.apk?verify=102-1`.
+SHA-256: `9e95cfd5951bf85d5398487abe93d500f63374648a15df5920a0c991eb8e179a`.
+Build/lint pass. Existing signing certificate unchanged.
 
 The stats surface now has a richer lavender, blush, peach, and mint pastel
 wash with subtle color glows, while its lower tone still transitions into the
