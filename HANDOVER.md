@@ -2,9 +2,10 @@
 
 ## Current release: fully tiled liquid care panel — v93
 
-The v93 APK is built with the established cloud signing certificate and is
-ready for publication after the v93 release asset is available. Local
+Published APK verified byte-for-byte against the signed local build:
+`https://github.com/bottMage/zoeys-pocket-pet/releases/download/v93/zoeys-pocket-pet-v93.apk?verify=93-1`.
 SHA-256: `888b66389868a783571161e4646af1f95d083922388ea5bd6905306d8f523f19`.
+Build/lint pass. Existing signing certificate unchanged.
 
 The care panel is now a true partition: neighboring buttons reuse the same
 curve in reverse, so FOOD, FUN, REST, CLEAN, HEALTH, and the secondary action
@@ -867,10 +868,10 @@ release facts are the sections below.
 - Repository: `https://github.com/bottMage/zoeys-pocket-pet` (public).
 - Cloud checkout: `/workspace/zoeys-pocket-pet`.
 - Local branch name is `work`; completed changes are pushed to remote `main` using `git push origin HEAD:main`.
-- Latest pushed app commit: pending v93 publication.
-- Latest public release/tag: `v92` until the v93 tag and workflow asset complete.
+- Latest pushed app commit: `2f57a69 Tile care controls into fitted liquid panel`.
+- Latest public release/tag: `v93`.
 - Current Android version: `versionCode = 93`, `versionName = "93.0"` in `app/build.gradle.kts`.
-- The v93 local checksum is recorded in the current release section above; its public URL is added after the release asset returns HTTP 200.
+- The v93 APK URL and verified checksum are recorded in the current release section above.
 - The v79 care-button change was tested by the user on Zoey's phone and
   removed the repeated-OK-button freeze/ANR: it uses Android's built-in click
   effect rather than constructing a `ToneGenerator` on every tap. v79 did not
