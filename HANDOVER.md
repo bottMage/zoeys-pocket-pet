@@ -1,6 +1,16 @@
 # Zoey's Pocket Pet — cloud handover
 
-## Current release: top-button stats fade — v103
+## Current release: per-button stats fade — v104
+
+Published APK will be verified byte-for-byte against the signed local build
+after the v104 release asset is available.
+
+The full-width pale overlay has been removed. Each upper care button now owns
+its transition: its saturated color fades upward independently into the pale
+pink stats surface, with no separate border or band. This applies on both
+category and action screens.
+
+## Previous release: top-button stats fade — v103
 
 Published APK verified byte-for-byte against the signed local build:
 `https://github.com/bottMage/zoeys-pocket-pet/releases/download/v103/zoeys-pocket-pet-v103.apk?verify=103-2`.

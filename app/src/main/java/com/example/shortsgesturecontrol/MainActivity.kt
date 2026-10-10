@@ -2175,19 +2175,6 @@ private class PetGameView(context: Context, private val onPetCreated: () -> Unit
         }
     }
 
-    private fun drawCareStatsBlend(canvas: Canvas, panel: RectF) {
-        // Soften only the outer top contour of the first row. Internal seams
-        // remain crisp, while the stats card and colorful tiles read as one
-        // continuous lower panel.
-        val blendHeight = dp(18f)
-        paint.shader = LinearGradient(
-            0f, panel.top - dp(2f), 0f, panel.top + blendHeight,
-            Color.rgb(249, 237, 248), Color.TRANSPARENT, Shader.TileMode.CLAMP
-        )
-        canvas.drawRect(0f, panel.top - dp(2f), width.toFloat(), panel.top + blendHeight, paint)
-        paint.shader = null
-    }
-
     private fun drawActions(canvas: Canvas) {
         buttons.clear()
         if (pet.dead) {
@@ -2226,7 +2213,6 @@ private class PetGameView(context: Context, private val onPetCreated: () -> Unit
             }
             drawCareCenterButton(canvas)
         }
-        drawCareStatsBlend(canvas, panel)
     }
 
     private data class BlobControl(val index: Int, val path: Path, val samples: FloatArray,
