@@ -3,7 +3,7 @@
 ## Current release: resume-safe cloud snapshot sync — v109
 
 Published APK verified byte-for-byte against the signed local build:
-`https://github.com/bottMage/zoeys-pocket-pet/releases/download/v109/zoeys-pocket-pet-v109.apk?verify=109-1`.
+`https://github.com/bottMage/zoeys-pocket-pet/releases/download/v109/zoeys-pocket-pet-v109.apk?verify=109-2`.
 SHA-256: `bff756a9115d65846852f2c9fe92410fa7fe78683e8bdd449e043fe2511cc101`.
 Build/lint pass. Existing signing certificate unchanged.
 
