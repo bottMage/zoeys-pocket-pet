@@ -1,6 +1,6 @@
 # Zoey's Pocket Pet — cloud handover
 
-## Current release candidate: radial care menu and gentle health state — v83
+## Current release: radial care menu and gentle health state — v83
 
 The v83 candidate keeps v82's threshold, sickness, and gentle general reminder
 work while replacing the four-button bottom strip with a kid-friendly two-level
@@ -19,8 +19,10 @@ app reminders can repeat sickness help every three hours until medicine is
 given, while existing stat-threshold and cute two-hour general reminders remain
 rate-limited and battery-conscious.
 
-The v83 APK will use the unchanged cloud certificate and will be published at
+The v83 APK uses the unchanged cloud certificate and is published at
 `https://github.com/bottMage/zoeys-pocket-pet/releases/download/v83/zoeys-pocket-pet-v83.apk?download=83`.
+Its verified SHA-256 is
+`1eddc05543c7749bc49c14b37325486a5fa7b5801007aca9ce4e111c7fa4f88f`.
 
 ## Previous release: gentle general reminders — v82
 
@@ -721,13 +723,13 @@ release facts are the sections below.
 - Repository: `https://github.com/bottMage/zoeys-pocket-pet` (public).
 - Cloud checkout: `/workspace/zoeys-pocket-pet`.
 - Local branch name is `work`; completed changes are pushed to remote `main` using `git push origin HEAD:main`.
-- Latest pushed app commit: `26bccde Add gentle general reminders and prepare v82`.
-- Latest public release/tag: `v82` (v83 is the current release candidate).
+- Latest pushed app commit: `631fa39 Add radial care menu and health state, prepare v83`.
+- Latest public release/tag: `v83`.
 - Current Android version: `versionCode = 83`, `versionName = "83.0"` in `app/build.gradle.kts`.
-- The v82 release APK is published at
-  `https://github.com/bottMage/zoeys-pocket-pet/releases/download/v82/zoeys-pocket-pet-v82.apk?download=82`.
-- The v82 APK SHA-256 is
-  `78817a6a5c5ca3a428905e63e35457507b1823f903c676a07a2643ab8da0c678`.
+- The v83 release APK is published at
+  `https://github.com/bottMage/zoeys-pocket-pet/releases/download/v83/zoeys-pocket-pet-v83.apk?download=83`.
+- The v83 APK SHA-256 is
+  `1eddc05543c7749bc49c14b37325486a5fa7b5801007aca9ce4e111c7fa4f88f`.
 - The v79 care-button change was tested by the user on Zoey's phone and
   removed the repeated-OK-button freeze/ANR: it uses Android's built-in click
   effect rather than constructing a `ToneGenerator` on every tap. v79 did not
