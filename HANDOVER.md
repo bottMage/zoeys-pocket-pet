@@ -1,6 +1,14 @@
 # Zoey's Pocket Pet — cloud handover
 
-## Current release: responsive care button sizing — v88
+## Current release candidate: fuller responsive care button sizing — v89
+
+The v89 candidate corrects v88's over-conservative fit calculation. The radial
+categories keep a comfortable Tamagotchi-sized baseline, while secondary
+clusters use the available radius before shrinking. The tighter safe gap still
+prevents overlap and clipping, and the shared drawing/touch rectangles keep
+Medicine and future extra actions aligned.
+
+## Previous release: responsive care button sizing — v88
 
 The v88 release keeps v87's compact adjacent care-action clusters and large
 CARE panel, but sizes every care button from the available lower-panel space.
@@ -776,7 +784,7 @@ do not claim measured device frame rates or final user-approved visual quality.
 
 ## What the user wants now
 
-The current priority is safe continuation from the v88 app. Preserve
+The current priority is safe continuation from the v89 app. Preserve
 the working whole-pet renderer, persistence, lifecycle, scenery, audio, and
 updater while making only well-validated improvements. The user remains
 unhappy with the underlying walk-cel quality: pets can look floaty, rigid,
@@ -793,12 +801,8 @@ release facts are the sections below.
 - Cloud checkout: `/workspace/zoeys-pocket-pet`.
 - Local branch name is `work`; completed changes are pushed to remote `main` using `git push origin HEAD:main`.
 - Latest pushed app commit: `4fac47b Responsive care button sizing, prepare v88`.
-- Latest public release/tag: `v88`.
-- Current Android version: `versionCode = 88`, `versionName = "88.0"` in `app/build.gradle.kts`.
-- The v88 release APK is published at
-  `https://github.com/bottMage/zoeys-pocket-pet/releases/download/v88/zoeys-pocket-pet-v88.apk?download=88`.
-- The v88 APK SHA-256 is
-  `0cfab22dafcbe280641ffe64f9d65f1dfb7cb3576398267158aa33374b419910`.
+- Latest public release/tag: `v88` (v89 candidate is being published).
+- Current Android version: `versionCode = 89`, `versionName = "89.0"` in `app/build.gradle.kts`.
 - The v79 care-button change was tested by the user on Zoey's phone and
   removed the repeated-OK-button freeze/ANR: it uses Android's built-in click
   effect rather than constructing a `ToneGenerator` on every tap. v79 did not

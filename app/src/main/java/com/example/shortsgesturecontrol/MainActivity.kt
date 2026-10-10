@@ -2273,9 +2273,12 @@ private class PetGameView(context: Context, private val onPetCreated: () -> Unit
     private fun careCategoryGeometry(): List<RectF> {
         val angles = CareCategory.values().map { it.angleDegrees }
         val panel = carePanelRect()
-        var widthCandidate = min(dp(108f), panel.width() * .30f)
-        while (widthCandidate >= dp(54f)) {
-            val heightCandidate = widthCandidate * .67f
+        // The old fixed wheel used roughly 68dp buttons. Keep that visual
+        // weight as the baseline instead of letting a conservative AABB
+        // check collapse the whole wheel into tiny pills.
+        var widthCandidate = min(dp(82f), panel.width() * .26f)
+        while (widthCandidate >= dp(48f)) {
+            val heightCandidate = widthCandidate * .62f
             val radius = careRadialRadius(panel, widthCandidate, heightCandidate)
             val rects = angles.map { angle ->
                 val point = radialPoint(angle, radius)
@@ -2293,23 +2296,26 @@ private class PetGameView(context: Context, private val onPetCreated: () -> Unit
     private fun careOptionGeometry(category: CareCategory, count: Int): List<RectF> {
         val panel = carePanelRect()
         var widthCandidate = min(dp(126f), panel.width() - dp(24f))
-        while (widthCandidate >= dp(54f)) {
+        while (widthCandidate >= dp(48f)) {
             val heightCandidate = widthCandidate * .67f
-            val radius = careRadialRadius(panel, widthCandidate, heightCandidate)
-            val anchor = radialPoint(category.angleDegrees, radius)
-            val tangentRadians = Math.toRadians((category.angleDegrees + 90f).toDouble())
-            val gap = dp(6f)
-            val spacing = widthCandidate + gap
-            val rects = (0 until count).map { index ->
-                val centeredIndex = index - (count - 1) / 2f
-                val x = anchor.first + cos(tangentRadians).toFloat() * centeredIndex * spacing
-                val y = anchor.second + sin(tangentRadians).toFloat() * centeredIndex * spacing
-                RectF(
-                    x - widthCandidate / 2f, y - heightCandidate / 2f,
-                    x + widthCandidate / 2f, y + heightCandidate / 2f
-                )
+            var radius = careRadialRadius(panel, widthCandidate, heightCandidate)
+            while (radius >= dp(28f)) {
+                val anchor = radialPoint(category.angleDegrees, radius)
+                val tangentRadians = Math.toRadians((category.angleDegrees + 90f).toDouble())
+                val gap = dp(4f)
+                val spacing = widthCandidate + gap
+                val rects = (0 until count).map { index ->
+                    val centeredIndex = index - (count - 1) / 2f
+                    val x = anchor.first + cos(tangentRadians).toFloat() * centeredIndex * spacing
+                    val y = anchor.second + sin(tangentRadians).toFloat() * centeredIndex * spacing
+                    RectF(
+                        x - widthCandidate / 2f, y - heightCandidate / 2f,
+                        x + widthCandidate / 2f, y + heightCandidate / 2f
+                    )
+                }
+                if (careRectsFit(rects, panel, careCenterRect())) return rects
+                radius -= dp(2f)
             }
-            if (careRectsFit(rects, panel, careCenterRect())) return rects
             widthCandidate -= dp(2f)
         }
         return careFallbackRects(listOf(category.angleDegrees), panel, count)
@@ -2327,7 +2333,7 @@ private class PetGameView(context: Context, private val onPetCreated: () -> Unit
     }
 
     private fun careRectsFit(rects: List<RectF>, panel: RectF, center: RectF): Boolean {
-        val gap = dp(6f)
+        val gap = dp(4f)
         if (rects.any { it.left < panel.left || it.right > panel.right || it.top < panel.top || it.bottom > panel.bottom }) return false
         for (first in rects.indices) {
             for (second in first + 1 until rects.size) if (rectsOverlap(rects[first], rects[second], gap)) return false
