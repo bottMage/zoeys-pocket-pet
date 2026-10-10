@@ -2067,12 +2067,37 @@ private class PetGameView(context: Context, private val onPetCreated: () -> Unit
 
     private fun drawStats(canvas: Canvas) {
         val top = statsTop()
+        paint.style = Paint.Style.FILL
         paint.shader = LinearGradient(
             0f, top, 0f, height.toFloat(),
-            Color.argb(248, 255, 249, 246), Color.argb(252, 248, 235, 248),
+            intArrayOf(
+                Color.rgb(237, 220, 246),
+                Color.rgb(244, 227, 244),
+                Color.rgb(248, 235, 248),
+                Color.rgb(255, 227, 218),
+                Color.rgb(248, 235, 248)
+            ),
+            floatArrayOf(0f, .16f, .30f, .58f, 1f),
             Shader.TileMode.CLAMP
         )
         canvas.drawRoundRect(RectF(0f, top, width.toFloat(), height.toFloat()), dp(28f), dp(28f), paint)
+        paint.shader = null
+
+        // Add a very soft color wash behind the stats, keeping the text and
+        // bars clear while making this area feel related to the care palette.
+        canvas.save()
+        canvas.clipRect(0f, top + dp(8f), width.toFloat(), height.toFloat())
+        paint.shader = RadialGradient(
+            width * .16f, top + dp(112f), width * .42f,
+            Color.argb(38, 255, 86, 170), Color.TRANSPARENT, Shader.TileMode.CLAMP
+        )
+        canvas.drawCircle(width * .16f, top + dp(112f), width * .42f, paint)
+        paint.shader = RadialGradient(
+            width * .86f, top + dp(84f), width * .38f,
+            Color.argb(34, 66, 196, 190), Color.TRANSPARENT, Shader.TileMode.CLAMP
+        )
+        canvas.drawCircle(width * .86f, top + dp(84f), width * .38f, paint)
+        canvas.restore()
         paint.shader = null
 
         val reset = newPetRect()

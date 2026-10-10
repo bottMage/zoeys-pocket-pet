@@ -1,6 +1,15 @@
 # Zoey's Pocket Pet — cloud handover
 
-## Current release: flush stats-to-care transition — v101
+## Current release: colorful stats-to-care transition — v102
+
+Published APK will be verified byte-for-byte against the signed local build
+after the v102 release asset is available.
+
+The stats surface now has a richer lavender, blush, peach, and mint pastel
+wash with subtle color glows, while its lower tone still transitions into the
+care panel. The care controls remain saturated and distinct.
+
+## Previous release: flush stats-to-care transition — v101
 
 Published APK verified byte-for-byte against the signed local build:
 `https://github.com/bottMage/zoeys-pocket-pet/releases/download/v101/zoeys-pocket-pet-v101.apk?verify=101-2`.
