@@ -1,12 +1,17 @@
 # Zoey's Pocket Pet — cloud handover
 
-## Current release candidate: fuller responsive care button sizing — v89
+## Current release: fuller responsive care button sizing — v89
 
 The v89 candidate corrects v88's over-conservative fit calculation. The radial
 categories keep a comfortable Tamagotchi-sized baseline, while secondary
 clusters use the available radius before shrinking. The tighter safe gap still
 prevents overlap and clipping, and the shared drawing/touch rectangles keep
 Medicine and future extra actions aligned.
+
+The v89 APK uses the unchanged cloud certificate and is published at
+`https://github.com/bottMage/zoeys-pocket-pet/releases/download/v89/zoeys-pocket-pet-v89.apk?download=89`.
+Its verified SHA-256 is
+`ca3582cae12a6b9c8a6b60919ba377b5086032cd30ae87fa9a7f3abfa08c372c`.
 
 ## Previous release: responsive care button sizing — v88
 
@@ -800,9 +805,13 @@ release facts are the sections below.
 - Repository: `https://github.com/bottMage/zoeys-pocket-pet` (public).
 - Cloud checkout: `/workspace/zoeys-pocket-pet`.
 - Local branch name is `work`; completed changes are pushed to remote `main` using `git push origin HEAD:main`.
-- Latest pushed app commit: `4fac47b Responsive care button sizing, prepare v88`.
-- Latest public release/tag: `v88` (v89 candidate is being published).
+- Latest pushed app commit: `97f2476 Restore fuller care button sizing, prepare v89`.
+- Latest public release/tag: `v89`.
 - Current Android version: `versionCode = 89`, `versionName = "89.0"` in `app/build.gradle.kts`.
+- The v89 release APK is published at
+  `https://github.com/bottMage/zoeys-pocket-pet/releases/download/v89/zoeys-pocket-pet-v89.apk?download=89`.
+- The v89 APK SHA-256 is
+  `ca3582cae12a6b9c8a6b60919ba377b5086032cd30ae87fa9a7f3abfa08c372c`.
 - The v79 care-button change was tested by the user on Zoey's phone and
   removed the repeated-OK-button freeze/ANR: it uses Android's built-in click
   effect rather than constructing a `ToneGenerator` on every tap. v79 did not
