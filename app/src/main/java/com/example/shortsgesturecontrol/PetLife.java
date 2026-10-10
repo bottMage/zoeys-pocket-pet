@@ -33,6 +33,11 @@ public final class PetLife {
 
     public double average() {return (needs[0]+needs[1]+needs[2]+needs[3])/4.0;}
     public double carePercent() {return totalCareMillis==0?0:100.0*goodCareMillis/totalCareMillis;}
+    /** Current visible health, derived from present needs rather than lifetime care history. */
+    public double healthPercent() {
+        double current=Math.max(0,Math.min(100,average()));
+        return sick?Math.min(current,35.0):current;
+    }
     public boolean needsCritical() {
         for(float need:needs)if(need<=0.01f)return true;
         return false;

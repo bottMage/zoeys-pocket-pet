@@ -94,6 +94,7 @@ class MainActivity : Activity() {
         gameView = PetGameView(this) {
             maybePromptForCloudBackup()
             gameView.postDelayed({ maybeRequestCareReminderPermission() }, 1200L)
+            gameView.postDelayed({ gameView.maybeShowTutorialIfNeeded() }, 800L)
         }
         setContentView(gameView)
         CareReminderScheduler.ensureScheduled(this)
@@ -107,6 +108,7 @@ class MainActivity : Activity() {
             else if (gameView.hasCreatedPet()) maybePromptForCloudBackup()
             else maybePromptForCloudRestore()
         }, 1800L)
+        gameView.postDelayed({ gameView.maybeShowTutorialIfNeeded() }, 5200L)
     }
 
     override fun onPause() {
@@ -546,6 +548,7 @@ private class PetGameView(context: Context, private val onPetCreated: () -> Unit
     private var careMenuOpen = false
     private var careCategory: CareCategory? = null
     private var careOpeningTouch = false
+    private var tutorialShowing = false
     @Volatile private var weather = WeatherState()
     private var weatherLoading = false
     private var weatherStarted = false
@@ -2078,7 +2081,7 @@ private class PetGameView(context: Context, private val onPetCreated: () -> Unit
         textPaint.textSize = dp(12f)
         textPaint.typeface = PaintTypeface.rounded()
         textPaint.color = Color.rgb(111, 82, 123)
-        canvas.drawText("${pet.stage} • AGE ${pet.ageLabel} • CARE ${pet.carePercent.roundToInt()}%", dp(22f), top + dp(48f), textPaint)
+        canvas.drawText("${pet.stage} • AGE ${pet.ageLabel} • HEALTH ${pet.healthPercent.roundToInt()}%", dp(22f), top + dp(48f), textPaint)
         if (pet.sick) {
             textPaint.textAlign = Paint.Align.RIGHT
             textPaint.typeface = PaintTypeface.bold()
@@ -2326,12 +2329,58 @@ private class PetGameView(context: Context, private val onPetCreated: () -> Unit
         invalidate()
     }
 
+    fun maybeShowTutorialIfNeeded() {
+        if (!pet.created || tutorialShowing || prefs.getBoolean("tutorial_seen", false)) return
+        val activity = appContext as? Activity ?: return
+        if (activity.isFinishing || activity.isDestroyed) return
+        if (!activity.hasWindowFocus()) {
+            postDelayed({ maybeShowTutorialIfNeeded() }, 1000L)
+            return
+        }
+        showTutorialPage(0, true)
+    }
+
+    private fun showTutorialPage(page: Int, firstRun: Boolean) {
+        val activity = appContext as? Activity ?: return
+        if (activity.isFinishing || activity.isDestroyed) return
+        val pages = arrayOf(
+            "Your little friend has four bars: HUNGER, JOY, ENERGY, and CLEAN. Keep them happy and your friend grows.",
+            "Tap the big CARE button to choose FOOD, FUN, REST, CLEAN, or HEALTH. You can do more than one kind thing before closing the menu.",
+            "CHECKUP tells you how your friend feels. VITAMIN gives a tiny boost. If your friend gets sick, MEDICINE appears. You can read this again in MENU > SETTINGS."
+        )
+        val lastPage = pages.lastIndex
+        tutorialShowing = true
+        val dialog = AlertDialog.Builder(activity)
+            .setTitle(if (page == 0) "Let's learn together!" else "How to care for me")
+            .setMessage(pages[page])
+            .setNegativeButton(if (page == 0) "SKIP" else "BACK") { _, _ ->
+                tutorialShowing = false
+                if (page == 0) {
+                    if (firstRun) prefs.edit().putBoolean("tutorial_seen", true).apply()
+                } else {
+                    post { showTutorialPage(page - 1, firstRun) }
+                }
+            }
+            .setPositiveButton(if (page == lastPage) "LET'S PLAY" else "NEXT") { _, _ ->
+                tutorialShowing = false
+                if (page == lastPage) {
+                    if (firstRun) prefs.edit().putBoolean("tutorial_seen", true).apply()
+                } else {
+                    post { showTutorialPage(page + 1, firstRun) }
+                }
+            }
+            .create()
+        dialog.setOnCancelListener { tutorialShowing = false }
+        dialog.show()
+    }
+
     private fun showSettings() {
         val activity = appContext as? Activity ?: return
         val remindersOn = CareReminderScheduler.isEnabled(appContext)
         val choices = arrayOf(
             "CHANGE NAME",
             if (remindersOn) "TURN OFF CARE REMINDERS" else "TURN ON CARE REMINDERS",
+            "HOW TO PLAY",
             "RESET DATA"
         )
         AlertDialog.Builder(activity)
@@ -2344,6 +2393,7 @@ private class PetGameView(context: Context, private val onPetCreated: () -> Unit
                 when (which) {
                     0 -> editPlayerName()
                     1 -> toggleCareReminders()
+                    2 -> post { showTutorialPage(0, false) }
                     else -> showResetChoices()
                 }
             }
@@ -2986,6 +3036,7 @@ private class PetGameView(context: Context, private val onPetCreated: () -> Unit
                 }
             }
         val carePercent: Float get() = life.carePercent().toFloat().coerceIn(0f, 100f)
+        val healthPercent: Float get() = life.healthPercent().toFloat().coerceIn(0f, 100f)
         val hatchProgress: Float get() = PetGrowth.hatchProgress(life.eggProgressMillis.toLong()).toFloat()
         val evolutionProgress: Float
             get() = when {

@@ -1,6 +1,16 @@
 # Zoey's Pocket Pet — cloud handover
 
-## Current release: protected stats and persistent care actions — v85
+## Current release candidate: visible health and kid-friendly tutorial — v86
+
+The v86 candidate relabels the visible header score from CARE to HEALTH. The
+displayed value now reflects the pet's current needs and drops clearly when
+the pet is sick, while the original lifetime care-quality score remains
+internal for growth and reminder decisions. A short three-page tutorial now
+appears once for a new player and can be replayed from MENU > SETTINGS > HOW TO
+PLAY. It explains the need bars, the radial CARE menu, CHECKUP, VITAMIN, and
+MEDICINE without changing existing progress or gameplay rules.
+
+## Previous release: protected stats and persistent care actions — v85
 
 The v85 release keeps v84's true radial CARE menu but gives the lower care
 area a roughly 50/50 share of the phone screen. The scenery is shorter, the

@@ -16,6 +16,7 @@ public final class PetHealthCheck {
         neglected.advance(5*HOUR,5*HOUR);
         require(neglected.sick,"Sustained poor care did not make the pet sick");
         require(neglected.symptom==PetLife.TUMMY_ACHE,"Lowest need did not select the symptom");
+        require(neglected.healthPercent()<=35,"Sickness did not lower visible health");
         neglected.cure();
         require(!neglected.sick&&neglected.symptom==PetLife.NO_SYMPTOM,"Medicine did not cure the condition");
 
