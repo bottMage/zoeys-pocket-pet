@@ -1,6 +1,11 @@
 # Zoey's Pocket Pet — cloud handover
 
-## Current release candidate: traced interlocking care panel — v91
+## Current release: traced interlocking care panel — v91
+
+Published APK verified byte-for-byte against the signed local build:
+`https://github.com/bottMage/zoeys-pocket-pet/releases/download/v91/zoeys-pocket-pet-v91.apk?verify=91-2`.
+SHA-256: `a4dc6fc5623a2b56078c20ebe591f94f6443c17cfd274c747a441cfdbb5a5a5f`.
+Build/lint pass. Existing signing certificate unchanged. No device attached.
 
 The user's reference requires individually shaped, interlocking contours,
 not v90's ovals in columns. CareBlobArt.kt traces the category contours into
@@ -820,7 +825,7 @@ do not claim measured device frame rates or final user-approved visual quality.
 
 ## What the user wants now
 
-The current priority is safe continuation from the v90 app. Preserve
+The current priority is safe continuation from the v91 app. Preserve
 the working whole-pet renderer, persistence, lifecycle, scenery, audio, and
 updater while making only well-validated improvements. The user remains
 unhappy with the underlying walk-cel quality: pets can look floaty, rigid,
@@ -836,13 +841,10 @@ release facts are the sections below.
 - Repository: `https://github.com/bottMage/zoeys-pocket-pet` (public).
 - Cloud checkout: `/workspace/zoeys-pocket-pet`.
 - Local branch name is `work`; completed changes are pushed to remote `main` using `git push origin HEAD:main`.
-- Latest pushed app commit: `2275392 Make organic care controls permanent, prepare v90`.
-- Latest public release/tag: `v90`.
-- Current Android version: `versionCode = 90`, `versionName = "90.0"` in `app/build.gradle.kts`.
-- The v90 release APK is published at
-  `https://github.com/bottMage/zoeys-pocket-pet/releases/download/v90/zoeys-pocket-pet-v90.apk?download=90`.
-- The v90 APK SHA-256 is
-  `6707adf40466f76eb94ad25bae46e103b191f5b4cf352555f96e807d1b0582f3`.
+- Latest pushed app commit: `9f42846 Trace interlocking care controls from reference, prepare v91`.
+- Latest public release/tag: `v91`.
+- Current Android version: `versionCode = 91`, `versionName = "91.0"` in `app/build.gradle.kts`.
+- The v91 APK URL and verified checksum are recorded in the current release section above.
 - The v79 care-button change was tested by the user on Zoey's phone and
   removed the repeated-OK-button freeze/ANR: it uses Android's built-in click
   effect rather than constructing a `ToneGenerator` on every tap. v79 did not
