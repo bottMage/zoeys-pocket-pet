@@ -3,7 +3,7 @@
 ## Current release: prevent stale background cloud overwrites — v111
 
 Published APK verified byte-for-byte against the signed local build:
-`https://github.com/bottMage/zoeys-pocket-pet/releases/download/v111/zoeys-pocket-pet-v111.apk?verify=111-1`.
+`https://github.com/bottMage/zoeys-pocket-pet/releases/download/v111/zoeys-pocket-pet-v111.apk?verify=111-2`.
 SHA-256: `4d0e81a88d3c2f983a44f894459cb26999a6b426b3b5f36246b2b411d7ab3aee`.
 Build/lint pass. Existing signing certificate unchanged.
 
