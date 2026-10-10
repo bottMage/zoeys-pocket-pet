@@ -43,6 +43,12 @@ public final class CareReminderCheck {
         CareReminderPolicy.Evaluation recovered=CareReminderPolicy.evaluate(
             live(now-10*60*1000L,90,90,90,90),now,now-2*HOUR);
         require(recovered.recovered,"Recovered needs did not clear reminder state");
+        require(!CareReminderPolicy.shouldSendGeneralReminder(true,false,now,now-90*60*1000L,0),
+            "General reminder arrived before the two-hour idle period");
+        require(CareReminderPolicy.shouldSendGeneralReminder(true,false,now,now-2*HOUR,0),
+            "General reminder did not arrive after the idle period");
+        require(!CareReminderPolicy.shouldSendGeneralReminder(true,false,now,now-3*HOUR,now-60*60*1000L),
+            "General reminder ignored its repeat cadence");
         System.out.println("PASS: low threshold duration, overall care risk, cooldown and recovery");
     }
 }

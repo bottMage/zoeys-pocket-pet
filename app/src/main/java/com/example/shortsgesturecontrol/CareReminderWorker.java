@@ -41,9 +41,31 @@ public final class CareReminderWorker extends Worker {
             prefs.edit().remove(CareReminderScheduler.PREF_LAST_SENT).apply();
             CareReminderScheduler.clearNotification(context);
         }
-        if(!evaluation.shouldNotify)return finish(context);
+        if(evaluation.shouldNotify) {
+            sendCareNotification(context,snapshot,evaluation,prefs,now);
+            return finish(context);
+        }
+        if(prefs.getBoolean(CareReminderScheduler.PREF_APP_VISIBLE,false))return finish(context);
+
+        long lastActivity=Math.max(
+            prefs.getLong(CareReminderScheduler.PREF_LAST_ACTIVITY,0L),
+            prefs.getLong("saved_at",0L));
+        if(lastActivity<=0)lastActivity=snapshot.lastUpdate;
+        long lastGeneral=prefs.getLong(CareReminderScheduler.PREF_LAST_GENERAL_SENT,0L);
+        if(!CareReminderPolicy.shouldSendGeneralReminder(
+            snapshot.created,snapshot.dead,now,lastActivity,lastGeneral))return finish(context);
+
+        sendGeneralNotification(context,snapshot,prefs,now);
+        return finish(context);
+    }
+
+    @android.annotation.SuppressLint("MissingPermission")
+    private static void sendCareNotification(Context context,CareReminderPolicy.Snapshot snapshot,
+                                             CareReminderPolicy.Evaluation evaluation,
+                                             SharedPreferences prefs,long now) {
 
         CareReminderScheduler.ensureChannel(context);
+        CareReminderScheduler.clearGeneralNotification(context);
         String name=prefs.getString("name","Mochi");
         String[] labels=snapshot.hatched
             ? new String[]{"hunger","joy","energy","cleanliness"}
@@ -80,8 +102,42 @@ public final class CareReminderWorker extends Worker {
             .setCategory(NotificationCompat.CATEGORY_REMINDER)
             .setPriority(NotificationCompat.PRIORITY_DEFAULT);
         NotificationManagerCompat.from(context).notify(CareReminderScheduler.NOTIFICATION_ID,notification.build());
-        prefs.edit().putLong(CareReminderScheduler.PREF_LAST_SENT,now).apply();
-        return finish(context);
+        // A care alert counts as a useful nudge too, so do not stack a cute
+        // general reminder immediately behind an urgent care notification.
+        prefs.edit().putLong(CareReminderScheduler.PREF_LAST_SENT,now)
+            .putLong(CareReminderScheduler.PREF_LAST_GENERAL_SENT,now).apply();
+    }
+
+    @android.annotation.SuppressLint("MissingPermission")
+    private static void sendGeneralNotification(Context context,CareReminderPolicy.Snapshot snapshot,
+                                                SharedPreferences prefs,long now) {
+        String name=prefs.getString("name","Mochi");
+        String[] messages=snapshot.hatched
+            ? new String[]{
+                "I miss you! Come play with me when you can.",
+                "I have a happy wiggle waiting for you!",
+                "Come say hi when you have a moment!"}
+            : new String[]{
+                "Your little egg is waiting for a visit!",
+                "I wonder when you will come check on me!",
+                "Come say hi to your cozy little egg!"};
+        int messageIndex=(int)((now/CareReminderPolicy.GENERAL_REMINDER_AFTER_MILLIS)%messages.length);
+        String body=name+" says: "+messages[messageIndex];
+        Intent intent=new Intent(context,MainActivity.class)
+            .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK|Intent.FLAG_ACTIVITY_CLEAR_TOP);
+        PendingIntent pending=PendingIntent.getActivity(context,CareReminderScheduler.GENERAL_NOTIFICATION_ID,intent,
+            PendingIntent.FLAG_UPDATE_CURRENT|PendingIntent.FLAG_IMMUTABLE);
+        NotificationCompat.Builder notification=new NotificationCompat.Builder(context,CareReminderScheduler.CHANNEL_ID)
+            .setSmallIcon(R.drawable.ic_notification)
+            .setContentTitle("MochiGotchi says hi!")
+            .setContentText(body)
+            .setStyle(new NotificationCompat.BigTextStyle().bigText(body))
+            .setContentIntent(pending)
+            .setAutoCancel(true)
+            .setCategory(NotificationCompat.CATEGORY_SOCIAL)
+            .setPriority(NotificationCompat.PRIORITY_DEFAULT);
+        NotificationManagerCompat.from(context).notify(CareReminderScheduler.GENERAL_NOTIFICATION_ID,notification.build());
+        prefs.edit().putLong(CareReminderScheduler.PREF_LAST_GENERAL_SENT,now).apply();
     }
 
     private static Result finish(Context context) {

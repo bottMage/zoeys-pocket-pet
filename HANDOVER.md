@@ -1,8 +1,22 @@
 # Zoey's Pocket Pet — cloud handover
 
-## Current release: threshold-triggered care reminders — v81
+## Current release candidate: gentle general reminders — v82
 
-The v81 candidate adds battery-conscious offline care reminders without a live
+The v82 candidate keeps v81's threshold-triggered care reminders and adds
+gentle general check-ins while the app is closed. After about two hours away,
+the pet or egg can send a short, age-appropriate message, repeating no more
+often than every two hours. The idle timer resets when the app returns to the
+foreground, reminders stay quiet while it is visible, and care alerts suppress
+general reminders so the notification stream does not become noisy. The
+existing notification permission, Settings toggle, WorkManager fallback,
+elapsed-time care model, and lightweight threshold alarm are reused.
+
+The v82 APK will use the unchanged cloud certificate; its final public
+checksum will be recorded here after the release asset is verified.
+
+## Previous release: threshold-triggered care reminders — v81
+
+The v81 release added battery-conscious offline care reminders without a live
 background service. WorkManager provides a periodic fallback, while a single
 AlarmManager wakeup is scheduled for the next projected stat crossing at 20%.
 The app also checks immediately as it leaves the foreground, so a stat that
@@ -12,7 +26,7 @@ three hours when overall care is affecting growth, and 90 minutes for severe
 projected needs. Existing progress, updater, Firebase sync, animation,
 scenery, audio, and release signing workflows remain unchanged.
 
-The v81 APK is built with the unchanged cloud certificate and is published at
+The v81 APK was built with the unchanged cloud certificate and is published at
 `https://github.com/bottMage/zoeys-pocket-pet/releases/download/v81/zoeys-pocket-pet-v81.apk?download=81`.
 Its SHA-256 is
 `874b66c624033bedcd0bd6dc9430e86fa16c95eeec397ea38dab1d24675030d7`.
@@ -683,7 +697,7 @@ release facts are the sections below.
 - Repository: `https://github.com/bottMage/zoeys-pocket-pet` (public).
 - Cloud checkout: `/workspace/zoeys-pocket-pet`.
 - Local branch name is `work`; completed changes are pushed to remote `main` using `git push origin HEAD:main`.
-- Latest pushed app commit: `71d3a4f Add threshold care reminders and prepare v81`.
+- Latest pushed app commit: `4b5b4ed Point updater to v81 release`.
 - Latest public release/tag: `v81`.
 - Current Android version: `versionCode = 81`, `versionName = "81.0"` in `app/build.gradle.kts`.
 - The v81 release APK is published at

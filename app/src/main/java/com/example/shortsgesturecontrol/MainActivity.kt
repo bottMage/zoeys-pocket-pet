@@ -112,6 +112,7 @@ class MainActivity : Activity() {
     override fun onPause() {
         gameView.pauseForActivity()
         gameView.savePet()
+        CareReminderScheduler.markActivityHidden(this)
         // Check immediately on exit so a stat that reached 20% during the
         // visible session does not wait for the periodic background check.
         CareReminderScheduler.enqueueImmediateCheck(this)
@@ -121,6 +122,7 @@ class MainActivity : Activity() {
     override fun onResume() {
         super.onResume()
         if (::gameView.isInitialized) {
+            CareReminderScheduler.markActivityVisible(this)
             gameView.resumeForActivity()
             gameView.resumePendingInstall()
         }

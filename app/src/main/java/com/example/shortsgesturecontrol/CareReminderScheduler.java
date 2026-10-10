@@ -21,8 +21,12 @@ import java.util.concurrent.TimeUnit;
 public final class CareReminderScheduler {
     public static final String PREF_ENABLED="care_reminders_enabled";
     public static final String PREF_LAST_SENT="care_reminder_last_sent";
+    public static final String PREF_LAST_GENERAL_SENT="care_general_reminder_last_sent";
+    public static final String PREF_LAST_ACTIVITY="care_reminder_last_activity";
+    public static final String PREF_APP_VISIBLE="care_reminder_app_visible";
     public static final String CHANNEL_ID="care_reminders";
     public static final int NOTIFICATION_ID=8040;
+    public static final int GENERAL_NOTIFICATION_ID=8041;
     static final String ALARM_ACTION="com.example.shortsgesturecontrol.CARE_REMINDER_THRESHOLD";
     private static final int ALARM_REQUEST_CODE=8041;
     private static final String WORK_NAME="care_reminders";
@@ -57,11 +61,13 @@ public final class CareReminderScheduler {
 
     public static void disable(Context context) {
         Context app=context.getApplicationContext();
-        prefs(app).edit().putBoolean(PREF_ENABLED,false).remove(PREF_LAST_SENT).apply();
+        prefs(app).edit().putBoolean(PREF_ENABLED,false).remove(PREF_LAST_SENT)
+            .remove(PREF_LAST_GENERAL_SENT).apply();
         WorkManager.getInstance(app).cancelUniqueWork(WORK_NAME);
         WorkManager.getInstance(app).cancelUniqueWork(ALARM_WORK_NAME);
         cancelThresholdAlarm(app);
         androidx.core.app.NotificationManagerCompat.from(app).cancel(NOTIFICATION_ID);
+        androidx.core.app.NotificationManagerCompat.from(app).cancel(GENERAL_NOTIFICATION_ID);
     }
 
     static void enqueueImmediateCheck(Context context) {
@@ -104,6 +110,23 @@ public final class CareReminderScheduler {
         androidx.core.app.NotificationManagerCompat.from(context.getApplicationContext()).cancel(NOTIFICATION_ID);
     }
 
+    public static void clearGeneralNotification(Context context) {
+        androidx.core.app.NotificationManagerCompat.from(context.getApplicationContext()).cancel(GENERAL_NOTIFICATION_ID);
+    }
+
+    public static void markActivityVisible(Context context) {
+        Context app=context.getApplicationContext();
+        prefs(app).edit().putBoolean(PREF_APP_VISIBLE,true)
+            .putLong(PREF_LAST_ACTIVITY,System.currentTimeMillis()).apply();
+        clearGeneralNotification(app);
+    }
+
+    public static void markActivityHidden(Context context) {
+        Context app=context.getApplicationContext();
+        prefs(app).edit().putBoolean(PREF_APP_VISIBLE,false)
+            .putLong(PREF_LAST_ACTIVITY,System.currentTimeMillis()).apply();
+    }
+
     private static void cancelThresholdAlarm(Context context) {
         Context app=context.getApplicationContext();
         AlarmManager manager=app.getSystemService(AlarmManager.class);
@@ -128,7 +151,7 @@ public final class CareReminderScheduler {
         if(manager==null)return;
         NotificationChannel channel=new NotificationChannel(
             CHANNEL_ID,"Care reminders",NotificationManager.IMPORTANCE_DEFAULT);
-        channel.setDescription("Reminders when your pet needs care");
+        channel.setDescription("Care and friendly reminders from your pet");
         manager.createNotificationChannel(channel);
     }
 
