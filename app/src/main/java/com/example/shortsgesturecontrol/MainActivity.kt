@@ -2245,7 +2245,10 @@ private class PetGameView(context: Context, private val onPetCreated: () -> Unit
     )
 
     private fun careOptionRect(action: CareAction, index: Int, count: Int): RectF {
-        val spread = if (count <= 1) 0f else if (count == 2) 25f else 35f
+        // Two choices need a much wider fan: a narrow two-point arc around
+        // REST puts both buttons almost on top of each other at the top of
+        // the wheel. Three choices already have enough separation at 35°.
+        val spread = if (count <= 1) 0f else if (count == 2) 70f else 35f
         val centeredIndex = index - (count - 1) / 2f
         val point = radialPoint(action.category.angleDegrees + centeredIndex * spread, careRadius())
         return RectF(point.first - dp(38f), point.second - dp(25f), point.first + dp(38f), point.second + dp(25f))
@@ -2257,7 +2260,12 @@ private class PetGameView(context: Context, private val onPetCreated: () -> Unit
             (height - dp(58f) + sin(radians).toFloat() * radius)
     }
 
-    private fun careRadius(): Float = min(dp(132f), width / 2f - dp(42f))
+    private fun careRadius(): Float {
+        // The screen is intentionally split roughly 50/50. Keep every radial
+        // button below the stat bars so opening care never hides the check-in.
+        val statsClearance = height - dp(58f) - statsTop() - dp(180f)
+        return min(dp(132f), min(width / 2f - dp(42f), statsClearance)).coerceAtLeast(dp(62f))
+    }
 
     private fun careOptions(category: CareCategory): List<CareAction> = when (category) {
         CareCategory.FOOD -> listOf(CareAction.MEAL, CareAction.TREAT)
@@ -2424,7 +2432,7 @@ private class PetGameView(context: Context, private val onPetCreated: () -> Unit
         }
     }
 
-    private fun statsTop(): Float = height - dp(330f)
+    private fun statsTop(): Float = height * 0.5f
 
     private fun careMenuButtonRect(): RectF = RectF(
         width / 2f - dp(88f), height - dp(92f), width / 2f + dp(88f), height - dp(24f)
@@ -2503,8 +2511,6 @@ private class PetGameView(context: Context, private val onPetCreated: () -> Unit
                     val action = buttons.firstOrNull { it.rect.contains(event.x, event.y) }?.action
                     if (action != null && action == pressedAction) {
                         perform(action)
-                        careMenuOpen = false
-                        careCategory = null
                     }
                 }
                 pressedAction = null

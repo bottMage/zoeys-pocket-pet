@@ -1,6 +1,15 @@
 # Zoey's Pocket Pet — cloud handover
 
-## Current release: true radial care menu and persistent opening — v84
+## Current release candidate: protected stats and persistent care actions — v85
+
+The v85 candidate keeps v84's true radial CARE menu but gives the lower care
+area a roughly 50/50 share of the phone screen. The scenery is shorter, the
+stat check-in stays readable while care is open, and the radial radius adapts
+to the available lower space. REST's NAP and SLEEP choices use a wider fan so
+they do not overlap. Choosing an action leaves the category menu open for the
+next action; the player closes it deliberately with the center CARE control.
+
+## Previous release: true radial care menu and persistent opening — v84
 
 The v84 release corrects the v83 bottom-menu interaction and layout. The
 categories now fan around the central CARE button in a real radial arc rather
