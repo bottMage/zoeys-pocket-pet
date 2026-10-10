@@ -2,8 +2,10 @@
 
 ## Current release: blended stats and care panel — v100
 
-Published APK will be verified byte-for-byte against the signed local build
-after the v100 release asset is available.
+Published APK verified byte-for-byte against the signed local build:
+`https://github.com/bottMage/zoeys-pocket-pet/releases/download/v100/zoeys-pocket-pet-v100.apk?verify=100-3`.
+SHA-256: `31794d182e67060c1a7a679144f4dc4194bd9c903c09e82ab16a70e31290c4ec`.
+Build/lint pass. Existing signing certificate unchanged.
 
 The stats area now transitions into the colorful care panel with a subtle
 lavender gradient and a softened top blend, reducing the hard visual seam
