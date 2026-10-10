@@ -1,6 +1,12 @@
 # Zoey's Pocket Pet — cloud handover
 
-## Current release: child-safe friend play sessions — v113
+## Current release: always-visible settings actions — v114
+
+Pending publication. The settings screen now uses explicit visible buttons for
+CHANGE NAME, INVITE FRIEND, reminders, HOW TO PLAY, and RESET DATA, avoiding a
+device/theme-specific dialog-list rendering problem.
+
+## Previous release: child-safe friend play sessions — v113
 
 Published APK verified byte-for-byte against the signed local build:
 `https://github.com/bottMage/zoeys-pocket-pet/releases/download/v113/zoeys-pocket-pet-v113.apk?verify=113-1`.

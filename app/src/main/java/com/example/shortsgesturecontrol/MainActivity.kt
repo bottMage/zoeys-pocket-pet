@@ -2787,30 +2787,44 @@ private class PetGameView(context: Context, private val onPetCreated: () -> Unit
     private fun showSettings() {
         val activity = appContext as? Activity ?: return
         val remindersOn = CareReminderScheduler.isEnabled(appContext)
-        val choices = arrayOf(
-            "CHANGE NAME",
-            "INVITE FRIEND",
-            if (remindersOn) "TURN OFF CARE REMINDERS" else "TURN ON CARE REMINDERS",
-            "HOW TO PLAY",
-            "RESET DATA"
-        )
-        AlertDialog.Builder(activity)
-            .setTitle("Settings")
-            .setMessage(
+        val content = LinearLayout(activity).apply {
+            orientation = LinearLayout.VERTICAL
+            setPadding(dp(18f).toInt(), dp(2f).toInt(), dp(18f).toInt(), dp(8f).toInt())
+        }
+        val scroll = ScrollView(activity).apply { addView(content) }
+        val summary = TextView(activity).apply {
+            text =
                 (if (cloudSave.isSignedIn()) "Google backup is connected." else "Google backup is not connected yet.") +
                     "\nCare reminders are ${if (remindersOn) "on" else "off"}."
-            )
-            .setItems(choices) { _, which ->
-                when (which) {
-                    0 -> editPlayerName()
-                    1 -> showFriendsCenter()
-                    2 -> toggleCareReminders()
-                    3 -> post { showTutorialPage(0, false) }
-                    else -> showResetChoices()
+            textSize = 13f
+            setTextColor(Color.rgb(111, 82, 123))
+            setPadding(0, 0, 0, dp(10f).toInt())
+        }
+        content.addView(summary)
+        lateinit var dialog: AlertDialog
+        fun settingButton(label: String, action: () -> Unit) {
+            content.addView(Button(activity).apply {
+                text = label
+                isAllCaps = true
+                setOnClickListener {
+                    dialog.dismiss()
+                    action()
                 }
-            }
+            }, LinearLayout.LayoutParams(-1, dp(50f).toInt()))
+        }
+        settingButton("CHANGE NAME") { editPlayerName() }
+        settingButton("INVITE FRIEND") { showFriendsCenter() }
+        settingButton(if (remindersOn) "TURN OFF CARE REMINDERS" else "TURN ON CARE REMINDERS") {
+            toggleCareReminders()
+        }
+        settingButton("HOW TO PLAY") { post { showTutorialPage(0, false) } }
+        settingButton("RESET DATA") { showResetChoices() }
+        dialog = AlertDialog.Builder(activity)
+            .setTitle("Settings")
+            .setView(scroll)
             .setNegativeButton("CLOSE", null)
-            .show()
+            .create()
+        dialog.show()
     }
 
     private fun showFriendsCenter() {
