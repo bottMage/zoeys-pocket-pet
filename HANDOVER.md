@@ -1,12 +1,17 @@
 # Zoey's Pocket Pet — cloud handover
 
-## Current release candidate: compact care actions and full CARE panel — v87
+## Current release: compact care actions and full CARE panel — v87
 
-The v87 candidate keeps v86's visible HEALTH score and replayable child-friendly
+The v87 release keeps v86's visible HEALTH score and replayable child-friendly
 tutorial. Secondary radial actions now form compact adjacent clusters along
 their category direction, with a small gap instead of a widely spaced fan. The
 closed-state CARE control expands into a large styled panel filling the space
 below the stat bars, so the lower section remains intentional and easy to tap.
+
+The v87 APK uses the unchanged cloud certificate and is published at
+`https://github.com/bottMage/zoeys-pocket-pet/releases/download/v87/zoeys-pocket-pet-v87.apk?download=87`.
+Its verified SHA-256 is
+`ef0d9d6b8da44fbb3524d88c3bf442ab5b0f375f791f98102b5c050b13d8244f`.
 
 ## Previous release: visible health and kid-friendly tutorial — v86
 
@@ -756,7 +761,7 @@ do not claim measured device frame rates or final user-approved visual quality.
 
 ## What the user wants now
 
-The current priority is safe continuation from the v86 app. Preserve
+The current priority is safe continuation from the v87 app. Preserve
 the working whole-pet renderer, persistence, lifecycle, scenery, audio, and
 updater while making only well-validated improvements. The user remains
 unhappy with the underlying walk-cel quality: pets can look floaty, rigid,
@@ -772,13 +777,13 @@ release facts are the sections below.
 - Repository: `https://github.com/bottMage/zoeys-pocket-pet` (public).
 - Cloud checkout: `/workspace/zoeys-pocket-pet`.
 - Local branch name is `work`; completed changes are pushed to remote `main` using `git push origin HEAD:main`.
-- Latest pushed app commit: `29ddc85 Show health score and add replayable tutorial, prepare v86`.
-- Latest public release/tag: `v86`.
-- Current Android version: `versionCode = 86`, `versionName = "86.0"` in `app/build.gradle.kts`.
-- The v86 release APK is published at
-  `https://github.com/bottMage/zoeys-pocket-pet/releases/download/v86/zoeys-pocket-pet-v86.apk?download=86`.
-- The v86 APK SHA-256 is
-  `cee0de7a946a6c79521f179da0e53ab9a5b09a82bb442b1ca60790c2b6e2cdbc`.
+- Latest pushed app commit: `366c4ae Compact care actions and expand CARE panel, prepare v87`.
+- Latest public release/tag: `v87`.
+- Current Android version: `versionCode = 87`, `versionName = "87.0"` in `app/build.gradle.kts`.
+- The v87 release APK is published at
+  `https://github.com/bottMage/zoeys-pocket-pet/releases/download/v87/zoeys-pocket-pet-v87.apk?download=87`.
+- The v87 APK SHA-256 is
+  `ef0d9d6b8da44fbb3524d88c3bf442ab5b0f375f791f98102b5c050b13d8244f`.
 - The v79 care-button change was tested by the user on Zoey's phone and
   removed the repeated-OK-button freeze/ANR: it uses Android's built-in click
   effect rather than constructing a `ToneGenerator` on every tap. v79 did not
