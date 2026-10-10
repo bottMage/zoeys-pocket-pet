@@ -2,11 +2,14 @@
 
 ## Current release: preserve play dates through lifecycle pauses — v119
 
-Pending publication. Play sessions are no longer ended by an activity pause,
+Published APK verified byte-for-byte against the signed local build:
+`https://github.com/bottMage/zoeys-pocket-pet/releases/download/v119/zoeys-pocket-pet-v119.apk?verify=119-1`.
+SHA-256: `ce9411568420a177e8ee0291e8096db1644350558b57e26245e641597f32341d`.
+Build/lint pass. Play sessions are no longer ended by an activity pause,
 which can occur while an acceptance dialog changes focus. The session listener
 is detached and reattached across pause/resume, while the explicit play-date
 CLOSE action remains the session-ending path. This prevents both eggs from
-flashing briefly and disappearing. Build/lint pending.
+flashing briefly and disappearing.
 
 ## Current release: two-way play-date joining and matching badges — v118
 
