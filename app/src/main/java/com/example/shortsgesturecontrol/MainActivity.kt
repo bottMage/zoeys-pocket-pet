@@ -2233,10 +2233,18 @@ private class PetGameView(context: Context, private val onPetCreated: () -> Unit
     }
 
     private fun drawCareCategory(canvas: Canvas, category: CareCategory) {
-        val index = category.ordinal
+        val index = categoryBlobIndex(category)
         drawBlob(canvas, currentBlobs()[index], category.fill,
             if (category == CareCategory.HEALTH) "❤️" else category.glyph,
             category.label, pressedBlob == index)
+    }
+
+    private fun categoryBlobIndex(category: CareCategory): Int = when (category) {
+        CareCategory.FUN -> 0
+        CareCategory.REST -> 1
+        CareCategory.CLEAN -> 2
+        CareCategory.FOOD -> 3
+        CareCategory.HEALTH -> 4
     }
 
     private fun drawCareOption(canvas: Canvas, action: CareAction, rect: RectF) {
@@ -2285,6 +2293,14 @@ private class PetGameView(context: Context, private val onPetCreated: () -> Unit
         val directionX = if (distance > 1f) dx / distance else 0f
         val directionY = if (distance > 1f) dy / distance else -1f
         val panel = carePanelRect()
+        val edgeDistance = min(
+            min(x - panel.left, panel.right - x),
+            min(y - panel.top, panel.bottom - y)
+        )
+        // The outside contour is part of the rounded window, not another
+        // puddle. Fade motion to zero before reaching that contour so the
+        // ripple cannot create a square or wobbly frame around the controls.
+        val interiorFade = ((edgeDistance - dp(2f)) / dp(28f)).coerceIn(0f, 1f)
         val radius = dp(13f) + progress * max(panel.width(), panel.height()) * .86f
         val frontWidth = dp(24f)
         val front = exp(-((distance - radius) * (distance - radius)) / (2f * frontWidth * frontWidth))
@@ -2293,7 +2309,7 @@ private class PetGameView(context: Context, private val onPetCreated: () -> Unit
         // One continuous field is applied to every path. Shared boundaries
         // therefore receive the same movement instead of separating into
         // independently translated rigid shapes.
-        val amount = dp(13f) * front * (1f - progress * .25f) + dp(5f) * dent
+        val amount = (dp(13f) * front * (1f - progress * .25f) + dp(5f) * dent) * interiorFade
         return directionX * amount to directionY * amount
     }
 
@@ -2356,7 +2372,8 @@ private class PetGameView(context: Context, private val onPetCreated: () -> Unit
         val labelShift = liquidDisplacement(blob.x, blob.y, now)
         textPaint.textAlign = Paint.Align.CENTER
         textPaint.typeface = PaintTypeface.bold()
-        textPaint.color = if (light) Color.WHITE else Color.rgb(68, 35, 86)
+        val luminance = (Color.red(color) * .299f + Color.green(color) * .587f + Color.blue(color) * .114f) / 255f
+        textPaint.color = if (light || pressed || luminance < .62f) Color.WHITE else Color.rgb(68, 35, 86)
         textPaint.textSize = 49f * scale
         canvas.drawText(glyph, blob.x + labelShift.first, blob.y + labelShift.second, textPaint)
         textPaint.textSize = 21f * scale
@@ -2364,8 +2381,8 @@ private class PetGameView(context: Context, private val onPetCreated: () -> Unit
     }
 
     private fun darkenBlob(color: Int): Int = Color.rgb(
-        (Color.red(color) * .87f).toInt(), (Color.green(color) * .82f).toInt(),
-        (Color.blue(color) * .92f).toInt()
+        (Color.red(color) * .82f).toInt(), (Color.green(color) * .78f).toInt(),
+        (Color.blue(color) * .88f).toInt()
     )
 
     private fun careOptionRect(action: CareAction, index: Int, count: Int): RectF =
@@ -2641,7 +2658,13 @@ private class PetGameView(context: Context, private val onPetCreated: () -> Unit
             MotionEvent.ACTION_UP -> {
                 if (hit >= 0 && hit == pressedBlob) {
                     val category = careCategory
-                    if (category == null) careCategory = CareCategory.values()[hit]
+                    if (category == null) careCategory = when (hit) {
+                        0 -> CareCategory.FUN
+                        1 -> CareCategory.REST
+                        2 -> CareCategory.CLEAN
+                        3 -> CareCategory.FOOD
+                        else -> CareCategory.HEALTH
+                    }
                     else if (hit == currentBlobs().lastIndex) careCategory = null
                     else careOptions(category).getOrNull(hit)?.let { if (it == pressedAction) perform(it) }
                 }
@@ -2907,11 +2930,11 @@ private class PetGameView(context: Context, private val onPetCreated: () -> Unit
     private enum class Action { FEED, PLAY, BATH, SLEEP }
 
     private enum class CareCategory(val label: String, val glyph: String, val fill: Int, val angleDegrees: Float) {
-        FOOD("FOOD", "+", Color.rgb(255, 225, 170), -160f),
-        FUN("FUN", "★", Color.rgb(255, 193, 216), -125f),
-        REST("REST", "Z", Color.rgb(198, 205, 255), -90f),
-        CLEAN("CLEAN", "✦", Color.rgb(190, 232, 220), -55f),
-        HEALTH("HEALTH", "♥", Color.rgb(244, 208, 214), -20f)
+        FOOD("FOOD", "+", Color.rgb(255, 176, 48), -160f),
+        FUN("FUN", "★", Color.rgb(255, 72, 158), -125f),
+        REST("REST", "Z", Color.rgb(92, 113, 255), -90f),
+        CLEAN("CLEAN", "✦", Color.rgb(34, 205, 169), -55f),
+        HEALTH("HEALTH", "♥", Color.rgb(255, 76, 103), -20f)
     }
 
     private enum class CareAction(
@@ -2926,18 +2949,18 @@ private class PetGameView(context: Context, private val onPetCreated: () -> Unit
         val secondaryNeed: Int = -1,
         val secondaryBoost: Float = 0f
     ) {
-        MEAL(CareCategory.FOOD, "MEAL", "+", Action.FEED, 1600L, Color.rgb(255, 225, 170), 0, 18f),
-        TREAT(CareCategory.FOOD, "TREAT", "♥", Action.FEED, 1600L, Color.rgb(255, 214, 157), 0, 10f, 1, 5f),
-        PLAY(CareCategory.FUN, "PLAY", "★", Action.PLAY, 1600L, Color.rgb(255, 193, 216), 1, 16f),
-        TOY(CareCategory.FUN, "TOY", "●", Action.PLAY, 1600L, Color.rgb(255, 211, 227), 1, 10f),
-        CUDDLE(CareCategory.FUN, "CUDDLE", "♥", Action.PLAY, 1600L, Color.rgb(255, 202, 218), 1, 8f, 2, 4f),
-        NAP(CareCategory.REST, "NAP", "z", Action.SLEEP, 12000L, Color.rgb(211, 216, 255), 2, 12f),
-        SLEEP(CareCategory.REST, "SLEEP", "Zz", Action.SLEEP, 60000L, Color.rgb(198, 205, 255), 2, 22f),
-        BATH(CareCategory.CLEAN, "BATH", "✦", Action.BATH, 1600L, Color.rgb(190, 232, 220), 3, 25f),
-        TIDY(CareCategory.CLEAN, "TIDY", "✧", Action.BATH, 1600L, Color.rgb(207, 239, 226), 3, 12f),
-        CHECKUP(CareCategory.HEALTH, "CHECKUP", "♡", Action.PLAY, 1600L, Color.rgb(244, 208, 214)),
-        MEDICINE(CareCategory.HEALTH, "MEDICINE", "+", Action.FEED, 1600L, Color.rgb(239, 195, 207)),
-        VITAMIN(CareCategory.HEALTH, "VITAMIN", "●", Action.FEED, 1600L, Color.rgb(247, 220, 177), 2, 5f, 0, 5f)
+        MEAL(CareCategory.FOOD, "MEAL", "+", Action.FEED, 1600L, Color.rgb(255, 176, 48), 0, 18f),
+        TREAT(CareCategory.FOOD, "TREAT", "♥", Action.FEED, 1600L, Color.rgb(255, 133, 35), 0, 10f, 1, 5f),
+        PLAY(CareCategory.FUN, "PLAY", "★", Action.PLAY, 1600L, Color.rgb(255, 72, 158), 1, 16f),
+        TOY(CareCategory.FUN, "TOY", "●", Action.PLAY, 1600L, Color.rgb(218, 45, 126), 1, 10f),
+        CUDDLE(CareCategory.FUN, "CUDDLE", "♥", Action.PLAY, 1600L, Color.rgb(255, 104, 183), 1, 8f, 2, 4f),
+        NAP(CareCategory.REST, "NAP", "z", Action.SLEEP, 12000L, Color.rgb(121, 139, 255), 2, 12f),
+        SLEEP(CareCategory.REST, "SLEEP", "Zz", Action.SLEEP, 60000L, Color.rgb(78, 93, 225), 2, 22f),
+        BATH(CareCategory.CLEAN, "BATH", "✦", Action.BATH, 1600L, Color.rgb(34, 205, 169), 3, 25f),
+        TIDY(CareCategory.CLEAN, "TIDY", "✧", Action.BATH, 1600L, Color.rgb(26, 166, 157), 3, 12f),
+        CHECKUP(CareCategory.HEALTH, "CHECKUP", "♡", Action.PLAY, 1600L, Color.rgb(255, 111, 130)),
+        MEDICINE(CareCategory.HEALTH, "MEDICINE", "+", Action.FEED, 1600L, Color.rgb(225, 48, 87)),
+        VITAMIN(CareCategory.HEALTH, "VITAMIN", "●", Action.FEED, 1600L, Color.rgb(255, 189, 42), 2, 5f, 0, 5f)
     }
 
     private enum class TransitionKind { HATCH, EVOLUTION, DEATH }

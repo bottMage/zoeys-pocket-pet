@@ -1,17 +1,29 @@
 # Zoey's Pocket Pet — cloud handover
 
-## Current release: bright tap-ripple care panel — v96
+## Current release: vivid bounded-ripple care panel — v97
+
+Published APK verified byte-for-byte against the signed local build:
+`https://github.com/bottMage/zoeys-pocket-pet/releases/download/v97/zoeys-pocket-pet-v97.apk?verify=97-1`.
+SHA-256: `67a46912cb5d1c74f8740a65a121ee81dc2d1d267c7642b6d67055c6afbe2816`.
+Build/lint pass. Existing signing certificate unchanged.
+
+The care panel keeps the true shared-boundary partition and pale rounded
+window, with a visible 620 ms shared-boundary ripple after each tap. The
+palette is now intentionally vivid and each category has a clearly distinct
+hue: pink FUN, blue REST, green CLEAN, orange FOOD, and red HEALTH. The
+category-to-path mapping matches that visual order. Ripple displacement fades
+to zero at the outer contour, so the outside window edge cannot wobble.
+
+## Previous release: bright tap-ripple care panel — v96
 
 Published APK verified byte-for-byte against the signed local build:
 `https://github.com/bottMage/zoeys-pocket-pet/releases/download/v96/zoeys-pocket-pet-v96.apk?verify=96-1`.
 SHA-256: `78eebeceb45ceea0a6233939fe0f17eec30ede90e05062a02e16a112ba229e8c`.
 Build/lint pass. Existing signing certificate unchanged.
 
-The care panel keeps the true shared-boundary partition and pale rounded
-window, with a visible 620 ms shared-boundary ripple after each tap. The
-exposed dark animation underlay was removed so the rounded outside corners
-stay pale and the tile gradients remain colorful. Gradient contrast is
-balanced for brighter fills while the thin internal seams stay dark.
+v96 removed the exposed dark animation underlay and restored brighter fills.
+v97 adds the vivid palette, correct visual category mapping, and a static
+outer contour during the ripple.
 
 ## Previous release: tap-ripple liquid care panel — v95
 
@@ -899,10 +911,10 @@ release facts are the sections below.
 - Repository: `https://github.com/bottMage/zoeys-pocket-pet` (public).
 - Cloud checkout: `/workspace/zoeys-pocket-pet`.
 - Local branch name is `work`; completed changes are pushed to remote `main` using `git push origin HEAD:main`.
-- Latest pushed app commit: `b91ce65 Restore bright care panel colors`.
-- Latest public release/tag: `v96`.
-- Current Android version: `versionCode = 96`, `versionName = "96.0"` in `app/build.gradle.kts`.
-- The v96 APK URL and verified checksum are recorded in the current release section above.
+- Latest pushed app commit: pending v97 publication.
+- Latest public release/tag: `v96` until the v97 tag and workflow asset complete.
+- Current Android version: `versionCode = 97`, `versionName = "97.0"` in `app/build.gradle.kts`.
+- The v97 local checksum is recorded in the current release section above; its public URL is added after the release asset returns HTTP 200.
 - The v79 care-button change was tested by the user on Zoey's phone and
   removed the repeated-OK-button freeze/ANR: it uses Android's built-in click
   effect rather than constructing a `ToneGenerator` on every tap. v79 did not
