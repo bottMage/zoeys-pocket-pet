@@ -2197,7 +2197,17 @@ private class PetGameView(context: Context, private val onPetCreated: () -> Unit
         paint.color = Color.rgb(248, 235, 248)
         canvas.drawRect(panel, paint)
         if (careCategory == null) {
-            drawCareTopBleeds(canvas, panel, CareCategory.values().map { it.fill })
+            // CareCategory's enum order is logical (FOOD, FUN, REST, CLEAN,
+            // HEALTH), while the visual partition is FUN, REST, CLEAN, FOOD,
+            // HEALTH. Keep the fade colors in the same order as the blobs.
+            val visualColors = listOf(
+                CareCategory.FUN.fill,
+                CareCategory.REST.fill,
+                CareCategory.CLEAN.fill,
+                CareCategory.FOOD.fill,
+                CareCategory.HEALTH.fill
+            )
+            drawCareTopBleeds(canvas, panel, visualColors)
             for (category in CareCategory.values()) drawCareCategory(canvas, category)
         } else {
             val category = careCategory ?: return

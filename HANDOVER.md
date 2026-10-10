@@ -1,6 +1,15 @@
 # Zoey's Pocket Pet — cloud handover
 
-## Current release: upward color bleed into stats — v106
+## Current release: correctly mapped upward color bleed — v107
+
+Published APK will be verified byte-for-byte against the signed local build
+after the v107 release asset is available.
+
+The category-screen bleed now follows the visual blob order (FUN, REST, CLEAN,
+FOOD, HEALTH) instead of the enum's logical order, so each upper button fades
+with its own matching color. Action-screen mapping remains data-driven.
+
+## Previous release: upward color bleed into stats — v106
 
 Published APK verified byte-for-byte against the signed local build:
 `https://github.com/bottMage/zoeys-pocket-pet/releases/download/v106/zoeys-pocket-pet-v106.apk?verify=106-2`.
