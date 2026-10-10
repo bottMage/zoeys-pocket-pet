@@ -2,8 +2,10 @@
 
 ## Current release: correctly mapped upward color bleed — v107
 
-Published APK will be verified byte-for-byte against the signed local build
-after the v107 release asset is available.
+Published APK verified byte-for-byte against the signed local build:
+`https://github.com/bottMage/zoeys-pocket-pet/releases/download/v107/zoeys-pocket-pet-v107.apk?verify=107-2`.
+SHA-256: `a52c08b5ee7bfc964226f95a48f17fa1af2ffef420402d6c1ef4599344a28d6d`.
+Build/lint pass. Existing signing certificate unchanged.
 
 The category-screen bleed now follows the visual blob order (FUN, REST, CLEAN,
 FOOD, HEALTH) instead of the enum's logical order, so each upper button fades
