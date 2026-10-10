@@ -2,8 +2,10 @@
 
 ## Current release: flush stats-to-care transition — v101
 
-Published APK will be verified byte-for-byte against the signed local build
-after the v101 release asset is available.
+Published APK verified byte-for-byte against the signed local build:
+`https://github.com/bottMage/zoeys-pocket-pet/releases/download/v101/zoeys-pocket-pet-v101.apk?verify=101-2`.
+SHA-256: `bdf8cda604df14babf8600468407ec11beb54c3cf7017ce58cde394d785cb061`.
+Build/lint pass. Existing signing certificate unchanged.
 
 The care tile stroke is now clipped at the outer panel contour, keeping dark
 internal liquid seams while removing the heavy frame between the stats and
