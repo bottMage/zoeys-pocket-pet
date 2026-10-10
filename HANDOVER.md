@@ -1,15 +1,18 @@
 # Zoey's Pocket Pet — cloud handover
 
-## Current release: play-date speech bubbles and edge-to-edge care seams — v124 candidate
+## Current release: play-date speech bubbles and edge-to-edge care seams — v124
 
-This release replaces play-date action text over the scenery with short speech
-bubbles above each pet or egg. Local and remote bubbles expire independently,
-and live-pet bubbles are positioned from the current rendered pet coordinates
-so they follow movement. The care panel now lets its seams reach the screen
-edges, masks the old top separator under the per-button fade, and redraws only
-the shared seams through that fade. Play acceptance, session cleanup, pet
-rendering, progress, sync, notifications, updater, and release signing are
-otherwise unchanged.
+Published APK verified byte-for-byte against the signed local build:
+`https://github.com/bottMage/zoeys-pocket-pet/releases/download/v124/zoeys-pocket-pet-v124.apk?verify=124-2`.
+SHA-256: `13e448d202313b9d9e9acf7183fb4821902f22ba4239917ab8f936117267cf00`.
+Build/lint pass. This release replaces play-date action text over the scenery
+with short speech bubbles above each pet or egg. Local and remote bubbles
+expire independently, and live-pet bubbles are positioned from the current
+rendered pet coordinates so they follow movement. The care panel now lets its
+seams reach the screen edges, masks the old top separator under the per-button
+fade, and redraws only the shared seams through that fade. Play acceptance,
+session cleanup, pet rendering, progress, sync, notifications, updater, and
+release signing are otherwise unchanged.
 
 ## Current release: stale play-session cleanup — v123
 
