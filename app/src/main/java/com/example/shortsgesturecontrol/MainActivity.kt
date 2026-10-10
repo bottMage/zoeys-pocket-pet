@@ -57,7 +57,7 @@ import java.net.URL
 import java.time.LocalTime
 import kotlin.math.abs
 import kotlin.math.cos
-import kotlin.math.hypot
+import kotlin.math.exp
 import kotlin.math.max
 import kotlin.math.min
 import kotlin.math.sin
@@ -857,6 +857,7 @@ private class PetGameView(context: Context, private val onPetCreated: () -> Unit
             menuAnimationStart != 0L ||
             touchReactionUntil > now ||
             pressedBlob >= 0 ||
+            liquidRippleStartedAt != 0L && now - liquidRippleStartedAt < LIQUID_RIPPLE_DURATION_MS ||
             (!pet.dead && motionMode == MotionMode.WALK)
         if (highPriority) postInvalidateOnAnimation()
         else postInvalidateDelayed(IDLE_FRAME_DELAY_MS)
@@ -2165,6 +2166,11 @@ private class PetGameView(context: Context, private val onPetCreated: () -> Unit
         // for the shared liquid-tile seams, never for the outside window.
         paint.color = Color.rgb(255, 249, 246)
         canvas.drawRoundRect(panel, dp(26f), dp(26f), paint)
+        paint.color = Color.rgb(35, 25, 43)
+        canvas.drawRoundRect(
+            RectF(panel.left + dp(3f), panel.top + dp(3f), panel.right - dp(3f), panel.bottom - dp(3f)),
+            dp(23f), dp(23f), paint
+        )
         if (careCategory == null) {
             for (category in CareCategory.values()) drawCareCategory(canvas, category)
         } else {
@@ -2185,17 +2191,17 @@ private class PetGameView(context: Context, private val onPetCreated: () -> Unit
         drawCarePanelEdge(canvas, panel)
     }
 
-    private data class BlobControl(val index: Int, val path: Path, val hit: android.graphics.Region, val bounds: RectF,
+    private data class BlobControl(val index: Int, val path: Path, val samples: FloatArray,
+                                   val hit: android.graphics.Region, val bounds: RectF,
                                    val x: Float, val y: Float,
                                    var shadeColor: Int = 0, var shade: Shader? = null)
-    private data class LiquidTransform(val dx: Float, val dy: Float, val scale: Float)
     private var blobCacheKey = ""
     private var blobControls = emptyList<BlobControl>()
     private var pressedBlob = -1
     private var careGesture = false
-    private var liquidTouchX = 0f
-    private var liquidTouchY = 0f
-    private var liquidPressStartedAt = 0L
+    private var liquidRippleX = 0f
+    private var liquidRippleY = 0f
+    private var liquidRippleStartedAt = 0L
 
     private fun carePanelRect(): RectF = RectF(
         dp(2f), statsTop() + dp(158f), width - dp(2f), height - dp(3f)
@@ -2221,7 +2227,8 @@ private class PetGameView(context: Context, private val onPetCreated: () -> Unit
                 path.transform(matrix)
                 val bounds = RectF()
                 path.computeBounds(bounds, true)
-                BlobControl(index, path, android.graphics.Region().apply { setPath(path, clip) }, bounds,
+                BlobControl(index, path, path.approximate(.55f),
+                    android.graphics.Region().apply { setPath(path, clip) }, bounds,
                     panel.left + definition.x * panel.width() / 592f,
                     panel.top + definition.y * panel.height() / 400f)
             }
@@ -2261,48 +2268,67 @@ private class PetGameView(context: Context, private val onPetCreated: () -> Unit
         paint.style = Paint.Style.FILL
     }
 
-    private fun liquidTransform(blob: BlobControl): LiquidTransform {
-        val pressed = pressedBlob
-        if (pressed < 0 || pressed >= blobControls.size || liquidPressStartedAt == 0L) {
-            return LiquidTransform(0f, 0f, 1f)
-        }
-        val source = blobControls[pressed]
-        val pressure = ((SystemClock.uptimeMillis() - liquidPressStartedAt).toFloat() / 120f).coerceIn(0f, 1f)
+    private fun startLiquidRipple(x: Float, y: Float) {
+        liquidRippleX = x
+        liquidRippleY = y
+        liquidRippleStartedAt = SystemClock.uptimeMillis()
+    }
+
+    private fun liquidRippleProgress(now: Long): Float {
+        if (liquidRippleStartedAt == 0L) return 0f
+        val elapsed = now - liquidRippleStartedAt
+        if (elapsed >= LIQUID_RIPPLE_DURATION_MS) return 0f
+        return (elapsed.toFloat() / LIQUID_RIPPLE_DURATION_MS.toFloat()).coerceIn(0f, 1f)
+    }
+
+    private fun liquidDisplacement(x: Float, y: Float, now: Long): Pair<Float, Float> {
+        val progress = liquidRippleProgress(now)
+        if (progress <= 0f) return 0f to 0f
+        val dx = x - liquidRippleX
+        val dy = y - liquidRippleY
+        val distance = kotlin.math.sqrt(dx * dx + dy * dy)
+        val directionX = if (distance > 1f) dx / distance else 0f
+        val directionY = if (distance > 1f) dy / distance else -1f
         val panel = carePanelRect()
-        val pressVectorX = liquidTouchX - source.x
-        val pressVectorY = liquidTouchY - source.y
-        val pressLength = hypot(pressVectorX.toDouble(), pressVectorY.toDouble()).toFloat()
-        val pressDirectionX = if (pressLength > 1f) pressVectorX / pressLength else 0f
-        val pressDirectionY = if (pressLength > 1f) pressVectorY / pressLength else -1f
-        if (blob.index == pressed) {
-            // A pressed puddle swells a little and slides only a few dp in
-            // the direction of the finger; the panel never loses its fit.
-            return LiquidTransform(
-                pressDirectionX * dp(5f) * pressure,
-                pressDirectionY * dp(5f) * pressure,
-                1f + .024f * pressure
-            )
+        val radius = dp(13f) + progress * max(panel.width(), panel.height()) * .86f
+        val frontWidth = dp(24f)
+        val front = exp(-((distance - radius) * (distance - radius)) / (2f * frontWidth * frontWidth))
+        val dentWidth = dp(42f)
+        val dent = exp(-(distance * distance) / (2f * dentWidth * dentWidth)) * (1f - progress)
+        // One continuous field is applied to every path. Shared boundaries
+        // therefore receive the same movement instead of separating into
+        // independently translated rigid shapes.
+        val amount = dp(13f) * front * (1f - progress * .25f) + dp(5f) * dent
+        return directionX * amount to directionY * amount
+    }
+
+    private fun liquidPath(blob: BlobControl, now: Long): Path {
+        if (liquidRippleProgress(now) <= 0f) return blob.path
+        val points = blob.samples
+        val deformed = Path()
+        var first = true
+        var index = 0
+        while (index + 2 < points.size) {
+            val shift = liquidDisplacement(points[index + 1], points[index + 2], now)
+            val x = points[index + 1] + shift.first
+            val y = points[index + 2] + shift.second
+            if (first) {
+                deformed.moveTo(x, y)
+                first = false
+            } else {
+                deformed.lineTo(x, y)
+            }
+            index += 3
         }
-        val awayX = blob.x - source.x
-        val awayY = blob.y - source.y
-        val awayLength = hypot(awayX.toDouble(), awayY.toDouble()).toFloat().coerceAtLeast(1f)
-        val influence = (1f - awayLength / (panel.width() * .82f)).coerceIn(.18f, 1f) * pressure
-        // Neighboring puddles yield away from the pressed one and compress
-        // slightly, making the movement read as one connected surface.
-        return LiquidTransform(
-            awayX / awayLength * dp(2.6f) * influence,
-            awayY / awayLength * dp(2.6f) * influence,
-            1f - .014f * influence
-        )
+        deformed.close()
+        return deformed
     }
 
     private fun drawBlob(canvas: Canvas, blob: BlobControl, color: Int, glyph: String,
                          label: String, pressed: Boolean, light: Boolean = false) {
+        val now = SystemClock.uptimeMillis()
         val scale = min(width / 592f, carePanelRect().height() / 400f)
-        val liquid = liquidTransform(blob)
-        canvas.save()
-        canvas.translate(liquid.dx, liquid.dy)
-        canvas.scale(liquid.scale, liquid.scale, blob.x, blob.y)
+        val path = liquidPath(blob, now)
         paint.style = Paint.Style.FILL
         val fill = if (pressed) Color.WHITE else color
         if (blob.shade == null || blob.shadeColor != fill) {
@@ -2311,38 +2337,40 @@ private class PetGameView(context: Context, private val onPetCreated: () -> Unit
                 max(blob.bounds.width(), blob.bounds.height()), fill, darkenBlob(color), Shader.TileMode.CLAMP)
         }
         paint.shader = blob.shade
-        canvas.drawPath(blob.path, paint)
+        canvas.drawPath(path, paint)
         paint.shader = null
         paint.style = Paint.Style.STROKE
-        // The contours meet over the panel's pink base. A dark shared seam
-        // hides the tiny contour tolerances and makes the pieces read as one
-        // fitted control surface instead of separate floating cards.
         paint.strokeWidth = max(dp(2.5f), 4.5f * scale)
         paint.strokeJoin = Paint.Join.ROUND
         paint.strokeCap = Paint.Cap.ROUND
         paint.color = Color.rgb(35, 25, 43)
-        canvas.drawPath(blob.path, paint)
+        canvas.drawPath(path, paint)
         paint.style = Paint.Style.FILL
         canvas.save()
-        canvas.clipPath(blob.path)
-        paint.color = Color.argb(65, 255, 255, 255)
-        val hx = blob.bounds.left + blob.bounds.width() * .15f
-        val hy = blob.bounds.top + blob.bounds.height() * .18f
-        canvas.drawOval(RectF(hx, hy, hx + 20f * scale, hy + 29f * scale), paint)
+        canvas.clipPath(path)
+        paint.color = Color.argb(92, 255, 255, 255)
+        val hx = blob.bounds.left + blob.bounds.width() * .13f
+        val hy = blob.bounds.top + blob.bounds.height() * .14f
+        canvas.drawOval(RectF(hx, hy, hx + 29f * scale, hy + 40f * scale), paint)
+        paint.color = Color.argb(28, 255, 255, 255)
+        canvas.drawOval(RectF(blob.bounds.left + blob.bounds.width() * .05f,
+            blob.bounds.top + blob.bounds.height() * .04f,
+            blob.bounds.right - blob.bounds.width() * .12f,
+            blob.bounds.top + blob.bounds.height() * .34f), paint)
         canvas.restore()
+        val labelShift = liquidDisplacement(blob.x, blob.y, now)
         textPaint.textAlign = Paint.Align.CENTER
         textPaint.typeface = PaintTypeface.bold()
         textPaint.color = if (light) Color.WHITE else Color.rgb(68, 35, 86)
         textPaint.textSize = 49f * scale
-        canvas.drawText(glyph, blob.x, blob.y, textPaint)
+        canvas.drawText(glyph, blob.x + labelShift.first, blob.y + labelShift.second, textPaint)
         textPaint.textSize = 21f * scale
-        canvas.drawText(label, blob.x, blob.y + 32f * scale, textPaint)
-        canvas.restore()
+        canvas.drawText(label, blob.x + labelShift.first, blob.y + labelShift.second + 32f * scale, textPaint)
     }
 
     private fun darkenBlob(color: Int): Int = Color.rgb(
-        (Color.red(color) * .94f).toInt(), (Color.green(color) * .91f).toInt(),
-        (Color.blue(color) * .96f).toInt()
+        (Color.red(color) * .78f).toInt(), (Color.green(color) * .72f).toInt(),
+        (Color.blue(color) * .86f).toInt()
     )
 
     private fun careOptionRect(action: CareAction, index: Int, count: Int): RectF =
@@ -2611,17 +2639,9 @@ private class PetGameView(context: Context, private val onPetCreated: () -> Unit
         when (event.actionMasked) {
             MotionEvent.ACTION_DOWN -> {
                 pressedBlob = hit
-                liquidTouchX = event.x
-                liquidTouchY = event.y
-                liquidPressStartedAt = SystemClock.uptimeMillis()
+                startLiquidRipple(event.x, event.y)
                 pressedPetTouch = false
                 pressedAction = careCategory?.let { careOptions(it).getOrNull(hit) }
-            }
-            MotionEvent.ACTION_MOVE -> {
-                if (pressedBlob >= 0) {
-                    liquidTouchX = event.x
-                    liquidTouchY = event.y
-                }
             }
             MotionEvent.ACTION_UP -> {
                 if (hit >= 0 && hit == pressedBlob) {
@@ -2633,13 +2653,12 @@ private class PetGameView(context: Context, private val onPetCreated: () -> Unit
                 careGesture = false
                 pressedBlob = -1
                 pressedAction = null
-                liquidPressStartedAt = 0L
             }
             MotionEvent.ACTION_CANCEL -> {
                 careGesture = false
                 pressedBlob = -1
                 pressedAction = null
-                liquidPressStartedAt = 0L
+                liquidRippleStartedAt = 0L
             }
         }
         invalidate()
@@ -2936,6 +2955,7 @@ private class PetGameView(context: Context, private val onPetCreated: () -> Unit
     }
 
     companion object {
+        private const val LIQUID_RIPPLE_DURATION_MS = 620L
         private const val WALK_FRAME_DURATION_MS = 105L
         private const val WEATHER_REFRESH_MS = 30 * 60 * 1000L
         private const val LIFECYCLE_REPROMPT_MS = 20_000L

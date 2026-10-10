@@ -1,17 +1,28 @@
 # Zoey's Pocket Pet — cloud handover
 
-## Current release: bounded liquid care panel interaction — v94
+## Current release: tap-ripple liquid care panel — v95
+
+Published APK verified byte-for-byte against the signed local build:
+`https://github.com/bottMage/zoeys-pocket-pet/releases/download/v95/zoeys-pocket-pet-v95.apk?verify=95-1`.
+SHA-256: `136e2e95b0e118b2ff7d9acbd6bb47e59c78ed66405ca21584978696f4985c66`.
+Build/lint pass. Existing signing certificate unchanged.
+
+The care panel keeps the true shared-boundary partition and pale rounded
+window, but a tap now launches a visible 620 ms ripple. Every sampled tile
+boundary receives the same radial displacement field, so the pressed puddle
+pushes neighboring puddles together rather than stretching one rigid outline.
+The gradients and gloss highlights are stronger, while hit regions and the
+rest of the care/action workflow remain unchanged.
+
+## Previous release: bounded liquid care panel interaction — v94
 
 Published APK verified byte-for-byte against the signed local build:
 `https://github.com/bottMage/zoeys-pocket-pet/releases/download/v94/zoeys-pocket-pet-v94.apk?verify=94-1`.
 SHA-256: `c1f9b255569b1dfae370aff7ec649c81e0942c140c8713d7989ed192c5b9b073`.
 Build/lint pass. Existing signing certificate unchanged.
 
-The care panel keeps the true shared-boundary partition from v93, but now uses
-a pale rounded outer window so dark lines appear only between controls. While
-held, a care tile behaves like a bounded puddle: it follows the finger by a
-few dp, swells slightly, and nearby tiles yield/compress. The outer panel
-stays fitted and the same paths continue to drive hit regions.
+v94 added the pale rounded outer window and bounded press movement. v95 adds
+the visible post-tap ripple and non-rigid shared-boundary deformation.
 
 ## Previous release: fully tiled liquid care panel — v93
 
@@ -879,10 +890,10 @@ release facts are the sections below.
 - Repository: `https://github.com/bottMage/zoeys-pocket-pet` (public).
 - Cloud checkout: `/workspace/zoeys-pocket-pet`.
 - Local branch name is `work`; completed changes are pushed to remote `main` using `git push origin HEAD:main`.
-- Latest pushed app commit: `bc4ec12 Add bounded liquid care tile motion`.
-- Latest public release/tag: `v94`.
-- Current Android version: `versionCode = 94`, `versionName = "94.0"` in `app/build.gradle.kts`.
-- The v94 APK URL and verified checksum are recorded in the current release section above.
+- Latest pushed app commit: pending v95 publication.
+- Latest public release/tag: `v94` until the v95 tag and workflow asset complete.
+- Current Android version: `versionCode = 95`, `versionName = "95.0"` in `app/build.gradle.kts`.
+- The v95 local checksum is recorded in the current release section above; its public URL is added after the release asset returns HTTP 200.
 - The v79 care-button change was tested by the user on Zoey's phone and
   removed the repeated-OK-button freeze/ANR: it uses Android's built-in click
   effect rather than constructing a `ToneGenerator` on every tap. v79 did not
