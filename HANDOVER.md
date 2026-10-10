@@ -1,6 +1,13 @@
 # Zoey's Pocket Pet — cloud handover
 
-## Current release: always-visible settings actions — v114
+## Current release: reliable friend request delivery — v115
+
+Pending publication. Friend and play requests now write a direct recipient-
+owned inbox as well as the sender's outbox, so delivery uses a deterministic
+listener instead of a cross-user collection-group query. The corresponding
+Firestore inbox rules were deployed before this release.
+
+## Previous release: always-visible settings actions — v114
 
 Published APK verified byte-for-byte against the signed local build:
 `https://github.com/bottMage/zoeys-pocket-pet/releases/download/v114/zoeys-pocket-pet-v114.apk?verify=114-1`.
