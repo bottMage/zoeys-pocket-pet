@@ -58,4 +58,14 @@ public final class PetSpriteLayout {
         double reach=width*envelope.reach;
         return new Layout(width,sceneLeft+margin+reach,sceneRight-margin-reach);
     }
+
+    /** Fit each pet independently; an egg or a different species cannot set its size. */
+    public static Layout fitStage(Envelope envelope,PetGrowth.Stage stage,double growthScale,
+                                  double requestedWidth,double sceneLeft,double sceneRight,
+                                  double ceiling,double ground,double margin,double travelLane) {
+        Layout adult=fit(envelope,requestedWidth,sceneLeft,sceneRight,ceiling,ground,margin,travelLane);
+        double width=adult.artWidth*stage.size*growthScale;
+        double reach=width*envelope.reach;
+        return new Layout(width,sceneLeft+margin+reach,sceneRight-margin-reach);
+    }
 }

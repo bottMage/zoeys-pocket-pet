@@ -1,5 +1,61 @@
 # Zoey's Pocket Pet — cloud handover
 
+## Release v127: live-pet play-date rendering (publication pending)
+
+Signed local APK SHA-256:
+`d7af9edb5a5909fbe6bd2aa04c005ecbb1d6db879fd25f3358122073da9911dc`.
+Build/lint pass (0 errors, 154 existing lint warnings). The signing certificate
+is unchanged. Publish the asset first and verify its bytes before advancing
+the updater manifest.
+
+The user reported a hatched bunny/egg play date: both views rapidly flipped
+the live pet in place, and the egg owner's remote bunny was enormous and
+transparent. Root causes: per-frame peer-separation reversals, remote size
+copied from the local egg's double-density width metadata, and shadow-alpha
+Paint reused for the remote bitmap.
+
+Removed pet-to-pet movement blocking; live pets keep their full scene paths
+and reverse only at scene edges. Two live pets have separate 10dp depth lanes
+with foreground identity chosen once by stable account UID ordering, and draw
+back-to-front. Mixed pairs use their normal egg/live ground heights. Each
+visitor is fitted independently using its own species alpha envelope and
+BABY/YOUNG/ADULT stage via the same PetSpriteLayout.fitStage as the owner.
+Remote feet now use actual visible alpha-bottom anchoring, not the full PNG
+border. A dedicated bitmap Paint preserves original source alpha without
+inheriting shadow transparency, and applies the matching stage colour filter.
+
+Egg-only play dates retain their original art, scale, left/right positions,
+name-badge baselines and speech anchors. Remote egg sizing and speech height
+are independent of the local pet's current stage. Live/mixed name badges avoid
+overlap during crossings; simultaneous bubbles separate vertically as needed.
+Bitmap caches retain at most the two play-date species, instead of letting a
+remote preload evict the owner's frames every draw; leaving releases the
+visitor's unused frames. No new animation frames or experimental artwork.
+v126's closed-time progression, cloud-first restore/upload protection, social
+acceptance/cleanup, care panel, scenery, audio and notifications are retained.
+
+Native Android Canvas/Robolectric regression fixture is checked in at
+`tools/android-checks/PlayDateRenderTest.java` with instructions in that folder.
+It runs in an isolated project using current production source and resources,
+offline Firebase fixtures, and no real accounts/cloud writes. Four tests cover
+30 species/stage/density combinations (1.5x and 3x), remote size matching its
+own normal solo size, full bitmap Paint opacity/original alpha, mixed and
+live/live traversal without peer-induced turns, both depth orders with pixel
+composition checks, two-species cache reuse, egg-only sizing/positions and
+speech bubbles. Original cels mostly have alpha 250..254 in their interiors;
+do not threshold their alpha to "fix" normal antialiasing.
+
+Visual output is under `/workspace/artifacts/play-date-v127`, including 120
+frames for each mixed perspective, inspected crossing stills and a side-by-side
+clip. These are actual app Canvas render paths, not generative mock-ups,
+physical-phone recordings, live two-account networking tests or measured FPS.
+PetSaveCheck, PetCloudClockCheck, PetLifeCheck, PetHealthCheck, CareReminderCheck,
+UpdateCheckerCheck and all 148,680 WholePetCheck cases pass. WholePetCheck now
+also checks the shared stage fit against the previous solo size calculation.
+Run release build/lint and native rendering sequentially on the 8GB worker:
+a concurrent lint/native run exhausted memory; the final sequential build is
+successful with a 2GB Gradle heap. Update both participants to v127.
+
 ## Current release: offline advancement after cloud restore — v126
 
 Published APK downloaded and verified byte-for-byte against the signed local

@@ -26,20 +26,23 @@ public final class WholePetCheck {
             }
             for(double width:new double[]{240,280,320,360,412,480,600})
             for(double height:new double[]{560,600,640,720,800,900})
-            for(double stage:new double[]{PetGrowth.Stage.BABY.size,PetGrowth.Stage.YOUNG.size,PetGrowth.Stage.ADULT.size}) {
+            for(PetGrowth.Stage stage:new PetGrowth.Stage[]{PetGrowth.Stage.BABY,PetGrowth.Stage.YOUNG,PetGrowth.Stage.ADULT}) {
                 double ground=height-382,ceiling=125,margin=6;
                 PetSpriteLayout.Layout layout=PetSpriteLayout.fit(envelope,Math.min(width-42,296),
                     18,width-18,ceiling+9,ground,margin,68);
                 if(layout.artWidth<=0||layout.minCenter>layout.maxCenter)
                     throw new AssertionError("Invalid scene layout");
+                PetSpriteLayout.Layout stageLayout=PetSpriteLayout.fitStage(envelope,stage,1,
+                    Math.min(width-42,296),18,width-18,ceiling+9,ground,margin,68);
+                if(Math.abs(stageLayout.artWidth-layout.artWidth*stage.size)>1e-9)
+                    throw new AssertionError("Shared play-date fit changes normal stage size");
                 for(PetSpriteLayout.Bounds b:bounds)
                 for(boolean mirrored:new boolean[]{false,true})
                 for(double position:new double[]{0,.25,.5,.75,1})
                 for(double bounce:new double[]{0,-9}) {
-                    double artWidth=layout.artWidth*stage;
+                    double artWidth=stageLayout.artWidth;
                     double scale=artWidth/b.width;
-                    double reach=envelope.reach*artWidth;
-                    double minCenter=18+margin+reach,maxCenter=width-18-margin-reach;
+                    double minCenter=stageLayout.minCenter,maxCenter=stageLayout.maxCenter;
                     double center=minCenter+position*(maxCenter-minCenter);
                     double left=center-artWidth*.5+scale*(mirrored?b.width-b.right:b.left);
                     double right=center-artWidth*.5+scale*(mirrored?b.width-b.left:b.right);

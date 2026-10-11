@@ -476,6 +476,7 @@ private class PetGameView(context: Context, private val onPetCreated: () -> Unit
     private val updateManager = AppUpdateManager(appContext)
     private val prefs = context.getSharedPreferences("zoey_pet", Context.MODE_PRIVATE)
     private val paint = Paint(Paint.ANTI_ALIAS_FLAG)
+    private val friendBitmapPaint = Paint(Paint.ANTI_ALIAS_FLAG or Paint.FILTER_BITMAP_FLAG)
     private val textPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply { typeface = PaintTypeface.rounded() }
     private val pet = PetState(prefs)
     private val cloudSave = CloudSaveManager()
@@ -504,7 +505,7 @@ private class PetGameView(context: Context, private val onPetCreated: () -> Unit
         moveTo(-6f, -123f);lineTo(1f, -111f);lineTo(-6f, -99f)
         lineTo(6f, -88f);lineTo(1f, -74f)
     }
-    private var warmedKind: PetKind? = null
+    private val warmedKinds = HashSet<PetKind>()
     private val petArtResources = mapOf(
         PetKind.CAT to R.drawable.companion_cat,
         PetKind.DOG to R.drawable.companion_dog,
@@ -538,6 +539,10 @@ private class PetGameView(context: Context, private val onPetCreated: () -> Unit
     private var petEggScale = 1f
     private var friendRenderCenterX = 0f
     private var friendRenderWidth = 0f
+    private var friendGroundY = 0f
+    private var friendHeadY = 0f
+    private var friendEggScale = 1f
+    private var localPlayPetInFront = true
     private var friendMotionX = .72f
     private var friendMotionDirection = -1f
     private var friendMotionLastAt = SystemClock.uptimeMillis()
@@ -632,16 +637,23 @@ private class PetGameView(context: Context, private val onPetCreated: () -> Unit
     }
 
     private fun preloadWalkArtwork(kind: PetKind) {
-        if (warmedKind == kind) return
+        if (kind in warmedKinds) return
         // Decode and measure once, never during an individual walking step.
-        // Only retain the active pet's cels to bound bitmap memory.
-        walkFrameCache.clear()
-        walkFrameBoundsCache.clear()
+        // A play date may retain two species, without either evicting the
+        // other's cels every frame. Solo play still retains just one species.
+        trimWalkArtwork(if (playSessionId != null) setOf(pet.kind, kind) else setOf(kind))
         val envelope = PetSpriteLayout.Envelope()
         for (frame in 0 until PetSpriteLayout.frameCount(kind.name.lowercase())) envelope.include(walkFrameBounds(kind, frame))
         walkEnvelopeCache[kind] = envelope
-        warmedKind = kind
-        motionLastAt = SystemClock.uptimeMillis()
+        warmedKinds.add(kind)
+        if (kind == pet.kind) motionLastAt = SystemClock.uptimeMillis()
+    }
+
+    private fun trimWalkArtwork(retained: Set<PetKind>) {
+        walkFrameCache.keys.removeAll { key -> retained.none { key.startsWith("${it.name}_") } }
+        walkFrameBoundsCache.keys.removeAll { key -> retained.none { key.startsWith("${it.name}_") } }
+        walkEnvelopeCache.keys.retainAll(retained)
+        warmedKinds.retainAll(retained)
     }
 
     init {
@@ -936,8 +948,7 @@ private class PetGameView(context: Context, private val onPetCreated: () -> Unit
         }
         drawHeader(canvas)
         drawPlayground(canvas, now)
-        drawPet(canvas, now)
-        if (playSessionId != null) drawFriendPet(canvas, now)
+        drawScenePets(canvas, now)
         if (playSessionId != null) drawPlayDateSpeechBubbles(canvas, now)
         drawActionEffects(canvas, now)
         drawMessage(canvas, now)
@@ -1747,6 +1758,73 @@ private class PetGameView(context: Context, private val onPetCreated: () -> Unit
         )
     }
 
+    private fun friendIsEgg(): Boolean = playFriend?.let {
+        it.stage.equals("EGG", true) || it.petKind.isBlank()
+    } ?: true
+
+    private fun playPetGround(egg: Boolean, local: Boolean): Float {
+        val ground = statsTop() - dp(if (egg) 64f else 52f)
+        // Keep eggs in their existing places. Two live pets use stable depth
+        // lanes, so they can cross horizontally without bouncing off a peer.
+        val backLane = !egg && pet.hatched && playSessionId != null && !friendIsEgg() &&
+            if (local) !localPlayPetInFront else localPlayPetInFront
+        return ground - if (backLane) dp(10f) else 0f
+    }
+
+    private fun normalEggScale(ground: Float): Float =
+        min(dp(1f), min((width - dp(64f)) / 240f, ((ground - dp(125f)) / 166f).coerceAtLeast(0f)))
+
+    private fun drawScenePets(canvas: Canvas, now: Long) {
+        if (playSessionId == null || playFriend == null) {
+            drawPet(canvas, now)
+            return
+        }
+        // Draw the farther ground contact first. UID-stable lanes agree on
+        // both devices; a mixed egg/live pair uses its normal ground heights.
+        if (playPetGround(friendIsEgg(), false) < playPetGround(!pet.hatched, true) ||
+            pet.hatched && !friendIsEgg() && localPlayPetInFront) {
+            drawFriendPet(canvas, now)
+            drawPet(canvas, now)
+        } else {
+            drawPet(canvas, now)
+            drawFriendPet(canvas, now)
+        }
+        drawPlayDateNames(canvas)
+    }
+
+    private fun drawPlayDateNames(canvas: Canvas) {
+        val friend = playFriend ?: return
+        val kind = PetKind.values().firstOrNull { it.name == friend.petKind.uppercase() } ?: PetKind.BUNNY
+        if (!pet.hatched && friendIsEgg()) {
+            drawPetName(canvas, petCenterX, petGroundY + dp(12f))
+            drawPetNameBadge(canvas, friend.petName, friendRenderCenterX, friendGroundY, kind.dark)
+            return
+        }
+        val leftEdge = dp(24f)
+        val rightEdge = width - dp(24f)
+        val gap = dp(6f)
+        val localWidth = petNameBadgeWidth(pet.name)
+        val remoteWidth = petNameBadgeWidth(friend.petName)
+        val scale = min(1f, (rightEdge - leftEdge - gap) / (localWidth + remoteWidth))
+        val localHalf = localWidth * scale / 2f
+        val remoteHalf = remoteWidth * scale / 2f
+        var localX = petCenterX.coerceIn(leftEdge + localHalf, rightEdge - localHalf)
+        var remoteX = friendRenderCenterX.coerceIn(leftEdge + remoteHalf, rightEdge - remoteHalf)
+        if (abs(localX - remoteX) < localHalf + remoteHalf + gap) {
+            val total = (localHalf + remoteHalf) * 2f + gap
+            val left = ((localX + remoteX) / 2f - total / 2f).coerceIn(leftEdge, max(leftEdge, rightEdge - total))
+            if (petCenterX <= friendRenderCenterX) {
+                localX = left + localHalf
+                remoteX = left + localHalf * 2f + gap + remoteHalf
+            } else {
+                remoteX = left + remoteHalf
+                localX = left + remoteHalf * 2f + gap + localHalf
+            }
+        }
+        drawPetNameBadge(canvas, pet.name, localX, petGroundY + if (!pet.hatched) dp(12f) else 0f, pet.kind.dark, scale)
+        drawPetNameBadge(canvas, friend.petName, remoteX, friendGroundY, kind.dark, scale)
+    }
+
     private fun drawPet(canvas: Canvas, now: Long) {
         if (pet.dead) {
             drawMemorial(canvas)
@@ -1754,7 +1832,7 @@ private class PetGameView(context: Context, private val onPetCreated: () -> Unit
         }
         if (!pet.hatched) {
             val ground = statsTop() - dp(64f)
-            val eggScale = min(dp(1f), min((width - dp(64f)) / 240f, ((ground - dp(125f)) / 166f).coerceAtLeast(0f)))
+            val eggScale = normalEggScale(ground)
             val playCenterX = if (playSessionId != null) width * .32f else width / 2f
             val actionProgress = if (activeAction == Action.SLEEP) sleepPoseProgress(now) else interactionProgress(now)
             val touchProgress = touchProgress(now)
@@ -1775,13 +1853,12 @@ private class PetGameView(context: Context, private val onPetCreated: () -> Unit
             motionX = .5f
             petCenterX = playCenterX
             petGroundY = ground
-            petRenderWidth = dp(188f) * eggScale
+            petRenderWidth = 188f * eggScale
             petEggScale = eggScale
-            drawPetName(canvas, playCenterX, ground + dp(12f))
+            if (playSessionId == null) drawPetName(canvas, playCenterX, ground + dp(12f))
             return
         }
         preloadWalkArtwork(pet.kind)
-        val bottom = statsTop() - dp(10f)
         val sceneLeft = dp(18f)
         val sceneRight = width - dp(18f)
         val dt = ((now - motionLastAt).coerceAtLeast(0L)).coerceAtMost(120L) / 1000f
@@ -1815,41 +1892,21 @@ private class PetGameView(context: Context, private val onPetCreated: () -> Unit
         }
 
         val requestedWidth = min(width - dp(42f), dp(296f))
-        val groundY = bottom - dp(42f)
+        val groundY = playPetGround(egg = false, local = true)
         val walking = motionMode == MotionMode.WALK && activeAction == null
         val frameCount = PetSpriteLayout.frameCount(pet.kind.name.lowercase())
         val frame = if (walking || activeAction == Action.PLAY) (((now - animationStart) / WALK_FRAME_DURATION_MS) % frameCount).toInt() else 0
         // Bound the complete repaired silhouettes in both facing directions.
         // Reserve room for travel and the existing play bounce above the pet.
-        val layout = PetSpriteLayout.fit(
-            walkEnvelopeCache.getValue(pet.kind), requestedWidth.toDouble(),
+        val layout = PetSpriteLayout.fitStage(
+            walkEnvelopeCache.getValue(pet.kind), pet.growthStage, growthTransitionScale(now).toDouble(), requestedWidth.toDouble(),
             sceneLeft.toDouble(), sceneRight.toDouble(), dp(134f).toDouble(),
             groundY.toDouble(), dp(6f).toDouble(), dp(68f).toDouble()
         )
         // Fit the adult first, then scale every earlier stage relative to it.
         // Otherwise scenery fitting can make baby and adult the same size.
-        val growthScale = growthTransitionScale(now)
-        val artWidth = (layout.artWidth * pet.growthStage.size * growthScale).toFloat()
-        val reach = walkEnvelopeCache.getValue(pet.kind).reach * artWidth
-        val leftCenter = sceneLeft + dp(6f) + reach
-        val rightCenter = sceneRight - dp(6f) - reach
-        var centerX = (leftCenter + motionX * (rightCenter - leftCenter)).toFloat()
-        if (playSessionId != null && friendRenderCenterX > 0f && friendRenderWidth > 0f) {
-            val separation = (artWidth + friendRenderWidth) * .43f
-            if (abs(centerX - friendRenderCenterX) < separation) {
-                // Keep the owner's simulation on its side of the other pet as
-                // well as clamping the drawn position. Without reversing the
-                // travel direction here, the hidden motion coordinate could
-                // continue through the friend and make the pet jump across it
-                // when the friend moved away again.
-                motionDirection *= -1f
-                centerX = if (centerX <= friendRenderCenterX) {
-                    friendRenderCenterX - separation
-                } else {
-                    friendRenderCenterX + separation
-                }.coerceIn(sceneLeft + artWidth * .28f, sceneRight - artWidth * .28f)
-            }
-        }
+        val artWidth = layout.artWidth.toFloat()
+        val centerX = (layout.minCenter + motionX * (layout.maxCenter - layout.minCenter)).toFloat()
         petCenterX = centerX
         petGroundY = groundY
         petRenderWidth = artWidth
@@ -1918,89 +1975,86 @@ private class PetGameView(context: Context, private val onPetCreated: () -> Unit
         canvas.restore()
         paint.colorFilter = null
 
-        drawPetName(canvas, centerX, groundY)
+        if (playSessionId == null) drawPetName(canvas, centerX, groundY)
     }
 
     private fun drawFriendPet(canvas: Canvas, now: Long) {
         val friend = playFriend ?: return
         val kind = PetKind.values().firstOrNull { it.name == friend.petKind.uppercase() } ?: PetKind.BUNNY
-        val ground = petGroundY.takeIf { it > 0f } ?: statsTop() - dp(52f)
-        val egg = friend.stage.equals("EGG", true) || friend.petKind.isBlank()
+        val egg = friendIsEgg()
+        val ground = playPetGround(egg, local = false)
+        friendGroundY = ground
         val centerX: Float
         if (egg) {
             centerX = if (playSessionId != null) width * .68f else width * .73f
-            drawEgg(canvas, centerX, ground, kind, now / 1000.0, friend.hatchProgress.toDouble(), petEggScale)
+            friendEggScale = normalEggScale(ground)
+            drawEgg(canvas, centerX, ground, kind, now / 1000.0, friend.hatchProgress.toDouble(), friendEggScale)
             friendRenderCenterX = centerX
-            friendRenderWidth = petRenderWidth
+            friendRenderWidth = 188f * friendEggScale
+            friendHeadY = ground - 156f * friendEggScale
         } else {
+            preloadWalkArtwork(kind)
             val sceneLeft = dp(18f)
             val sceneRight = width - dp(18f)
             val dt = ((now - friendMotionLastAt).coerceAtLeast(0L)).coerceAtMost(120L) / 1000f
             friendMotionLastAt = now
             friendMotionX += friendMotionDirection * dt * .09f
-            if (friendMotionX <= .08f) {
-                friendMotionX = .08f
+            if (friendMotionX <= 0f) {
+                friendMotionX = 0f
                 friendMotionDirection = 1f
             }
-            if (friendMotionX >= .92f) {
-                friendMotionX = .92f
+            if (friendMotionX >= 1f) {
+                friendMotionX = 1f
                 friendMotionDirection = -1f
             }
-            val bitmap = walkFrameArtwork(kind, ((now - animationStart) / WALK_FRAME_DURATION_MS % PetSpriteLayout.frameCount(kind.name.lowercase())).toInt())
-            // Keep the remote pet at the same rendered width as the local
-            // pet. A play date must not shrink the second pet into a tiny
-            // thumbnail, especially when both devices are showing eggs.
-            val artWidth = petRenderWidth.takeIf { it > 0f } ?: min(width - dp(42f), dp(296f))
-            val localWidth = petRenderWidth.takeIf { it > 0f } ?: artWidth
-            val separation = (artWidth + localWidth) * .43f
-            var candidate = sceneLeft + friendMotionX * (sceneRight - sceneLeft)
-            if (petCenterX > 0f && abs(candidate - petCenterX) < separation) {
-                friendMotionDirection *= -1f
-                candidate = if (candidate <= petCenterX) petCenterX - separation else petCenterX + separation
-                candidate = candidate.coerceIn(sceneLeft + artWidth * .28f, sceneRight - artWidth * .28f)
-            }
-            centerX = candidate
+            val stage = PetGrowth.Stage.values().firstOrNull { it.name.equals(friend.stage, true) } ?: PetGrowth.Stage.BABY
+            val layout = PetSpriteLayout.fitStage(
+                walkEnvelopeCache.getValue(kind), stage, 1.0,
+                min(width - dp(42f), dp(296f)).toDouble(), sceneLeft.toDouble(), sceneRight.toDouble(),
+                dp(134f).toDouble(), ground.toDouble(), dp(6f).toDouble(), dp(68f).toDouble()
+            )
+            val artWidth = layout.artWidth.toFloat()
+            centerX = (layout.minCenter + friendMotionX * (layout.maxCenter - layout.minCenter)).toFloat()
             friendRenderCenterX = centerX
             friendRenderWidth = artWidth
+            val frame = ((now - animationStart) / WALK_FRAME_DURATION_MS % PetSpriteLayout.frameCount(kind.name.lowercase())).toInt()
+            val bitmap = walkFrameArtwork(kind, frame)
             val artScale = artWidth / bitmap.width
-            val artHeight = bitmap.height * artScale
+            val bounds = walkFrameBounds(kind, frame)
+            val artTop = ground - bounds.bottom * artScale
+            friendHeadY = artTop + bounds.top * artScale
             paint.color = Color.argb(48, 67, 57, 82)
             canvas.drawOval(RectF(centerX - artWidth * .25f, ground - dp(3f), centerX + artWidth * .25f, ground + dp(7f)), paint)
-            paint.colorFilter = null
+            // Never inherit the shadow's alpha (or another scene shader).
+            friendBitmapPaint.color = Color.WHITE
+            friendBitmapPaint.colorFilter = growthColorFilters.getOrPut("${kind.name}_${stage.name}") {
+                android.graphics.ColorMatrixColorFilter(PetGrowth.colorMatrix(kind.name.lowercase(), stage))
+            }
             canvas.save()
             if (friendMotionDirection > 0f) canvas.scale(-1f, 1f, centerX, ground)
-            canvas.drawBitmap(bitmap, null, RectF(centerX - artWidth / 2f, ground - artHeight, centerX + artWidth / 2f, ground), paint)
+            canvas.drawBitmap(bitmap, null, RectF(centerX - artWidth / 2f, artTop, centerX + artWidth / 2f, artTop + bitmap.height * artScale), friendBitmapPaint)
             canvas.restore()
         }
-        drawPetNameBadge(canvas, friend.petName, centerX, ground, kind.dark)
     }
 
     private fun drawPlayDateSpeechBubbles(canvas: Canvas, now: Long) {
         val friend = playFriend ?: return
         val localAction = localPlayAction
+        val localAnchor = if (!pet.hatched) petGroundY - 156f * petEggScale
+            else petGroundY - max(dp(172f), petRenderWidth * .62f)
         if (!localAction.isNullOrBlank() && now < playActionUntil) {
-            val anchor = if (!pet.hatched) {
-                // drawEgg uses authoring-pixel coordinates inside its scale;
-                // do not apply dp() a second time or the bubble leaves the
-                // scene on density-scaled devices.
-                petGroundY - 156f * petEggScale
-            } else {
-                petGroundY - max(dp(172f), petRenderWidth * .62f)
-            }
-            drawSpeechBubble(canvas, playActionLabel(localAction), petCenterX, anchor, pet.kind.dark)
+            drawSpeechBubble(canvas, playActionLabel(localAction), petCenterX, localAnchor, pet.kind.dark)
         }
 
         val remoteAction = remotePlayAction
         if (!remoteAction.isNullOrBlank() && now < remotePlayActionUntil) {
             val kind = PetKind.values().firstOrNull { it.name == friend.petKind.uppercase() } ?: PetKind.BUNNY
-            val egg = friend.stage.equals("EGG", true) || friend.petKind.isBlank()
-            val scale = petEggScale.takeIf { it > 0f } ?: 1f
-            val anchor = if (egg) {
-                petGroundY - 156f * scale
-            } else {
-                petGroundY - max(dp(172f), friendRenderWidth * .62f)
+            var remoteAnchor = friendHeadY
+            if ((pet.hatched || !friendIsEgg()) && !localAction.isNullOrBlank() && now < playActionUntil &&
+                abs(petCenterX - friendRenderCenterX) < dp(164f) && abs(localAnchor - remoteAnchor) < dp(44f)) {
+                remoteAnchor = min(remoteAnchor, localAnchor - dp(44f))
             }
-            drawSpeechBubble(canvas, playActionLabel(remoteAction), friendRenderCenterX, anchor, kind.dark)
+            drawSpeechBubble(canvas, playActionLabel(remoteAction), friendRenderCenterX, remoteAnchor, kind.dark)
         }
     }
 
@@ -2117,13 +2171,19 @@ private class PetGameView(context: Context, private val onPetCreated: () -> Unit
         drawPetNameBadge(canvas, pet.name, centerX, groundY, pet.kind.dark)
     }
 
-    private fun drawPetNameBadge(canvas: Canvas, petName: String, centerX: Float, groundY: Float, textColor: Int) {
+    private fun petNameBadgeWidth(petName: String): Float {
+        textPaint.typeface = PaintTypeface.bold()
+        textPaint.textSize = dp(13f)
+        return textPaint.measureText(petName.uppercase()) + dp(26f)
+    }
+
+    private fun drawPetNameBadge(canvas: Canvas, petName: String, centerX: Float, groundY: Float, textColor: Int, textScale: Float = 1f) {
         val bottom = statsTop() - dp(10f)
         textPaint.textAlign = Paint.Align.CENTER
         textPaint.typeface = PaintTypeface.bold()
-        textPaint.textSize = dp(13f)
+        val nameWidth = petNameBadgeWidth(petName) * textScale
+        textPaint.textSize = dp(13f) * textScale
         val name = petName.uppercase()
-        val nameWidth = textPaint.measureText(name) + dp(26f)
         val nameBaseline = min(bottom - dp(14f), groundY + dp(34f))
         paint.color = Color.argb(225, 255, 255, 255)
         canvas.drawRoundRect(
@@ -3268,8 +3328,11 @@ private class PetGameView(context: Context, private val onPetCreated: () -> Unit
         playSubscription?.close()
         playSessionId = sessionId
         playFriend = friend
+        localPlayPetInFront = (FirebaseAuth.getInstance().currentUser?.uid ?: "") < friend.uid
         friendRenderCenterX = 0f
         friendRenderWidth = 0f
+        friendGroundY = 0f
+        friendHeadY = 0f
         friendMotionX = .72f
         friendMotionDirection = -1f
         friendMotionLastAt = SystemClock.uptimeMillis()
@@ -3340,8 +3403,11 @@ private class PetGameView(context: Context, private val onPetCreated: () -> Unit
         playSubscription = null
         playSessionId = null
         playFriend = null
+        trimWalkArtwork(setOf(pet.kind))
         friendRenderCenterX = 0f
         friendRenderWidth = 0f
+        friendGroundY = 0f
+        friendHeadY = 0f
         friendMotionX = .72f
         friendMotionDirection = -1f
         friendMotionLastAt = SystemClock.uptimeMillis()
