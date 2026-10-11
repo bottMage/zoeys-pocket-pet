@@ -1,6 +1,11 @@
 # Zoey's Pocket Pet — cloud handover
 
-## Current work: themed cloud speech bubbles — v128
+## Current release: themed cloud speech bubbles — v128
+
+Published APK downloaded and verified byte-for-byte against the signed build:
+`https://github.com/bottMage/zoeys-pocket-pet/releases/download/v128/zoeys-pocket-pet-v128.apk?verify=128-3`.
+The public APK certificate is unchanged; updater advanced only after this
+download/checksum/signature verification. Release source/tag commit `cce0efd`.
 
 The user accepted v127's play-date renderer as the baseline, then requested
 nice themed cloud-shaped speech bubbles. `CloudSpeechBubble.kt` now draws a
@@ -34,7 +39,7 @@ production APK-build classes byte-for-byte. Build/lint used a 1024MB Gradle
 heap, one worker and in-process Kotlin compilation. APK version/signature
 verified: 128 / 128.0, unchanged certificate. Local APK SHA-256:
 `e12a1690b9f61db43e0dd3ede9f7089c0e8dd168dac555b3586677cc4b788be1`.
-Release asset/manifest verification is still pending; retain asset-first
+Published APK SHA-256 matches the local value above. Retain asset-first
 publication and the unchanged cloud signing key.
 
 ## Current release: live-pet play-date rendering — v127
