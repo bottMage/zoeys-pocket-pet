@@ -1,12 +1,15 @@
 # Zoey's Pocket Pet — cloud handover
 
-## Release v127: live-pet play-date rendering (publication pending)
+## Current release: live-pet play-date rendering — v127
 
-Signed local APK SHA-256:
+Published APK downloaded and verified byte-for-byte against the signed local
+build:
+`https://github.com/bottMage/zoeys-pocket-pet/releases/download/v127/zoeys-pocket-pet-v127.apk?verify=127-7`.
+SHA-256:
 `d7af9edb5a5909fbe6bd2aa04c005ecbb1d6db879fd25f3358122073da9911dc`.
 Build/lint pass (0 errors, 154 existing lint warnings). The signing certificate
-is unchanged. Publish the asset first and verify its bytes before advancing
-the updater manifest.
+is unchanged. The updater manifest was advanced only after the public asset
+was verified. Keep this asset-first release workflow.
 
 The user reported a hatched bunny/egg play date: both views rapidly flipped
 the live pet in place, and the egg owner's remote bunny was enormous and
@@ -44,6 +47,8 @@ live/live traversal without peer-induced turns, both depth orders with pixel
 composition checks, two-species cache reuse, egg-only sizing/positions and
 speech bubbles. Original cels mostly have alpha 250..254 in their interiors;
 do not threshold their alpha to "fix" normal antialiasing.
+The final native-test PetGameView.class was also compared byte-for-byte with
+the final production release-build class, and matches exactly.
 
 Visual output is under `/workspace/artifacts/play-date-v127`, including 120
 frames for each mixed perspective, inspected crossing stills and a side-by-side
