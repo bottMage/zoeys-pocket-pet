@@ -17,14 +17,22 @@ The existing cloud fixture lives at
 directory and jar cache are outside the repository. Run only the new test:
 
 ```bash
-./gradlew --offline --no-daemon --max-workers=2 testDebugUnitTest \
+./gradlew --offline --no-daemon --max-workers=1 \
+  '-Dorg.gradle.jvmargs=-Xmx768m -XX:MaxMetaspaceSize=512m' testDebugUnitTest \
   --tests com.example.shortsgesturecontrol.PlayDateRenderTest
 ```
 
 Run native rendering and release build/lint sequentially on the 8 GB worker
 to avoid memory contention. Rendering output is under
-`/workspace/artifacts/play-date-v127`: both mixed perspectives, egg-only
+`/workspace/artifacts/cloud-bubbles-v128`: both mixed perspectives, egg-only
 regression, and live/live crossings. Original cels contain alpha-250..254
 interior pixels, so tests preserve source alpha rather than imposing hard
 opaque masks. Preview clips are encoded at 30 fps; they are not phone
 recordings or measurements of device frame rate.
+
+v128 also checks the themed cloud artwork for all four play labels, both
+scene edges, independent timer expiry and movement-following anchors. It
+renders `cloud-eggs.png` and `cloud-live-pets.png` through the production view.
+Include the current `CloudSpeechBubble.kt` when copying production sources.
+Set the native test executor heap to 1536MB on the current 8GB worker: the
+pre-existing /tmp tmpfs uses nearly 5GB and a 3GB test heap can trigger OOM.

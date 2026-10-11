@@ -28,7 +28,7 @@ import static org.junit.Assert.*;
 @Config(sdk=34,qualifiers="w393dp-h851dp-hdpi")
 @GraphicsMode(GraphicsMode.Mode.NATIVE)
 public class PlayDateRenderTest {
-    static final File OUTPUT=new File("/workspace/artifacts/play-date-v127");
+    static final File OUTPUT=new File("/workspace/artifacts/cloud-bubbles-v128");
     static Object get(Object o,String name)throws Exception {
         Field f=o.getClass().getDeclaredField(name);f.setAccessible(true);return f.get(o);
     }
@@ -188,5 +188,48 @@ public class PlayDateRenderTest {
         assertEquals(b.getWidth()*.32f,number(eggs,"petCenterX"),.01f);
         assertEquals(b.getWidth()*.68f,number(eggs,"friendRenderCenterX"),.01f);
         b.recycle();System.out.println("PASS_NATIVE 120 frames per mixed perspective, speech bubbles, full-size eggs with unchanged positions");
+    }
+
+    @Test public void themedCloudSpeechAndExpiry()throws Exception {
+        Context context=init();float d=context.getResources().getDisplayMetrics().density;
+        CloudSpeechBubble cloud=new CloudSpeechBubble(d);
+        for(String label:new String[]{"HI!","WAVE","DANCE!","♥"}) {
+            for(float x:new float[]{0,196.5f*d,393*d}) {
+                Bitmap b=Bitmap.createBitmap(Math.round(393*d),Math.round(100*d),Bitmap.Config.ARGB_8888);
+                cloud.draw(new Canvas(b),label,x,60*d,b.getWidth(),android.graphics.Color.rgb(68,43,90));
+                int filled=0,dark=0;
+                for(int y=0;y<b.getHeight();y++)for(int px=0;px<b.getWidth();px++) {
+                    int color=b.getPixel(px,y);
+                    if((color>>>24)>0) {
+                        assertTrue("Cloud or shadow clipped at scene edge",px>=5*d&&px<b.getWidth()-5*d);
+                        assertTrue("Cloud escaped speech bounds",y>=22*d&&y<72*d);
+                        filled++;
+                        if((color>>>24)>240&&android.graphics.Color.red(color)<120)dark++;
+                    }
+                }
+                assertTrue("Cloud missing",filled>1000);
+                assertTrue("Readable label and outline missing",dark>100);
+                b.recycle();
+            }
+        }
+        for(String[] pair:new String[][]{{"DRAGON","EGG","BUNNY","EGG"},{"BUNNY","BABY","DRAGON","BABY"}}) {
+            Object v=view(context,pair[0],pair[1],pair[2],pair[3]);
+            set(v,"localPlayAction","dance");set(v,"remotePlayAction","hello");
+            set(v,"playActionUntil",1000L);set(v,"remotePlayActionUntil",1000L);
+            Bitmap b=bitmap(v);full(v,new Canvas(b),0);png(b,pair[1].equals("EGG")?"cloud-eggs.png":"cloud-live-pets.png");
+            b.eraseColor(0);draw(v,"drawPlayDateSpeechBubbles",new Canvas(b),1000);
+            for(int y=0;y<b.getHeight();y++)for(int x=0;x<b.getWidth();x++)assertEquals("Expired bubble persists",0,b.getPixel(x,y));
+            // Both bubbles independently follow their current rendered head coordinates.
+            set(v,"petCenterX",100*d);set(v,"friendRenderCenterX",290*d);
+            draw(v,"drawPlayDateSpeechBubbles",new Canvas(b),0);
+            int left=0,right=0;
+            for(int y=0;y<b.getHeight();y++)for(int x=0;x<b.getWidth();x++)if((b.getPixel(x,y)>>>24)>0) {
+                if(x<196*d)left++;else right++;
+            }
+            assertTrue("Owner bubble did not follow",left>1000);
+            assertTrue("Visitor bubble did not follow",right>1000);
+            b.recycle();
+        }
+        System.out.println("PASS_NATIVE cloud labels, scene-edge bounds, both eggs/live pets, independent expiry and moving anchors");
     }
 }

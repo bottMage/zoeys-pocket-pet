@@ -477,6 +477,7 @@ private class PetGameView(context: Context, private val onPetCreated: () -> Unit
     private val prefs = context.getSharedPreferences("zoey_pet", Context.MODE_PRIVATE)
     private val paint = Paint(Paint.ANTI_ALIAS_FLAG)
     private val friendBitmapPaint = Paint(Paint.ANTI_ALIAS_FLAG or Paint.FILTER_BITMAP_FLAG)
+    private val speechBubble = CloudSpeechBubble(resources.displayMetrics.density)
     private val textPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply { typeface = PaintTypeface.rounded() }
     private val pet = PetState(prefs)
     private val cloudSave = CloudSaveManager()
@@ -2065,34 +2066,7 @@ private class PetGameView(context: Context, private val onPetCreated: () -> Unit
         bottom: Float,
         textColor: Int
     ) {
-        textPaint.textAlign = Paint.Align.CENTER
-        textPaint.typeface = PaintTypeface.bold()
-        textPaint.textSize = dp(11f)
-        val bubbleWidth = (textPaint.measureText(label) + dp(26f)).coerceIn(dp(64f), dp(154f))
-        val bubbleHeight = dp(32f)
-        val left = (centerX - bubbleWidth / 2f).coerceIn(dp(7f), width - dp(7f) - bubbleWidth)
-        val rect = RectF(left, bottom - bubbleHeight, left + bubbleWidth, bottom)
-        val tailX = centerX.coerceIn(rect.left + dp(14f), rect.right - dp(14f))
-        val tail = Path().apply {
-            moveTo(tailX - dp(8f), rect.bottom - dp(2f))
-            lineTo(tailX, rect.bottom + dp(8f))
-            lineTo(tailX + dp(8f), rect.bottom - dp(2f))
-            close()
-        }
-        paint.style = Paint.Style.FILL
-        paint.color = Color.WHITE
-        canvas.drawPath(tail, paint)
-        canvas.drawRoundRect(rect, dp(15f), dp(15f), paint)
-        paint.style = Paint.Style.STROKE
-        paint.strokeWidth = dp(1.8f)
-        paint.strokeJoin = Paint.Join.ROUND
-        paint.color = Color.rgb(68, 43, 90)
-        canvas.drawPath(tail, paint)
-        canvas.drawRoundRect(rect, dp(15f), dp(15f), paint)
-        paint.style = Paint.Style.FILL
-        textPaint.color = textColor
-        val baseline = rect.centerY() - (textPaint.ascent() + textPaint.descent()) / 2f
-        canvas.drawText(label, rect.centerX(), baseline, textPaint)
+        speechBubble.draw(canvas, label, centerX, bottom, width.toFloat(), textColor)
     }
 
     private fun playActionLabel(action: String): String = when (action) {

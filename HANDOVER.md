@@ -1,5 +1,42 @@
 # Zoey's Pocket Pet — cloud handover
 
+## Current work: themed cloud speech bubbles — v128
+
+The user accepted v127's play-date renderer as the baseline, then requested
+nice themed cloud-shaped speech bubbles. `CloudSpeechBubble.kt` now draws a
+single puffy scalloped outline with an integrated curved speech pointer,
+cream-to-lavender fill, soft offset shadow, purple outline and readable
+species-themed dark text. Paths, Paints and the gradient are retained per
+view; no bitmap assets, new timers, background work or network calls.
+Only `drawSpeechBubble` delegates to the new artwork. Existing action labels,
+independent expiry, movement-following anchors, simultaneous-bubble spacing,
+pet/egg rendering, play-date acceptance, saves, offline progression, cloud
+sync, scenery, audio and notifications remain unchanged.
+
+All five native Android Canvas rendering tests pass, including the existing
+30 species/stage/density, traversal, opacity, depth and bitmap-cache cases.
+Added checks cover all four speech labels at center and both scene edges,
+egg/live bubble rendering, independent expiry and current-position anchors.
+Actual production view screenshots/frames are in
+`/workspace/artifacts/cloud-bubbles-v128`, including `cloud-eggs.png` and
+`cloud-live-pets.png`; inspected both plus the mixed egg/bunny perspective.
+These are native Android renders, not physical-device captures or live
+two-account networking tests. Keep the accepted artwork/animation baseline.
+
+The first full native run exceeded the 8GB worker limit; rerunning passed
+with a 768MB Gradle heap, one worker and a 1536MB native-test heap. The large
+existing /tmp tmpfs consumes nearly 5GB of worker memory. Nothing was deleted
+to make space. Use bounded heaps and run native tests/build/lint sequentially.
+Build/lint pass with 0 errors and the existing 154 warnings; all model,
+save/cloud-clock, care reminder, updater and 148,680 whole-pet bounds checks
+pass. Native-test `PetGameView.class` and `CloudSpeechBubble.class` match the
+production APK-build classes byte-for-byte. Build/lint used a 1024MB Gradle
+heap, one worker and in-process Kotlin compilation. APK version/signature
+verified: 128 / 128.0, unchanged certificate. Local APK SHA-256:
+`e12a1690b9f61db43e0dd3ede9f7089c0e8dd168dac555b3586677cc4b788be1`.
+Release asset/manifest verification is still pending; retain asset-first
+publication and the unchanged cloud signing key.
+
 ## Current release: live-pet play-date rendering — v127
 
 Published APK downloaded and verified byte-for-byte against the signed local
