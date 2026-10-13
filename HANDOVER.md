@@ -1,6 +1,14 @@
 # Zoey's Pocket Pet — cloud handover
 
-## Current work: approved rain/cloud release — v129
+## Current release: natural rain and puffy overcast clouds — v129
+
+Published APK downloaded and verified byte-for-byte against the signed build:
+`https://github.com/bottMage/zoeys-pocket-pet/releases/download/v129/zoeys-pocket-pet-v129.apk?verify=129-2`.
+Public APK certificate remains
+`552f2d2f4a8f6e2ddb84306c0183c88ef240ef44acad872e5c3d66df5b566cca`.
+Release source/tag commit: `f7c9af8`; publish workflow `38360700503` completed
+successfully. The updater advances only after public download, checksum and
+signature verification, retaining the asset-first workflow.
 
 After the final puffy-cloud screenshot, the user explicitly requested
 **publish**. This authorizes releasing the approved rain and latest whole-cloud
@@ -21,8 +29,8 @@ classes byte-for-byte. Native day/night stills were inspected; approved
 RainEffect and RainCloudCover source hashes above remain unchanged.
 APK package/version and unchanged certificate verified. Local APK SHA-256:
 `db97b3b3c0aee3afb8f8da33fbf37d81394bb3c9d71aad28f45e990496e89a36`.
-Public-asset verification is pending. Updater remains v128 until the public
-signed v129 APK has been downloaded and checksum/certificate verified. Keep
+Public-asset download/checksum/certificate verification succeeded. The updater
+now advertises the verified signed v129 APK. Keep
 the unchanged cloud signing key and asset-first release workflow. Final native
 check output uses separate `rain-release-v129` / `play-date-v129` directories
 so accepted v128 preview screenshots and rejected trial clips are preserved.
@@ -1508,10 +1516,10 @@ release facts are the sections below.
 - Repository: `https://github.com/bottMage/zoeys-pocket-pet` (public).
 - Cloud checkout: `/workspace/zoeys-pocket-pet`.
 - Local branch name is `work`; completed changes are pushed to remote `main` using `git push origin HEAD:main`.
-- Latest pushed app commit: `77c77e7 Keep care tiles fully saturated`.
-- Latest public release/tag: `v99`.
-- Current Android version: `versionCode = 99`, `versionName = "99.0"` in `app/build.gradle.kts`.
-- The v99 APK URL and verified checksum are recorded in the current release section above.
+- Latest pushed app commit: `f7c9af8 Publish approved natural rain and puffy storm clouds in v129`.
+- Latest public release/tag: `v129`.
+- Current Android version: `versionCode = 129`, `versionName = "129.0"` in `app/build.gradle.kts`.
+- The v129 APK URL and verified checksum are recorded in the current release section above.
 - The v79 care-button change was tested by the user on Zoey's phone and
   removed the repeated-OK-button freeze/ANR: it uses Android's built-in click
   effect rather than constructing a `ToneGenerator` on every tap. v79 did not
