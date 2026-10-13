@@ -1,6 +1,6 @@
 # Zoey's Pocket Pet — cloud handover
 
-## v130 release validation — approved menu and Friends center
+## Current release: approved themed menu and Friends center — v130
 
 The user approved the shown UI without further changes. Source/Android version
 is 130 / 130.0. Final `assembleDebug` / `lintDebug` pass (0 errors, 153 lint
@@ -16,18 +16,24 @@ redesign. Public certificate remains
 `552f2d2f4a8f6e2ddb84306c0183c88ef240ef44acad872e5c3d66df5b566cca`.
 The signed local v130 APK SHA-256 is
 `6f4036aa494ce536bfd490f641bc8b47c697c1bd504f03b1b2d75d93e5bac331`.
-Publication is in progress. Keep the updater at v129 until the public v130 APK
-is downloaded and verified against this exact signed file.
+Published APK downloaded and verified byte-for-byte against the signed build:
+`https://github.com/bottMage/zoeys-pocket-pet/releases/download/v130/zoeys-pocket-pet-v130.apk?verify=130-2`.
+Public checksum, unchanged certificate, package and 130 / 130.0 version all
+verified. `/releases/latest` resolves to v130. Release source/tag commit
+`aaf12ca`; publish workflow `38369916118` succeeded. The updater now advertises
+the verified v130 APK, advanced only after public download verification.
+The approved UI is shipped unchanged. No real user/account data was reset,
+and no Firebase deployment or data migration was needed.
 
-## Approved menu / Settings / Friends release candidate — v130
+## Approved menu / Settings / Friends implementation — v130
 
 The latest request is to revamp the menu, group Settings under category headings,
 and move friend controls into a separate **Friends** entry above Settings.
 The user explicitly requested **screenshots here before publishing**, then
 approved the displayed native previews with **"Perfect. Hit it"**. This now
-authorizes bumping and publishing the approved UI as 130 / 130.0. No further
-redesign. Keep the updater at verified v129 until the signed public v130 APK
-has been downloaded and checked; retain the asset-first release workflow.
+authorized bumping and publishing the approved UI as 130 / 130.0. No further
+redesign. The public signed asset was checked before the updater advanced,
+retaining the asset-first release workflow.
 
 Local UI implementation:
 
@@ -1596,10 +1602,10 @@ release facts are the sections below.
 - Repository: `https://github.com/bottMage/zoeys-pocket-pet` (public).
 - Cloud checkout: `/workspace/zoeys-pocket-pet`.
 - Local branch name is `work`; completed changes are pushed to remote `main` using `git push origin HEAD:main`.
-- Latest pushed app commit: `f7c9af8 Publish approved natural rain and puffy storm clouds in v129`.
-- Latest public release/tag: `v129`.
-- Current Android version: `versionCode = 129`, `versionName = "129.0"` in `app/build.gradle.kts`.
-- The v129 APK URL and verified checksum are recorded in the current release section above.
+- Latest pushed app commit: `aaf12ca Publish approved themed menu and Friends center in v130`.
+- Latest public release/tag: `v130`.
+- Current Android version: `versionCode = 130`, `versionName = "130.0"` in `app/build.gradle.kts`.
+- The v130 APK URL and verified checksum are recorded in the current release section above.
 - The v79 care-button change was tested by the user on Zoey's phone and
   removed the repeated-OK-button freeze/ANR: it uses Android's built-in click
   effect rather than constructing a `ToneGenerator` on every tap. v79 did not
