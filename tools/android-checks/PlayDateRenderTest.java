@@ -28,7 +28,7 @@ import static org.junit.Assert.*;
 @Config(sdk=34,qualifiers="w393dp-h851dp-hdpi")
 @GraphicsMode(GraphicsMode.Mode.NATIVE)
 public class PlayDateRenderTest {
-    static final File OUTPUT=new File("/workspace/artifacts/cloud-bubbles-v128");
+    static final File OUTPUT=new File(System.getProperty("mochi.playdate.output", "/workspace/artifacts/cloud-bubbles-v128"));
     static Object get(Object o,String name)throws Exception {
         Field f=o.getClass().getDeclaredField(name);f.setAccessible(true);return f.get(o);
     }

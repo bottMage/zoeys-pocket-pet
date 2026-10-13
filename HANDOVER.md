@@ -1,5 +1,123 @@
 # Zoey's Pocket Pet — cloud handover
 
+## Current work: approved rain/cloud release — v129
+
+After the final puffy-cloud screenshot, the user explicitly requested
+**publish**. This authorizes releasing the approved rain and latest whole-cloud
+artwork as v129; the review-only publication hold below is now historical.
+No further visual redesign. RainEffect/RainCloudCover source hashes retain
+the approved snapshot:
+`9d0412f8ecf4e323faf927c14bea3a1874a0cf739cd4630f83144ed1f4696f73` /
+`b884545f5fb7ec680e6786ab5c19db88c6aa59d94d797adb30374627a9ff25ac`.
+
+Source/version is now 129 / 129.0. Final assemble/lint pass (0 errors, 155
+warnings: existing issues plus a nonfunctional KTX style suggestion). Eight
+native Android checks pass: latest puffy-cloud stills, rain geometry/clipping,
+overcast/day-only intensity, and all five play-date rendering regressions.
+PetSaveCheck, PetCloudClockCheck, PetLifeCheck, PetHealthCheck, CareReminderCheck,
+UpdateCheckerCheck and all 148,680 WholePetCheck bounds checks pass. Final
+preview PetGameView/RainEffect/RainCloudCover classes match the APK-build
+classes byte-for-byte. Native day/night stills were inspected; approved
+RainEffect and RainCloudCover source hashes above remain unchanged.
+APK package/version and unchanged certificate verified. Local APK SHA-256:
+`db97b3b3c0aee3afb8f8da33fbf37d81394bb3c9d71aad28f45e990496e89a36`.
+Public-asset verification is pending. Updater remains v128 until the public
+signed v129 APK has been downloaded and checksum/certificate verified. Keep
+the unchanged cloud signing key and asset-first release workflow. Final native
+check output uses separate `rain-release-v129` / `play-date-v129` directories
+so accepted v128 preview screenshots and rejected trial clips are preserved.
+No new video encoding is needed or requested for release verification.
+
+## Historical rain preview — review-first process (2026-10-13)
+
+The user reports rain looking like a sheet of stripes and explicitly says:
+**render first; do not publish the rain fix until they specifically request it.**
+This overrides the standing automatic-publish permission for this change.
+Current published app/version/updater remain v128. No version bump, new APK,
+release tag, remote push or manifest change is authorized in this preview turn.
+
+The user called the initial rain preview "incredible", then requested a small
+daytime intensity boost, darker rainy daylight and thick clouds in both scenes.
+That approval is for the motion/style, not permission to publish.
+
+Local candidate `RainEffect.kt` uses 72 night / 84 daytime deterministic
+independently phased drops, varied short lengths, thickness,
+opacity and terminal speeds; the tail agrees with downward/leftward motion;
+each cycle starts at a new horizontal position instead of repeating columns.
+28 nearer drops have tiny brief landing splashes. Dedicated reusable Paint,
+fixed drop descriptors, no per-frame object allocation, added timers, bitmaps,
+networking or background work. Retains the existing scenery clip/draw order,
+pet/egg foreground, redraw cadence, weather polling and approved rain audio.
+Daytime opacity is 10% stronger; the 12 extra drops are farther/background
+ones. Existing night drop geometry, speeds, count and opacity are unchanged.
+`RainCloudCover.kt` now uses irregular overlapping whole cloud silhouettes,
+cached day/night shaded fills and diffuse overcast cover whenever it rains,
+regardless of reported cloud-cover metadata. The prior pair of repeating
+wave contours was rejected as looking like a reflection; do not restore it.
+Sun/moon/stars are obscured only during rain; clear and
+forecast-only weather keeps the existing celestial/small-cloud behavior.
+Rainy daylight has a cooler grey sky and a modest scenery-only shade wash;
+night gets a very slight wash. Pets/eggs and speech remain readable foreground
+layers. Saves, elapsed progression, cloud sync, play dates, cloud bubbles,
+audio and controls are unchanged. Publication remains on hold.
+
+Native Canvas baseline was captured **before** changing the isolated app
+source; candidate frames then use the current production source unchanged.
+`tools/android-checks/RainRenderTest.java` generates 180 frames at 30fps each
+for daylight/live-dragon and night/egg views. Output:
+`/workspace/artifacts/rain-review-20261013/{baseline,candidate}`.
+`new-rain-preview.mp4` shows candidate day then night (12 seconds);
+`rain-comparison.mp4` shows published left / candidate right, day then night.
+These are cropped actual Android-native app scene renders, not generative
+mock-ups, live weather/account tests, phone captures or device FPS claims.
+Baseline test must run against v128 source only; its guard rejects candidate
+source to prevent overwriting the original comparison with mislabeled footage.
+
+Candidate native checks pass for bounded draw calls, short/tapered streaks,
+fall direction, landing splashes, deterministic timestamp/frame-rate behavior
+and confinement to the rounded scene. Production Kotlin/Java compile and lint
+pass (0 errors, 154 existing warnings). The final run also passes all five
+v128 play-date native regressions, seven tests total. Native preview
+`PetGameView.class` and `RainEffect.class` match the production compile
+byte-for-byte. Day/night stills were inspected; both review clips are 12s,
+360 frames/30fps. Publication remains blocked on approval.
+
+Second preview output uses `candidate-clouds/`, preserving the first accepted
+`candidate/` footage. The current preview fixture writes that newer directory.
+New checks cover day-only density/opacity, unchanged night drop paths, opaque
+cloud coverage across the width at several motion phases, zero reported cloud
+cover, rainy daylight darkening and clear-day/night stills. Scenery clipping
+allows only the native one-pixel antialias fringe at fractional scene bounds.
+Second revision: all eight native checks pass (three rain/cloud tests and five
+play-date regressions). Production Kotlin/Java compile and lint pass, with
+0 errors / 154 existing warnings. `PetGameView`, `RainEffect` and
+`RainCloudCover` compiled classes match the native preview byte-for-byte.
+Inspected cloudy day/night and clear-day stills. The revised clip is
+`/workspace/artifacts/rain-review-20261013/rain-overcast-preview.mp4`, 12s,
+536x508, 360 frames/30fps, day followed by night. Previous review clips are
+retained. Source version/updater stay v128; no APK/tag/remote publication.
+
+Third revision: the user accepts the rain and rejects only the cloud shape,
+requesting **a screenshot only, no video**. Replaced wave bands with three
+complete puffy cloud designs arranged as nine irregular overlapping clusters
+with shaded volume and independent slow horizontal drift. Cached paths and
+gradients; no new artwork bitmap or per-frame allocations. Overcast lighting,
+weather gating and the approved RainEffect are unchanged (source SHA-256
+`9d0412f8ecf4e323faf927c14bea3a1874a0cf739cd4630f83144ed1f4696f73`).
+`RainRenderTest.previewCloudStills` generates only day/night full-view and
+scene PNGs in `candidate-puffy-clouds/`. Inspected both scene stills: no
+mirrored wave bands. Three focused native checks pass for still rendering,
+rain/clip behavior and overcast/intensity rules. No video generation for this
+revision; earlier videos remain available, but show rejected cloud shapes.
+Production Kotlin/Java compile and lint pass (0 errors / 155 warnings: the
+existing 154 plus a nonfunctional Canvas KTX style suggestion).
+Preview `RainCloudCover.class` and `PetGameView.class` match the production
+compile byte-for-byte. Screenshot for review:
+`/workspace/artifacts/rain-review-20261013/candidate-puffy-clouds/day-scene.png`;
+the night scene and both full-view stills are in the same folder.
+Publication still requires the user's explicit instruction; this screenshot
+request does not authorize it. Version/updater remain v128.
+
 ## Current release: themed cloud speech bubbles — v128
 
 Published APK downloaded and verified byte-for-byte against the signed build:

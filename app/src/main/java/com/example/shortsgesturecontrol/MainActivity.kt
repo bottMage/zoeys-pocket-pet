@@ -478,6 +478,8 @@ private class PetGameView(context: Context, private val onPetCreated: () -> Unit
     private val paint = Paint(Paint.ANTI_ALIAS_FLAG)
     private val friendBitmapPaint = Paint(Paint.ANTI_ALIAS_FLAG or Paint.FILTER_BITMAP_FLAG)
     private val speechBubble = CloudSpeechBubble(resources.displayMetrics.density)
+    private val rainEffect = RainEffect(resources.displayMetrics.density)
+    private val rainCloudCover = RainCloudCover(resources.displayMetrics.density)
     private val textPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply { typeface = PaintTypeface.rounded() }
     private val pet = PetState(prefs)
     private val cloudSave = CloudSaveManager()
@@ -1437,25 +1439,30 @@ private class PetGameView(context: Context, private val onPetCreated: () -> Unit
         val daylight = daylightFactor(LocalTime.now().hour * 60 + LocalTime.now().minute, weatherNow)
         paint.shader = LinearGradient(
             0f, scene.top, 0f, scene.bottom,
-            blendColor(Color.rgb(28, 42, 86), Color.rgb(190, 229, 255), daylight),
-            blendColor(Color.rgb(72, 64, 116), Color.rgb(250, 239, 249), daylight), Shader.TileMode.CLAMP
+            blendColor(Color.rgb(28, 42, 86), if (weatherNow.raining) Color.rgb(155, 180, 199) else Color.rgb(190, 229, 255), daylight),
+            blendColor(Color.rgb(72, 64, 116), if (weatherNow.raining) Color.rgb(199, 204, 215) else Color.rgb(250, 239, 249), daylight), Shader.TileMode.CLAMP
         )
         canvas.drawRect(scene, paint)
         paint.shader = null
 
-        drawCelestial(canvas, scene, weatherNow)
-
-        val cloudiness = max(weatherNow.cloudCover, weatherNow.rainSoon * .85f)
-        val cloudCount = (cloudiness * 4f).roundToInt().coerceIn(0, 4)
-        val cloudColor = if (daylight < .2f) Color.argb(110, 122, 130, 164)
-        else if (weatherNow.raining || weatherNow.rainSoon > .5f) Color.argb(205, 148, 164, 185)
-        else Color.argb(195, 255, 255, 255)
-        paint.color = cloudColor
-        for (index in 0 until cloudCount) {
-            val cycle = ((now / (42_000f + index * 4_000f) + index * .29f) % 1f + 1f) % 1f
-            val x = scene.left - dp(88f) + cycle * (scene.width() + dp(176f))
-            val y = scene.top + dp(61f + index * 34f)
-            drawCloud(canvas, x, y, .28f + (index % 2) * .07f)
+        if (weatherNow.raining) {
+            // A raining sky always has a continuous ceiling, even if weather
+            // metadata reports zero cloud cover. No exposed sun/moon or stars.
+            rainCloudCover.draw(canvas, scene, now, daylight)
+        } else {
+            drawCelestial(canvas, scene, weatherNow)
+            val cloudiness = max(weatherNow.cloudCover, weatherNow.rainSoon * .85f)
+            val cloudCount = (cloudiness * 4f).roundToInt().coerceIn(0, 4)
+            val cloudColor = if (daylight < .2f) Color.argb(110, 122, 130, 164)
+            else if (weatherNow.rainSoon > .5f) Color.argb(205, 148, 164, 185)
+            else Color.argb(195, 255, 255, 255)
+            paint.color = cloudColor
+            for (index in 0 until cloudCount) {
+                val cycle = ((now / (42_000f + index * 4_000f) + index * .29f) % 1f + 1f) % 1f
+                val x = scene.left - dp(88f) + cycle * (scene.width() + dp(176f))
+                val y = scene.top + dp(61f + index * 34f)
+                drawCloud(canvas, x, y, .28f + (index % 2) * .07f)
+            }
         }
 
         val distantMountains = Path().apply {
@@ -1500,7 +1507,10 @@ private class PetGameView(context: Context, private val onPetCreated: () -> Unit
 
         drawGroundDetails(canvas, scene, daylight, now)
         if (daylight < .2f && !weatherNow.raining) drawNightCreatures(canvas, scene, now)
-        if (weatherNow.raining) drawRain(canvas, scene, now, daylight)
+        if (weatherNow.raining) {
+            rainCloudCover.shadeScene(canvas, scene, daylight)
+            drawRain(canvas, scene, now, daylight)
+        }
         canvas.restore()
     }
 
@@ -1727,15 +1737,7 @@ private class PetGameView(context: Context, private val onPetCreated: () -> Unit
     }
 
     private fun drawRain(canvas: Canvas, scene: RectF, now: Long, daylight: Float) {
-        paint.color = if (daylight < .2f) Color.argb(120, 173, 199, 238) else Color.argb(145, 92, 157, 202)
-        paint.strokeWidth = dp(1.2f)
-        paint.style = Paint.Style.STROKE
-        for (index in 0 until 42) {
-            val x = scene.left + ((index * 43 + (now / 7L).toInt()) % scene.width().toInt()).toFloat()
-            val y = scene.top + ((index * 67 + (now / 5L).toInt()) % scene.height().toInt()).toFloat()
-            canvas.drawLine(x.toFloat(), y.toFloat(), x - dp(4f), y + dp(12f), paint)
-        }
-        paint.style = Paint.Style.FILL
+        rainEffect.draw(canvas, scene, now, daylight)
     }
 
     private fun daylightFactor(minutes: Int, state: WeatherState): Float {
