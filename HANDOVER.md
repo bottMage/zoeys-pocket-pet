@@ -1,5 +1,85 @@
 # Zoey's Pocket Pet — cloud handover
 
+## v130 release validation — approved menu and Friends center
+
+The user approved the shown UI without further changes. Source/Android version
+is 130 / 130.0. Final `assembleDebug` / `lintDebug` pass (0 errors, 153 lint
+warnings). All eight native Android tests pass: three menu/settings/friends
+checks plus all five play-date rendering regressions. Final native preview UI
+classes match production release-build classes byte-for-byte. Inspected final
+Settings rendering; approved review artifacts are preserved separately from
+`menu-release-v130` and `play-date-v130` verification output.
+PetSaveCheck, PetCloudClockCheck, PetLifeCheck, PetHealthCheck, CareReminderCheck,
+UpdateCheckerCheck and 148,680 WholePetCheck bounds checks pass against v130.
+No pet, clock/cloud authority, backend, scenery/rain, audio or release-workflow
+redesign. Public certificate remains
+`552f2d2f4a8f6e2ddb84306c0183c88ef240ef44acad872e5c3d66df5b566cca`.
+The signed local v130 APK SHA-256 is
+`6f4036aa494ce536bfd490f641bc8b47c697c1bd504f03b1b2d75d93e5bac331`.
+Publication is in progress. Keep the updater at v129 until the public v130 APK
+is downloaded and verified against this exact signed file.
+
+## Approved menu / Settings / Friends release candidate — v130
+
+The latest request is to revamp the menu, group Settings under category headings,
+and move friend controls into a separate **Friends** entry above Settings.
+The user explicitly requested **screenshots here before publishing**, then
+approved the displayed native previews with **"Perfect. Hit it"**. This now
+authorizes bumping and publishing the approved UI as 130 / 130.0. No further
+redesign. Keep the updater at verified v129 until the signed public v130 APK
+has been downloaded and checked; retain the asset-first release workflow.
+
+Local UI implementation:
+
+- The drawer has an opaque lavender-to-pink background, purple header, separate
+  Friends and Settings tiles, descriptions and an outside-to-close hint. Its
+  rendered edge now agrees with its touch boundary. Reset the shared Paint
+  alpha before the gradient so the dim overlay cannot make it see-through.
+- `MochiPanel.kt` provides native themed dialogs, fixed headers/Done controls,
+  scrollable content, readable explicit colors and minimum 48dp button targets.
+  No added background animation, polling, services or network infrastructure.
+- Settings headings: You & your pet, Google backup, Notifications, Help &
+  learning, Saved data. Name editing, reminders, tutorial and all existing
+  local/cloud/both reset confirmations remain. Signed-out users can sign in.
+  The compact settings rows fit the standard preview; smaller/large-text
+  screens scroll. Friends no longer appears among settings controls.
+- Friends has Contacts and Invite friend tabs. Online-first, name-sorted
+  contact cards show an initial avatar, owner name, pet name, explicit online /
+  offline state, and Play for online friends. Empty/away/signed-out states and
+  incoming friend/play requests have themed cards and appropriate controls.
+- Get my friend code displays the existing backend-issued code without forcing
+  a share sheet. Separate Copy/Share use the Android clipboard/chooser. Add
+  friend validates blank input, uppercases pasted codes, preserves text/cursor
+  across listener refreshes and prevents duplicate submissions while busy.
+  Async code results are guarded against account changes. Invite codes shown
+  in previews are synthetic, not real invitations.
+- Tutorial navigation now says MENU > FRIENDS > INVITE FRIEND. The established
+  SocialPlayManager, presence, request/session/notification backend, accepted
+  contacts and FUN > PLAY WITH FRIENDS flow remain intact. This is a UI
+  reorganization, not a Firebase schema/rules/cloud-function change. No real
+  accounts or cloud writes were used in previews.
+- Pet/egg rendering, scenery/rain/clouds/speech, progress/elapsed-time/cloud
+  authority, audio and release workflows are unchanged.
+
+Native Android previews/test harness:
+`tools/android-checks/MenuPanelRenderTest.java`, copied alongside the existing
+PlayDateRenderTest into the isolated Robolectric Android preview project.
+Outputs `/workspace/artifacts/menu-review-20261013/`:
+`menu.png`, `settings.png`, `friends-contacts.png`, `friends-invite.png`,
+`friends-request.png`, `settings-small-phone.png`, `friends-sign-in.png`.
+These draw the production Android dialog decor/native Canvas, composited over
+the actual game scene with fixture contacts/account/code, not a generative
+mockup, phone capture or live two-account integration test. Main game and
+MochiPanel compiled classes were compared against production to ensure parity.
+UI checks cover drawer navigation/opacity, all headings/reset access, actual
+reminder toggle, sign-in state, small-screen/130% text layout, contacts/invite
+tabs, copy/share payloads, input validation/text/cursor retention, incoming
+friend request buttons, and dismissal cleanup. The existing size/opacity and
+front/back traversal play-date regressions also pass. Compile/lint and save,
+cloud-clock, life, health, reminders, updater and 148,680 bounds checks pass.
+User visual approval is now recorded above. Retain approved preview files;
+release verification outputs use a separate `menu-release-v130` directory.
+
 ## Current release: natural rain and puffy overcast clouds — v129
 
 Published APK downloaded and verified byte-for-byte against the signed build:

@@ -81,3 +81,24 @@ old-baseline capture against current source. Test executor properties
 so earlier approved preview files are not overwritten. The isolated v129
 fixture uses `/workspace/artifacts/rain-release-v129` and
 `/workspace/artifacts/play-date-v129`; no video encoding is required.
+
+## Menu / Settings / Friends review and v130 release
+
+`MenuPanelRenderTest.java` uses the same isolated project and PlayDateRenderTest
+helpers, drawing production native Android dialog decor over the actual game
+Canvas. Include `MochiPanel.kt` and current `MainActivity.kt`. Tests inject
+synthetic offline Firebase users and contacts without sign-in/cloud writes.
+They exercise categorized settings, reminder toggling, safe reset navigation,
+drawer navigation/opacity, contacts/status, invite tabs, clipboard/share payloads,
+blank-code validation, typed-code/cursor retention and dialog cleanup, plus a
+320dp/130% text signed-out layout. No real two-account networking or phone FPS
+claim is made. Run only this class and the existing PlayDateRenderTest class,
+not unrelated animation prototypes in the isolated project.
+
+The user approved the screenshots and authorized publication. Keep approved
+screenshots at `/workspace/artifacts/menu-review-20261013`; configure the native
+test executor's `mochi.menu.output` to `/workspace/artifacts/menu-release-v130`
+and `mochi.playdate.output` to `/workspace/artifacts/play-date-v130` for release
+verification. Build the isolated fixture at the same version as the app and
+compare compiled UI classes before publishing. Preserve the cloud signing
+certificate and advance the updater only after verifying the public APK.

@@ -7,6 +7,8 @@ import android.app.NotificationChannel
 import android.app.NotificationManager
 import android.app.PendingIntent
 import android.content.Context
+import android.content.ClipData
+import android.content.ClipboardManager
 import android.content.pm.PackageManager
 import android.content.Intent
 import android.net.ConnectivityManager
@@ -36,11 +38,10 @@ import android.view.Gravity
 import android.view.MotionEvent
 import android.view.View
 import android.text.InputType
+import android.text.InputFilter
 import android.widget.EditText
-import android.widget.Button
 import android.widget.LinearLayout
 import android.widget.ProgressBar
-import android.widget.ScrollView
 import android.widget.TextView
 import android.widget.Toast
 import androidx.core.content.FileProvider
@@ -581,6 +582,13 @@ private class PetGameView(context: Context, private val onPetCreated: () -> Unit
     private var socialStatusMessage = ""
     private var socialDialog: AlertDialog? = null
     private var socialDialogRoot: LinearLayout? = null
+    private var socialPanel: MochiPanel? = null
+    private var socialInviteTab = false
+    private var socialInviteCode: String? = null
+    private var socialCodeBusy = false
+    private var socialSendBusy = false
+    private var socialCodeDraft = ""
+    private var socialCodeInput: EditText? = null
     private var playSessionId: String? = null
     private var playFriend: SocialPlayManager.Friend? = null
     private var playSubscription: SocialPlayManager.SessionSubscription? = null
@@ -2905,30 +2913,50 @@ private class PetGameView(context: Context, private val onPetCreated: () -> Unit
         canvas.drawRect(0f, 0f, width.toFloat(), height.toFloat(), paint)
         canvas.save()
         canvas.translate(offset, 0f)
-        paint.color = Color.rgb(255, 249, 246)
-        canvas.drawRoundRect(RectF(0f, 0f, menuWidth + dp(24f), height.toFloat()), 0f, 0f, paint)
+        paint.alpha = 255
+        paint.shader = LinearGradient(0f, 0f, 0f, height.toFloat(), MochiPanel.LILAC, MochiPanel.PAPER, Shader.TileMode.CLAMP)
+        canvas.drawRect(0f, 0f, menuWidth, height.toFloat(), paint)
+        paint.shader = null
+        paint.color = MochiPanel.PURPLE
+        canvas.drawRect(0f, 0f, menuWidth, dp(94f), paint)
         paint.color = Color.rgb(68, 43, 90)
         textPaint.textAlign = Paint.Align.LEFT
         textPaint.typeface = PaintTypeface.bold()
         textPaint.textSize = dp(21f)
-        textPaint.color = Color.rgb(68, 43, 90)
+        textPaint.color = Color.WHITE
         canvas.drawText("MENU", dp(24f), dp(54f), textPaint)
         textPaint.typeface = PaintTypeface.rounded()
         textPaint.textSize = dp(12f)
-        textPaint.color = Color.rgb(111, 82, 123)
+        textPaint.color = MochiPanel.LILAC
         canvas.drawText(
             if (cloudSave.isSignedIn()) "Cloud backup connected" else "Cloud backup not connected",
             dp(24f), dp(78f), textPaint
         )
 
-        val settings = menuSettingsRect()
-        paint.color = Color.rgb(238, 224, 239)
-        canvas.drawRoundRect(settings, dp(17f), dp(17f), paint)
-        textPaint.textAlign = Paint.Align.CENTER
-        textPaint.typeface = PaintTypeface.bold()
-        textPaint.textSize = dp(14f)
-        textPaint.color = Color.rgb(76, 49, 94)
-        canvas.drawText("SETTINGS", settings.centerX(), settings.centerY() + dp(5f), textPaint)
+        fun entry(rect: RectF, title: String, subtitle: String, color: Int) {
+            paint.color = color
+            canvas.drawRoundRect(rect, dp(20f), dp(20f), paint)
+            textPaint.textAlign = Paint.Align.LEFT
+            textPaint.typeface = PaintTypeface.bold()
+            textPaint.textSize = dp(17f)
+            textPaint.color = MochiPanel.INK
+            canvas.drawText(title, rect.left + dp(18f), rect.top + dp(29f), textPaint)
+            textPaint.typeface = PaintTypeface.rounded()
+            textPaint.textSize = dp(12f)
+            textPaint.color = MochiPanel.MUTED
+            canvas.drawText(subtitle, rect.left + dp(18f), rect.top + dp(49f), textPaint)
+            textPaint.typeface = PaintTypeface.bold()
+            textPaint.textSize = dp(25f)
+            canvas.drawText("›", rect.right - dp(26f), rect.top + dp(36f), textPaint)
+        }
+        entry(menuFriendsRect(), "Friends", "Invites, contacts & playtime", MochiPanel.MINT)
+        entry(menuSettingsRect(), "Settings", "Your little world, your way", MochiPanel.LILAC)
+        textPaint.typeface = PaintTypeface.rounded()
+        textPaint.textSize = dp(12f)
+        textPaint.color = MochiPanel.MUTED
+        textPaint.textAlign = Paint.Align.LEFT
+        canvas.drawText("Made for little adventures", dp(24f), dp(292f), textPaint)
+        canvas.drawText("Tap outside to return to your pet", dp(24f), height - dp(28f), textPaint)
         canvas.restore()
 
         if (progress < 1f && activityResumed && windowVisibility == View.VISIBLE) {
@@ -2962,7 +2990,7 @@ private class PetGameView(context: Context, private val onPetCreated: () -> Unit
             "Your little friend has four bars: HUNGER, JOY, ENERGY, and CLEAN. Keep them happy and your friend grows.",
             "Tap FOOD, FUN, REST, CLEAN, or HEALTH below the bars. Choose an action as often as you like. Tap BACK to choose another category.",
             "CHECKUP tells you how your friend feels. VITAMIN gives a tiny boost. If your friend gets sick, MEDICINE appears. You can read this again in MENU > SETTINGS.",
-            "Want to play together? Open MENU > SETTINGS > INVITE FRIEND. Share your short code, then choose PLAY WITH FRIENDS from FUN when a friend is online."
+            "Want to play together? Open MENU > FRIENDS > INVITE FRIEND. Share your short code, then choose PLAY WITH FRIENDS from FUN when a friend is online."
         )
         val lastPage = pages.lastIndex
         tutorialShowing = true
@@ -2992,80 +3020,90 @@ private class PetGameView(context: Context, private val onPetCreated: () -> Unit
 
     private fun showSettings() {
         val activity = appContext as? Activity ?: return
+        val panel = MochiPanel(activity, "Settings", "Make this little world feel like yours.")
+        renderSettingsPanel(panel)
+        panel.show()
+    }
+
+    private fun renderSettingsPanel(panel: MochiPanel) {
+        val body = panel.body
+        body.removeAllViews()
+        fun control(category: String, title: String, description: String, color: Int, action: () -> Unit) {
+            panel.heading(body, category)
+            body.addView(panel.setting(title, description, color, action))
+        }
+        control("You & your pet", "Change name", "Your name: ${pet.playerName}", MochiPanel.LILAC) {
+            panel.dialog.dismiss()
+            editPlayerName()
+        }
+        panel.heading(body, "Google backup")
+        panel.card(body, MochiPanel.MINT).apply {
+            val signedIn = cloudSave.isSignedIn()
+            addView(panel.label(if (signedIn) "Connected to Google" else "Not connected yet", 15f, bold = true))
+            panel.gap(this, 4)
+            addView(panel.label("Your saved progress can travel between devices.", 12f, MochiPanel.MUTED))
+            if (!signedIn) {
+                panel.gap(this)
+                addView(panel.button("Sign in with Google") {
+                    panel.dialog.dismiss()
+                    (appContext as? MainActivity)?.requestGoogleSignInForSocial()
+                })
+            }
+        }
         val remindersOn = CareReminderScheduler.isEnabled(appContext)
-        val content = LinearLayout(activity).apply {
-            orientation = LinearLayout.VERTICAL
-            setPadding(dp(18f).toInt(), dp(2f).toInt(), dp(18f).toInt(), dp(8f).toInt())
-        }
-        val scroll = ScrollView(activity).apply { addView(content) }
-        val summary = TextView(activity).apply {
-            text =
-                (if (cloudSave.isSignedIn()) "Google backup is connected." else "Google backup is not connected yet.") +
-                    "\nCare reminders are ${if (remindersOn) "on" else "off"}."
-            textSize = 13f
-            setTextColor(Color.rgb(111, 82, 123))
-            setPadding(0, 0, 0, dp(10f).toInt())
-        }
-        content.addView(summary)
-        lateinit var dialog: AlertDialog
-        fun settingButton(label: String, action: () -> Unit) {
-            content.addView(Button(activity).apply {
-                text = label
-                isAllCaps = true
-                setOnClickListener {
-                    dialog.dismiss()
-                    action()
-                }
-            }, LinearLayout.LayoutParams(-1, dp(50f).toInt()))
-        }
-        settingButton("CHANGE NAME") { editPlayerName() }
-        settingButton("INVITE FRIEND") { showFriendsCenter() }
-        settingButton(if (remindersOn) "TURN OFF CARE REMINDERS" else "TURN ON CARE REMINDERS") {
+        control("Notifications", "Care reminders: ${if (remindersOn) "On" else "Off"}",
+            "Care alerts and gentle come-play reminders.", MochiPanel.PINK) {
             toggleCareReminders()
+            renderSettingsPanel(panel)
         }
-        settingButton("HOW TO PLAY") { post { showTutorialPage(0, false) } }
-        settingButton("RESET DATA") { showResetChoices() }
-        dialog = AlertDialog.Builder(activity)
-            .setTitle("Settings")
-            .setView(scroll)
-            .setNegativeButton("CLOSE", null)
-            .create()
-        dialog.show()
+        control("Help & learning", "How to play", "Replay the little care tutorial anytime.", MochiPanel.GOLD) {
+            panel.dialog.dismiss()
+            post { showTutorialPage(0, false) }
+        }
+        control("Saved data", "Reset data…", "Choose what to reset. We will ask you to confirm.", MochiPanel.LILAC) {
+            panel.dialog.dismiss()
+            showResetChoices()
+        }
     }
 
     private fun showFriendsCenter() {
         val activity = appContext as? Activity ?: return
         if (!cloudSave.isSignedIn()) {
-            AlertDialog.Builder(activity)
-                .setTitle("Invite a friend")
-                .setMessage("Sign in with Google first. Your friend list will then work on every device using this account.")
-                .setNegativeButton("NOT NOW", null)
-                .setPositiveButton("SIGN IN") { _, _ ->
+            val panel = MochiPanel(activity, "Friends", "Little friends. Big adventures together.")
+            panel.heading(panel.body, "Let's connect")
+            panel.card(panel.body, MochiPanel.MINT).apply {
+                addView(panel.label("Friends travel with your account", 18f, bold = true))
+                panel.gap(this)
+                addView(panel.label("Sign in with Google first. Your invites and contacts will then work on every device using this account.", 14f))
+                panel.gap(this, 14)
+                addView(panel.button("Sign in with Google") {
+                    panel.dialog.dismiss()
                     (activity as? MainActivity)?.requestGoogleSignInForSocial()
-                }
-                .show()
+                })
+            }
+            panel.show()
             return
         }
-        val root = LinearLayout(activity).apply {
-            orientation = LinearLayout.VERTICAL
-            setPadding(dp(18f).toInt(), dp(4f).toInt(), dp(18f).toInt(), dp(8f).toInt())
-        }
-        val scroll = ScrollView(activity).apply { addView(root) }
-        val dialog = AlertDialog.Builder(activity)
-            .setTitle("Friends")
-            .setView(scroll)
-            .setNegativeButton("CLOSE", null)
-            .create()
+        socialInviteTab = false
+        socialInviteCode = null
+        socialStatusMessage = ""
+        socialCodeDraft = ""
+        val panel = MochiPanel(activity, "Friends", "Little friends. Big adventures together.")
+        val dialog = panel.dialog
+        socialPanel = panel
         socialDialog = dialog
-        socialDialogRoot = root
+        socialDialogRoot = panel.body
         dialog.setOnDismissListener {
             if (socialDialog === dialog) {
                 socialDialog = null
                 socialDialogRoot = null
+                socialPanel = null
+                socialCodeInput = null
+                socialCodeDraft = ""
             }
         }
-        dialog.show()
         renderSocialDialog()
+        panel.show()
     }
 
     private fun showSocialNotification(title: String, body: String, id: Int) {
@@ -3095,129 +3133,239 @@ private class PetGameView(context: Context, private val onPetCreated: () -> Unit
     }
 
     private fun renderSocialDialog() {
+        val panel = socialPanel ?: return
         val root = socialDialogRoot ?: return
-        root.removeAllViews()
         val activity = appContext as? Activity ?: return
-        fun label(text: String, size: Float = 14f, color: Int = Color.rgb(76, 49, 94)): TextView =
-            TextView(activity).apply {
-                this.text = text
-                textSize = size
-                setTextColor(color)
-                setPadding(0, dp(5f).toInt(), 0, dp(5f).toInt())
-            }
-        fun actionButton(text: String, action: () -> Unit): Button =
-            Button(activity).apply {
-                this.text = text
-                setOnClickListener { action() }
-                isAllCaps = true
-            }
-        fun addGap() { root.addView(TextView(activity), LinearLayout.LayoutParams(1, dp(5f).toInt())) }
-
-        root.addView(label("Connect with a short code. No contacts or chat are needed.", 13f, Color.rgb(111, 82, 123)))
-        root.addView(actionButton("GET / SHARE INVITE CODE") {
-            social.createInviteCode { code, error ->
-                activity.runOnUiThread {
-                    if (code != null) {
-                        socialStatusMessage = "Your invite code is $code"
-                        val share = Intent(Intent.ACTION_SEND).apply {
-                            type = "text/plain"
-                            putExtra(Intent.EXTRA_TEXT, "Join me in MochiGotchi! Add my friend code: $code")
-                        }
-                        activity.startActivity(Intent.createChooser(share, "Share your friend code"))
-                    } else socialStatusMessage = error.orEmpty()
-                    renderSocialDialog()
-                }
-            }
-        })
-        val codeInput = EditText(activity).apply {
-            hint = "Friend code"
-            inputType = InputType.TYPE_CLASS_TEXT
-            setSingleLine(true)
-            setTextSize(14f)
+        socialCodeInput?.let { socialCodeDraft = it.text.toString() }
+        val inputFocused = socialCodeInput?.hasFocus() == true
+        val selectionStart = socialCodeInput?.selectionStart ?: socialCodeDraft.length
+        val selectionEnd = socialCodeInput?.selectionEnd ?: socialCodeDraft.length
+        val scrollY = panel.scroll.scrollY
+        socialCodeInput = null
+        root.removeAllViews()
+        panel.gap(root, 8)
+        panel.pair(root,
+            panel.button("Contacts", if (!socialInviteTab) MochiPanel.PURPLE else MochiPanel.LILAC) {
+                socialInviteTab = false
+                panel.scroll.scrollTo(0, 0)
+                renderSocialDialog()
+            },
+            panel.button("Invite friend", if (socialInviteTab) MochiPanel.PURPLE else MochiPanel.LILAC) {
+                socialInviteTab = true
+                panel.scroll.scrollTo(0, 0)
+                renderSocialDialog()
+            })
+        if (socialStatusMessage.isNotBlank()) {
+            panel.gap(root)
+            panel.card(root, MochiPanel.GOLD).addView(panel.label(socialStatusMessage, 13f))
         }
-        root.addView(codeInput, LinearLayout.LayoutParams(-1, dp(50f).toInt()))
-        root.addView(actionButton("ADD FRIEND") {
-            social.sendFriendCode(codeInput.text.toString()) { success, message ->
-                activity.runOnUiThread {
-                    socialStatusMessage = message
-                    codeInput.text.clear()
-                    renderSocialDialog()
-                }
-            }
-        })
-        if (socialStatusMessage.isNotBlank()) root.addView(label(socialStatusMessage, 13f, Color.rgb(33, 126, 103)))
-
-        val incomingFriends = socialFriendRequests.filter {
-            it.status == "pending" && it.recipientUid == FirebaseAuth.getInstance().currentUser?.uid
-        }
-        if (incomingFriends.isNotEmpty()) {
-            addGap()
-            root.addView(label("FRIEND REQUESTS", 12f, Color.rgb(122, 69, 123)))
-            incomingFriends.forEach { request ->
-                val row = LinearLayout(activity).apply { orientation = LinearLayout.VERTICAL }
-                row.addView(label("${request.senderName} wants to be friends with ${request.senderPetName}.", 14f))
-                val buttons = LinearLayout(activity).apply { orientation = LinearLayout.HORIZONTAL }
-                buttons.addView(actionButton("ACCEPT") {
-                    social.acceptFriendRequest(request) {
-                        socialStatusMessage = if (it) "You are friends now!" else "I couldn't accept that yet."
-                        activity.runOnUiThread { renderSocialDialog() }
-                    }
-                }, LinearLayout.LayoutParams(0, dp(48f).toInt(), 1f))
-                buttons.addView(actionButton("DECLINE") {
-                    social.declineFriendRequest(request) {
-                        socialStatusMessage = if (it) "Request declined." else "I couldn't update that yet."
-                        activity.runOnUiThread { renderSocialDialog() }
-                    }
-                }, LinearLayout.LayoutParams(0, dp(48f).toInt(), 1f))
-                row.addView(buttons)
-                root.addView(row)
-            }
-        }
-
-        addGap()
-        root.addView(label("FRIENDS", 12f, Color.rgb(122, 69, 123)))
-        if (socialFriends.isEmpty()) {
-            root.addView(label("No friends yet. Share your code to invite someone!", 14f))
+        if (socialInviteTab) {
+            renderInviteControls(panel, activity)
         } else {
-            socialFriends.forEach { friend ->
-                val row = LinearLayout(activity).apply { orientation = LinearLayout.HORIZONTAL; gravity = Gravity.CENTER_VERTICAL }
-                val status = if (friend.online) "ONLINE" else "OFFLINE"
-                val info = label("${friend.displayName} • ${friend.petName}\n$status", 14f)
-                row.addView(info, LinearLayout.LayoutParams(0, dp(60f).toInt(), 1f))
-                if (friend.online) {
-                    row.addView(actionButton("PLAY") { showPlayRequestConfirmation(friend) }, LinearLayout.LayoutParams(dp(92f).toInt(), dp(48f).toInt()))
+            val myUid = FirebaseAuth.getInstance().currentUser?.uid
+            val incomingFriends = socialFriendRequests.filter { it.status == "pending" && it.recipientUid == myUid }
+            val incomingPlay = socialPlayRequests.filter { it.status == "pending" && it.recipientUid == myUid }
+            if (incomingFriends.isNotEmpty() || incomingPlay.isNotEmpty()) panel.heading(root, "Waiting for you")
+            incomingFriends.forEach { request ->
+                panel.card(root, MochiPanel.PINK).apply {
+                    addView(panel.label("${request.senderName} wants to be friends!", 15f, bold = true))
+                    panel.gap(this, 4)
+                    addView(panel.label("Their little friend is ${request.senderPetName}.", 13f, MochiPanel.MUTED))
+                    panel.gap(this)
+                    panel.pair(this, panel.button("Accept") {
+                        social.acceptFriendRequest(request) { accepted ->
+                            activity.runOnUiThread {
+                                socialStatusMessage = if (accepted) "You are friends now!" else "I couldn't accept that yet."
+                                renderSocialDialog()
+                            }
+                        }
+                    }, panel.button("Decline", MochiPanel.LILAC) {
+                        social.declineFriendRequest(request) { declined ->
+                            activity.runOnUiThread {
+                                socialStatusMessage = if (declined) "Request declined." else "I couldn't update that yet."
+                                renderSocialDialog()
+                            }
+                        }
+                    })
                 }
-                root.addView(row)
+            }
+            incomingPlay.forEach { request ->
+                panel.card(root, MochiPanel.GOLD).apply {
+                    addView(panel.label("A little playdate?", 15f, bold = true))
+                    panel.gap(this, 4)
+                    addView(panel.label("${request.senderPetName} wants to play with ${request.recipientPetName}!", 13f))
+                    panel.gap(this)
+                    panel.pair(this, panel.button("Let's play") {
+                        social.acceptPlayRequest(request) { sessionId ->
+                            activity.runOnUiThread {
+                                if (sessionId != null) {
+                                    val friend = socialFriends.firstOrNull { it.uid == request.senderUid }
+                                        ?: SocialPlayManager.Friend(request.senderUid, request.senderName, request.senderPetName, "", "", true, System.currentTimeMillis())
+                                    startPlaySession(sessionId, friend)
+                                    socialDialog?.dismiss()
+                                } else {
+                                    socialStatusMessage = "I couldn't start that play session yet."
+                                    renderSocialDialog()
+                                }
+                            }
+                        }
+                    }, panel.button("Not now", MochiPanel.LILAC) {
+                        social.declinePlayRequest(request) { activity.runOnUiThread { renderSocialDialog() } }
+                    })
+                }
+            }
+            panel.heading(root, "My contacts · ${socialFriends.size}")
+            val onlineCount = socialFriends.count { it.online }
+            root.addView(panel.label(when {
+                onlineCount > 0 -> "$onlineCount online and ready for playtime"
+                socialFriends.isNotEmpty() -> "Your friends are away right now. Try playtime later!"
+                else -> "Friends appear here once your invite is accepted."
+            }, 13f, MochiPanel.MUTED))
+            panel.gap(root, 10)
+            if (socialFriends.isEmpty()) {
+                panel.card(root, MochiPanel.MINT).apply {
+                    addView(panel.label("A friend is a code away!", 18f, bold = true))
+                    panel.gap(this)
+                    addView(panel.label("Share your short code with someone you know. When they accept, you can play together.", 14f))
+                }
+            } else {
+                socialFriends.sortedWith(compareByDescending<SocialPlayManager.Friend> { it.online }
+                    .thenBy(String.CASE_INSENSITIVE_ORDER) { it.displayName }).forEach { friend ->
+                    val card = panel.card(root)
+                    val row = panel.row()
+                    val avatar = panel.label(friend.displayName.take(1).uppercase(java.util.Locale.ROOT), 21f, bold = true).apply {
+                        gravity = Gravity.CENTER
+                        background = panel.rounded(if (friend.online) MochiPanel.MINT else MochiPanel.LILAC, 18)
+                        contentDescription = "${friend.displayName}'s contact"
+                    }
+                    row.addView(avatar, LinearLayout.LayoutParams(panel.px(44), panel.px(44)).apply { rightMargin = panel.px(10) })
+                    val info = panel.column()
+                    info.addView(panel.label(friend.displayName, 16f, bold = true))
+                    info.addView(panel.label(friend.petName, 13f, MochiPanel.MUTED))
+                    info.addView(panel.label(if (friend.online) "● Online" else "● Offline", 12f,
+                        if (friend.online) Color.rgb(24, 115, 86) else MochiPanel.MUTED).apply { setPadding(0, panel.px(4), 0, 0) })
+                    row.addView(info, LinearLayout.LayoutParams(0, -2, 1f))
+                    if (friend.online) {
+                        row.addView(panel.button("Play") { showPlayRequestConfirmation(friend) },
+                            LinearLayout.LayoutParams(panel.px(70), -2).apply { leftMargin = panel.px(6) })
+                    }
+                    card.addView(row)
+                }
+            }
+            panel.gap(root, 4)
+            root.addView(panel.button("Invite a new friend", MochiPanel.MINT) {
+                socialInviteTab = true
+                panel.scroll.scrollTo(0, 0)
+                renderSocialDialog()
+            })
+            panel.gap(root)
+            root.addView(panel.label("Playtime needs both friends online. Only accepted friends can join.", 12f, MochiPanel.MUTED))
+        }
+        if (inputFocused && socialInviteTab) socialCodeInput?.apply {
+            requestFocus()
+            setSelection(selectionStart.coerceIn(0, text.length), selectionEnd.coerceIn(0, text.length))
+        }
+        panel.scroll.post { panel.scroll.scrollTo(0, scrollY) }
+    }
+
+    private fun renderInviteControls(panel: MochiPanel, activity: Activity) {
+        val root = panel.body
+        panel.heading(root, "Your invite")
+        panel.card(root, MochiPanel.MINT).apply {
+            addView(panel.label("Bring a friend along", 18f, bold = true))
+            panel.gap(this, 4)
+            addView(panel.label("Share your code with someone you know, through WhatsApp or a message.", 13f, MochiPanel.MUTED))
+            panel.gap(this, 12)
+            val code = socialInviteCode
+            if (code == null) {
+                addView(panel.button(if (socialCodeBusy) "Getting your code…" else "Get my friend code") {
+                    if (!socialCodeBusy) {
+                        socialCodeBusy = true
+                        val ownerUid = FirebaseAuth.getInstance().currentUser?.uid
+                        renderSocialDialog()
+                        social.createInviteCode { result, error ->
+                            activity.runOnUiThread {
+                                socialCodeBusy = false
+                                if (FirebaseAuth.getInstance().currentUser?.uid == ownerUid) {
+                                    socialInviteCode = result
+                                    socialStatusMessage = error.orEmpty()
+                                }
+                                renderSocialDialog()
+                            }
+                        }
+                    }
+                }.apply { isEnabled = !socialCodeBusy })
+            } else {
+                addView(panel.label(code, 28f, bold = true).apply {
+                    gravity = Gravity.CENTER
+                    letterSpacing = .16f
+                    setPadding(0, panel.px(8), 0, panel.px(12))
+                    setTextIsSelectable(true)
+                })
+                panel.pair(this, panel.button("Copy code", MochiPanel.LILAC) {
+                    val clipboard = activity.getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
+                    clipboard.setPrimaryClip(ClipData.newPlainText("MochiGotchi friend code", code))
+                    socialStatusMessage = "Code copied. Send it to your friend!"
+                    renderSocialDialog()
+                }, panel.button("Share code") {
+                    val share = Intent(Intent.ACTION_SEND).apply {
+                        type = "text/plain"
+                        putExtra(Intent.EXTRA_TEXT, "Join me in MochiGotchi! Add my friend code: $code")
+                    }
+                    activity.startActivity(Intent.createChooser(share, "Share your friend code"))
+                })
             }
         }
-
-        val incomingPlay = socialPlayRequests.filter {
-            it.status == "pending" && it.recipientUid == FirebaseAuth.getInstance().currentUser?.uid
-        }
-        if (incomingPlay.isNotEmpty()) {
-            addGap()
-            root.addView(label("PLAY REQUESTS", 12f, Color.rgb(122, 69, 123)))
-            incomingPlay.forEach { request ->
-                val row = LinearLayout(activity).apply { orientation = LinearLayout.VERTICAL }
-                row.addView(label("${request.senderPetName} wants to play with ${request.recipientPetName}!", 14f))
-                val buttons = LinearLayout(activity).apply { orientation = LinearLayout.HORIZONTAL }
-                buttons.addView(actionButton("PLAY") {
-                    social.acceptPlayRequest(request) { sessionId ->
+        panel.heading(root, "Add a friend")
+        panel.card(root, MochiPanel.LILAC).apply {
+            addView(panel.label("Have a friend's code?", 17f, bold = true))
+            panel.gap(this, 4)
+            addView(panel.label("Enter it below to send a friend request.", 13f, MochiPanel.MUTED))
+            panel.gap(this, 10)
+            val codeInput = EditText(activity).apply {
+                hint = "Friend code"
+                contentDescription = "Friend code"
+                inputType = InputType.TYPE_CLASS_TEXT or InputType.TYPE_TEXT_FLAG_CAP_CHARACTERS
+                filters = arrayOf(InputFilter.AllCaps(), InputFilter.LengthFilter(24))
+                setSingleLine(true)
+                isEnabled = !socialSendBusy
+                minimumHeight = panel.px(52)
+                textSize = 17f
+                setTextColor(MochiPanel.INK)
+                setHintTextColor(MochiPanel.MUTED)
+                setPadding(panel.px(12), panel.px(10), panel.px(12), panel.px(10))
+                background = panel.rounded(Color.WHITE, 12)
+                setText(socialCodeDraft)
+            }
+            socialCodeInput = codeInput
+            addView(codeInput, LinearLayout.LayoutParams(-1, -2))
+            panel.gap(this)
+            addView(panel.button(if (socialSendBusy) "Sending request…" else "Send friend request") {
+                if (codeInput.text.isNullOrBlank()) {
+                    codeInput.error = "Enter your friend's code first."
+                } else if (!socialSendBusy) {
+                    socialSendBusy = true
+                    val code = codeInput.text.toString()
+                    val ownerUid = FirebaseAuth.getInstance().currentUser?.uid
+                    renderSocialDialog()
+                    social.sendFriendCode(code) { success, message ->
                         activity.runOnUiThread {
-                            if (sessionId != null) {
-                                val friend = socialFriends.firstOrNull { it.uid == request.senderUid }
-                                    ?: SocialPlayManager.Friend(request.senderUid, request.senderName, request.senderPetName, "", "", true, System.currentTimeMillis())
-                                startPlaySession(sessionId, friend)
-                            } else socialStatusMessage = "I couldn't start that play session yet."
+                            socialSendBusy = false
+                            if (FirebaseAuth.getInstance().currentUser?.uid == ownerUid) {
+                                socialStatusMessage = message
+                                if (success && socialPanel === panel) {
+                                    socialCodeInput?.setText("")
+                                    socialCodeDraft = ""
+                                }
+                            }
                             renderSocialDialog()
                         }
                     }
-                }, LinearLayout.LayoutParams(0, dp(48f).toInt(), 1f))
-                buttons.addView(actionButton("NOT NOW") { social.declinePlayRequest(request) { renderSocialDialog() } }, LinearLayout.LayoutParams(0, dp(48f).toInt(), 1f))
-                row.addView(buttons)
-                root.addView(row)
-            }
+                }
+            }.apply { isEnabled = !socialSendBusy })
         }
+        panel.gap(root, 4)
+        root.addView(panel.label("No phone contacts, QR codes or chat. Your friend must accept before you can play together.", 12f, MochiPanel.MUTED))
     }
 
     private fun showIncomingFriendPrompt(request: SocialPlayManager.FriendRequest) {
@@ -3582,7 +3730,10 @@ private class PetGameView(context: Context, private val onPetCreated: () -> Unit
 
     private fun handleMenuTouch(event: MotionEvent): Boolean {
         if (event.actionMasked != MotionEvent.ACTION_UP) return true
-        if (menuSettingsRect().contains(event.x, event.y)) {
+        if (menuFriendsRect().contains(event.x, event.y)) {
+            setMenuOpen(false)
+            postDelayed({ showFriendsCenter() }, 230L)
+        } else if (menuSettingsRect().contains(event.x, event.y)) {
             setMenuOpen(false)
             postDelayed({ showSettings() }, 230L)
         } else if (event.x > dp(282f)) {
@@ -3635,7 +3786,9 @@ private class PetGameView(context: Context, private val onPetCreated: () -> Unit
 
     private fun menuButtonRect(): RectF = RectF(dp(12f), dp(18f), dp(54f), dp(57f))
 
-    private fun menuSettingsRect(): RectF = RectF(dp(24f), dp(112f), dp(258f), dp(164f))
+    private fun menuFriendsRect(): RectF = RectF(dp(20f), dp(110f), dp(262f), dp(178f))
+
+    private fun menuSettingsRect(): RectF = RectF(dp(20f), dp(190f), dp(262f), dp(258f))
 
     private fun headerResetRect(): RectF = RectF(width - dp(114f), dp(18f), width - dp(20f), dp(57f))
 
