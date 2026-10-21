@@ -2416,14 +2416,6 @@ private class PetGameView(context: Context, private val onPetCreated: () -> Unit
         textPaint.typeface = PaintTypeface.rounded()
         textPaint.color = Color.rgb(111, 82, 123)
         canvas.drawText("${pet.stage} • AGE ${pet.ageLabel} • HEALTH ${pet.healthPercent.roundToInt()}%", dp(22f), top + dp(48f), textPaint)
-        if (pet.sick) {
-            textPaint.textAlign = Paint.Align.RIGHT
-            textPaint.typeface = PaintTypeface.bold()
-            textPaint.textSize = dp(10f)
-            textPaint.color = Color.rgb(185, 96, 104)
-            canvas.drawText(pet.symptomLabel, width - dp(22f), top + dp(48f), textPaint)
-            textPaint.textAlign = Paint.Align.LEFT
-        }
         textPaint.textSize = dp(11f)
         textPaint.typeface = PaintTypeface.bold()
         textPaint.color = Color.rgb(105, 78, 116)
@@ -2443,6 +2435,22 @@ private class PetGameView(context: Context, private val onPetCreated: () -> Unit
         textPaint.textSize = dp(11f)
         textPaint.color = Color.rgb(122, 69, 123)
         canvas.drawText("NEW PET", reset.centerX(), reset.centerY() + dp(4f), textPaint)
+
+        // Keep the sickness condition clear of the stage/age/health line and
+        // place it directly beneath NEW PET, where it remains visible at every
+        // compact phone width.
+        if (pet.sick) {
+            val condition = sickConditionRect()
+            paint.color = Color.rgb(249, 221, 226)
+            canvas.drawRoundRect(condition, dp(8f), dp(8f), paint)
+            textPaint.textAlign = Paint.Align.CENTER
+            textPaint.typeface = PaintTypeface.bold()
+            textPaint.textSize = dp(9f)
+            textPaint.textSize = min(dp(9f), dp(9f) * (condition.width() - dp(8f)) / textPaint.measureText(pet.symptomLabel))
+            textPaint.color = Color.rgb(167, 67, 86)
+            canvas.drawText(pet.symptomLabel, condition.centerX(), condition.centerY() + dp(3f), textPaint)
+            textPaint.textAlign = Paint.Align.LEFT
+        }
 
         if (pet.dead) return
         val values = if (!pet.hatched) listOf(pet.hunger to "WARMTH", pet.joy to "COMFORT", pet.energy to "REST", pet.clean to "NEST")
@@ -3779,6 +3787,11 @@ private class PetGameView(context: Context, private val onPetCreated: () -> Unit
     }
 
     private fun newPetRect(): RectF = RectF(width - dp(94f), statsTop() + dp(14f), width - dp(18f), statsTop() + dp(46f))
+
+    private fun sickConditionRect(): RectF {
+        val newPet = newPetRect()
+        return RectF(newPet.left, newPet.bottom + dp(4f), newPet.right, newPet.bottom + dp(22f))
+    }
 
     private fun setupPlayerNameRect(): RectF = RectF(dp(28f), dp(305f), width - dp(28f), dp(343f))
 
