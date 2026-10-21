@@ -9,7 +9,9 @@ import android.app.PendingIntent
 import android.content.Context
 import android.content.ClipData
 import android.content.ClipboardManager
+import android.content.pm.ActivityInfo
 import android.content.pm.PackageManager
+import android.content.res.Configuration
 import android.content.Intent
 import android.net.ConnectivityManager
 import android.net.Network
@@ -103,12 +105,14 @@ class MainActivity : Activity() {
         auth = FirebaseAuth.getInstance()
         googleSignInClient = buildGoogleSignInClient()
         gameView = PetGameView(this) {
+            updatePetOrientation()
             maybePromptForCloudBackup()
             gameView.startSocialPresenceIfReady()
             gameView.postDelayed({ maybeRequestCareReminderPermission() }, 1200L)
             gameView.postDelayed({ gameView.maybeShowTutorialIfNeeded() }, 800L)
         }
         setContentView(gameView)
+        gameView.post { updatePetOrientation() }
         CareReminderScheduler.ensureScheduled(this)
         connectivityManager = getSystemService(ConnectivityManager::class.java)
         connectivityManager.registerDefaultNetworkCallback(networkCallback)
@@ -145,6 +149,25 @@ class MainActivity : Activity() {
             // resumed interaction is allowed to upload local state.
             if (gameView.hasCloudAccount()) gameView.refreshCloudOnResume()
             gameView.resumePendingInstall()
+        }
+    }
+
+    override fun onConfigurationChanged(newConfig: Configuration) {
+        super.onConfigurationChanged(newConfig)
+        if (::gameView.isInitialized) gameView.onHostConfigurationChanged()
+    }
+
+    /**
+     * Explore mode is deliberately available only to the dragon.  Keeping every
+     * other pet portrait-locked avoids presenting a second, unfinished control
+     * scheme for them while preserving their established game screen exactly.
+     */
+    fun updatePetOrientation() {
+        if (!::gameView.isInitialized) return
+        requestedOrientation = if (gameView.allowsDragonLandscape()) {
+            ActivityInfo.SCREEN_ORIENTATION_FULL_SENSOR
+        } else {
+            ActivityInfo.SCREEN_ORIENTATION_PORTRAIT
         }
     }
 
@@ -488,6 +511,10 @@ private class PetGameView(context: Context, private val onPetCreated: () -> Unit
     private val petArtCache = HashMap<PetKind, Bitmap>()
     private val walkFrameCache = HashMap<String, Bitmap>()
     private val walkFrameBoundsCache = HashMap<String, PetSpriteLayout.Bounds>()
+    // Dragon-only landscape frames. They are separate from the portrait walk
+    // cels so enabling exploration can never change the existing pet scene.
+    private val exploreFrameCache = HashMap<String, Bitmap>()
+    private val exploreFrameBoundsCache = HashMap<String, PetSpriteLayout.Bounds>()
     private val walkEnvelopeCache = HashMap<PetKind, PetSpriteLayout.Envelope>()
     private val growthColorFilters = HashMap<String, android.graphics.ColorMatrixColorFilter>()
     private val eggGradients = HashMap<PetKind, RadialGradient>()
@@ -556,6 +583,18 @@ private class PetGameView(context: Context, private val onPetCreated: () -> Unit
     private var motionModeUntil = 0L
     private var motionLastAt = SystemClock.uptimeMillis()
     private var motionModeStartedAt = motionLastAt
+    private var exploreX = .5f
+    private var exploreDepth = .24f
+    private var exploreFacing = ExploreFacing.LEFT
+    private var exploreTurnFrom = ExploreFacing.LEFT
+    private var exploreTurnTo = ExploreFacing.LEFT
+    private var exploreTurnStartedAt = 0L
+    private var exploreTurnUntil = 0L
+    private var exploreLastAt = SystemClock.uptimeMillis()
+    private var exploreJoystickPointer = -1
+    private var exploreJoystickX = 0f
+    private var exploreJoystickY = 0f
+    private var exploreJumpUntil = 0L
     private var setupMode = !pet.created
     private var setupKind = pet.kind
     private var setupName = pet.name
@@ -633,6 +672,28 @@ private class PetGameView(context: Context, private val onPetCreated: () -> Unit
             check(resourceId != 0) { "Missing walk frame: $cacheKey" }
             BitmapFactory.decodeResource(resources, resourceId, BitmapFactory.Options().apply { inScaled = false })
                 ?: error("Unable to decode walk frame: $cacheKey")
+        }
+    }
+
+    private fun exploreDragonArtwork(group: String, index: Int): Bitmap {
+        val key = "${group}_$index"
+        return exploreFrameCache.getOrPut(key) {
+            val resourceId = resources.getIdentifier(
+                "explore_dragon_${group}_$index", "drawable", context.packageName
+            )
+            check(resourceId != 0) { "Missing dragon explore frame: $key" }
+            BitmapFactory.decodeResource(resources, resourceId, BitmapFactory.Options().apply { inScaled = false })
+                ?: error("Unable to decode dragon explore frame: $key")
+        }
+    }
+
+    private fun exploreDragonBounds(group: String, index: Int): PetSpriteLayout.Bounds {
+        val key = "${group}_$index"
+        return exploreFrameBoundsCache.getOrPut(key) {
+            val bitmap = exploreDragonArtwork(group, index)
+            val pixels = IntArray(bitmap.width * bitmap.height)
+            bitmap.getPixels(pixels, 0, bitmap.width, 0, 0, bitmap.width, bitmap.height)
+            PetSpriteLayout.scan(pixels, bitmap.width, bitmap.height)
         }
     }
 
@@ -879,6 +940,19 @@ private class PetGameView(context: Context, private val onPetCreated: () -> Unit
         super.onDetachedFromWindow()
     }
 
+    fun allowsDragonLandscape(): Boolean = pet.created && pet.kind == PetKind.DRAGON
+
+    fun onHostConfigurationChanged() {
+        // Never carry an old joystick press across a physical rotation. This
+        // prevents a dragon from continuing to walk after the child has gone
+        // back to the portrait care screen.
+        exploreJoystickPointer = -1
+        exploreJoystickX = 0f
+        exploreJoystickY = 0f
+        exploreLastAt = SystemClock.uptimeMillis()
+        invalidate()
+    }
+
     private fun updateAmbientSound() {
         if (!activityResumed) return
         val minutes = LocalTime.now().hour * 60 + LocalTime.now().minute
@@ -951,6 +1025,12 @@ private class PetGameView(context: Context, private val onPetCreated: () -> Unit
         pet.updateFromClock()
         finishLifecycleTransition(now)
         maybePromptLifecycle()
+        if (isDragonExploreMode()) {
+            drawDragonExplore(canvas, now)
+            if (now - lastSaved > 30_000L) savePet(uploadCloud = false)
+            scheduleNextFrame(now)
+            return
+        }
         drawBackground(canvas)
         if (setupMode) {
             drawSetup(canvas, now)
@@ -977,6 +1057,7 @@ private class PetGameView(context: Context, private val onPetCreated: () -> Unit
             return
         }
         val highPriority = activeAction != null ||
+            isDragonExploreMode() ||
             transitionKind != null ||
             menuAnimationStart != 0L ||
             touchReactionUntil > now ||
@@ -1185,6 +1266,249 @@ private class PetGameView(context: Context, private val onPetCreated: () -> Unit
             val y = 92f + ((i * 71) % max(1, height / 2)).toFloat()
             canvas.drawCircle(x, y, if (i % 3 == 0) 3.5f else 2f, paint)
         }
+    }
+
+    private fun isDragonExploreMode(): Boolean =
+        !setupMode && pet.created && pet.kind == PetKind.DRAGON &&
+            resources.configuration.orientation == Configuration.ORIENTATION_LANDSCAPE
+
+    /** A full-screen, dragon-only 2.5D explore scene. The world never pans or
+     * rotates under the pet: horizontal position and depth belong to Drago. */
+    private fun drawDragonExplore(canvas: Canvas, now: Long) {
+        drawExploreWorld(canvas, now)
+        if (pet.dead) {
+            drawExploreTitle(canvas, "DRAGO'S MEMORIES", "Tilt upright to care for a new egg")
+            return
+        }
+        if (!pet.hatched) {
+            val ground = height * .76f
+            drawEgg(canvas, width * .5f, ground, pet.kind, now / 1000.0, pet.hatchProgress.toDouble(), min(dp(1.45f), height / 260f))
+            drawExploreTitle(canvas, "DRAGO'S EGG", "Hatch first, then tilt sideways to explore")
+            return
+        }
+
+        val walking = updateExploreMotion(now)
+        drawExploreDragon(canvas, now, walking)
+        drawExploreHud(canvas)
+        postInvalidateOnAnimation()
+    }
+
+    private fun drawExploreWorld(canvas: Canvas, now: Long) {
+        val weatherNow = weather
+        val daylight = daylightFactor(LocalTime.now().hour * 60 + LocalTime.now().minute, weatherNow)
+        val skyTop = blendColor(Color.rgb(29, 44, 89), if (weatherNow.raining) Color.rgb(87, 111, 143) else Color.rgb(82, 179, 232), daylight)
+        val skyBottom = blendColor(Color.rgb(111, 88, 144), if (weatherNow.raining) Color.rgb(159, 172, 186) else Color.rgb(222, 239, 250), daylight)
+        paint.shader = LinearGradient(0f, 0f, 0f, height.toFloat(), skyTop, skyBottom, Shader.TileMode.CLAMP)
+        canvas.drawRect(0f, 0f, width.toFloat(), height.toFloat(), paint)
+        paint.shader = null
+
+        if (weatherNow.raining) {
+            rainCloudCover.draw(canvas, RectF(0f, 0f, width.toFloat(), height.toFloat() * .56f), now, daylight)
+            rainEffect.draw(canvas, RectF(0f, 0f, width.toFloat(), height.toFloat()), now, daylight)
+        } else {
+            paint.color = if (daylight < .2f) Color.rgb(241, 242, 205) else Color.rgb(255, 214, 99)
+            canvas.drawCircle(width * .76f, height * .17f, min(width, height) * .055f, paint)
+            paint.color = Color.argb(172, 255, 255, 255)
+            for (cloud in 0..3) {
+                val cycle = ((now / (46_000f + cloud * 4_000f) + cloud * .23f) % 1f + 1f) % 1f
+                drawCloud(canvas, -dp(52f) + cycle * (width + dp(104f)), height * (.13f + cloud * .075f), .36f)
+            }
+        }
+
+        val horizon = height * .57f
+        val mountains = Path().apply {
+            moveTo(0f, horizon + dp(30f))
+            lineTo(width * .14f, horizon - height * .20f)
+            lineTo(width * .29f, horizon + dp(8f))
+            lineTo(width * .48f, horizon - height * .28f)
+            lineTo(width * .65f, horizon + dp(20f))
+            lineTo(width * .84f, horizon - height * .18f)
+            lineTo(width.toFloat(), horizon + dp(5f))
+            lineTo(width.toFloat(), height.toFloat())
+            lineTo(0f, height.toFloat())
+            close()
+        }
+        paint.color = blendColor(Color.rgb(55, 75, 112), Color.rgb(126, 188, 190), daylight)
+        canvas.drawPath(mountains, paint)
+        val hills = Path().apply {
+            moveTo(0f, horizon + dp(28f))
+            cubicTo(width * .20f, horizon - dp(6f), width * .36f, horizon + dp(56f), width * .55f, horizon + dp(21f))
+            cubicTo(width * .72f, horizon - dp(14f), width * .87f, horizon + dp(46f), width.toFloat(), horizon + dp(12f))
+            lineTo(width.toFloat(), height.toFloat())
+            lineTo(0f, height.toFloat())
+            close()
+        }
+        paint.color = blendColor(Color.rgb(61, 96, 100), Color.rgb(113, 181, 109), daylight)
+        canvas.drawPath(hills, paint)
+        paint.shader = LinearGradient(0f, horizon, 0f, height.toFloat(), Color.rgb(90, 163, 91), Color.rgb(36, 114, 71), Shader.TileMode.CLAMP)
+        canvas.drawRect(0f, horizon + dp(18f), width.toFloat(), height.toFloat(), paint)
+        paint.shader = null
+
+        // A fixed path gives depth a readable destination without moving the
+        // landscape around the pet.
+        val path = Path().apply {
+            moveTo(width * .47f, horizon + dp(12f))
+            quadTo(width * .40f, height * .72f, width * .55f, height.toFloat())
+            lineTo(width * .86f, height.toFloat())
+            quadTo(width * .66f, height * .71f, width * .56f, horizon + dp(12f))
+            close()
+        }
+        paint.color = Color.argb(138, 235, 213, 151)
+        canvas.drawPath(path, paint)
+        paint.color = Color.argb(64, 255, 255, 255)
+        canvas.drawOval(RectF(width * .49f, horizon + dp(13f), width * .55f, horizon + dp(19f)), paint)
+    }
+
+    private fun updateExploreMotion(now: Long): Boolean {
+        val dt = ((now - exploreLastAt).coerceAtLeast(0L)).coerceAtMost(80L) / 1000f
+        exploreLastAt = now
+        if (exploreTurnUntil > now) return false
+        if (exploreTurnUntil != 0L) {
+            exploreFacing = exploreTurnTo
+            exploreTurnUntil = 0L
+            // A completed turn is intentionally a still moment.  Depth (and
+            // therefore scale) only changes on a following walking frame.
+            return false
+        }
+        if (exploreJoystickPointer < 0) return false
+        val target = exploreDirection(exploreJoystickX, exploreJoystickY) ?: return false
+        if (target != exploreFacing) {
+            exploreTurnFrom = exploreFacing
+            exploreTurnTo = target
+            exploreTurnStartedAt = now
+            exploreTurnUntil = now + EXPLORE_TURN_DURATION_MS
+            return false
+        }
+        val distance = min(1f, kotlin.math.sqrt(exploreJoystickX * exploreJoystickX + exploreJoystickY * exploreJoystickY))
+        val speed = (.22f + distance * .20f) * dt
+        when (exploreFacing) {
+            ExploreFacing.LEFT -> exploreX = (exploreX - speed).coerceIn(.10f, .90f)
+            ExploreFacing.RIGHT -> exploreX = (exploreX + speed).coerceIn(.10f, .90f)
+            ExploreFacing.AWAY -> exploreDepth = (exploreDepth + speed * .72f).coerceIn(.04f, .80f)
+            ExploreFacing.TOWARD -> exploreDepth = (exploreDepth - speed * .72f).coerceIn(.04f, .80f)
+        }
+        return true
+    }
+
+    private fun exploreDirection(x: Float, y: Float): ExploreFacing? {
+        if (abs(x) < .12f && abs(y) < .12f) return null
+        return if (abs(x) > abs(y)) if (x < 0f) ExploreFacing.LEFT else ExploreFacing.RIGHT
+        else if (y < 0f) ExploreFacing.AWAY else ExploreFacing.TOWARD
+    }
+
+    private fun drawExploreDragon(canvas: Canvas, now: Long, walking: Boolean) {
+        val frameTick = ((now / EXPLORE_FRAME_DURATION_MS) % 12L).toInt()
+        val turnProgress = if (exploreTurnUntil > now) {
+            ((now - exploreTurnStartedAt).toFloat() / EXPLORE_TURN_DURATION_MS).coerceIn(0f, 1f)
+        } else -1f
+        val selected = when {
+            turnProgress >= 0f && exploreTurnFrom == ExploreFacing.LEFT && exploreTurnTo == ExploreFacing.AWAY ->
+                "turn" to min(5, (turnProgress * 6f).toInt())
+            turnProgress >= 0f && exploreTurnFrom == ExploreFacing.AWAY && exploreTurnTo == ExploreFacing.TOWARD ->
+                "turnaround" to min(5, (turnProgress * 6f).toInt())
+            turnProgress >= 0f && exploreTurnFrom == ExploreFacing.TOWARD && exploreTurnTo == ExploreFacing.AWAY ->
+                "turnaround" to max(0, 5 - (turnProgress * 6f).toInt())
+            // The final rear turn cels keep both wings attached. They make a
+            // much cleaner away-walk loop than the earlier one-wing variants.
+            exploreFacing == ExploreFacing.AWAY -> "turn" to intArrayOf(4, 5, 4, 5)[frameTick % 4]
+            exploreFacing == ExploreFacing.TOWARD -> "toward" to intArrayOf(6, 7, 9, 10, 11, 8)[frameTick % 6]
+            else -> "side" to if (walking) PetSpriteLayout.assetFrame("dragon", frameTick % PetSpriteLayout.frameCount("dragon")) else 0
+        }
+        val bitmap = if (selected.first == "side") walkFrameArtwork(PetKind.DRAGON, selected.second)
+        else exploreDragonArtwork(selected.first, selected.second)
+        val bounds = if (selected.first == "side") walkFrameBounds(PetKind.DRAGON, selected.second)
+        else exploreDragonBounds(selected.first, selected.second)
+        val stage = pet.growthStage.size.toFloat()
+        // This is solely a function of travelled depth. Turning neither reads
+        // nor changes it, so Drago is exactly the same size throughout a turn.
+        val depthScale = 1f - exploreDepth * .34f
+        val artWidth = min(width * .39f, dp(290f)) * stage * depthScale
+        val artScale = artWidth / bitmap.width
+        val centerX = width * (.22f + exploreX * .56f)
+        val groundY = height * (.81f - exploreDepth * .26f)
+        val jumping = (exploreJumpUntil - now).coerceIn(0L, EXPLORE_JUMP_DURATION_MS)
+        val jumpProgress = 1f - jumping.toFloat() / EXPLORE_JUMP_DURATION_MS
+        val jumpLift = if (jumping > 0L) sin(jumpProgress * Math.PI.toFloat()) * dp(54f) * depthScale else 0f
+        paint.color = Color.argb(64, 31, 62, 46)
+        canvas.drawOval(RectF(centerX - artWidth * .25f, groundY - dp(2f), centerX + artWidth * .25f, groundY + dp(7f)), paint)
+        val bitmapMidX = (bounds.left + bounds.right) * .5f
+        val rectLeft = centerX - (bitmapMidX - bitmap.width * .5f) * artScale - bitmap.width * artScale * .5f
+        val artTop = groundY - jumpLift - bounds.bottom * artScale
+        val artRect = RectF(rectLeft, artTop, rectLeft + bitmap.width * artScale, artTop + bitmap.height * artScale)
+        paint.isFilterBitmap = true
+        paint.color = Color.WHITE
+        paint.colorFilter = growthColorFilters.getOrPut("DRAGON_${pet.stage}") {
+            android.graphics.ColorMatrixColorFilter(PetGrowth.colorMatrix("dragon", pet.growthStage))
+        }
+        canvas.save()
+        if (selected.first == "side" && exploreFacing == ExploreFacing.RIGHT) canvas.scale(-1f, 1f, centerX, groundY)
+        canvas.drawBitmap(bitmap, null, artRect, paint)
+        canvas.restore()
+        paint.colorFilter = null
+        drawExploreNameBadge(canvas, centerX, groundY + dp(25f), depthScale)
+    }
+
+    private fun drawExploreNameBadge(canvas: Canvas, centerX: Float, baseline: Float, scale: Float) {
+        textPaint.textAlign = Paint.Align.CENTER
+        textPaint.typeface = PaintTypeface.bold()
+        textPaint.textSize = dp(13f) * scale
+        val name = pet.name.uppercase()
+        val badgeWidth = (textPaint.measureText(name) + dp(26f)) * scale
+        paint.style = Paint.Style.FILL
+        paint.color = Color.argb(228, 255, 255, 255)
+        canvas.drawRoundRect(
+            RectF(centerX - badgeWidth / 2f, baseline - dp(21f) * scale, centerX + badgeWidth / 2f, baseline + dp(7f) * scale),
+            dp(14f) * scale, dp(14f) * scale, paint
+        )
+        textPaint.color = PetKind.DRAGON.dark
+        canvas.drawText(name, centerX, baseline, textPaint)
+    }
+
+    private fun drawExploreHud(canvas: Canvas) {
+        drawExploreTitle(canvas, "DRAGO'S EXPLORE", "Tilt upright to return to care")
+        val radius = min(dp(58f), height * .14f)
+        val cx = dp(82f)
+        val cy = height - dp(78f)
+        paint.color = Color.argb(84, 30, 36, 75)
+        canvas.drawCircle(cx, cy, radius, paint)
+        paint.style = Paint.Style.STROKE
+        paint.strokeWidth = dp(2f)
+        paint.color = Color.argb(195, 255, 255, 255)
+        canvas.drawCircle(cx, cy, radius, paint)
+        paint.style = Paint.Style.FILL
+        val knobX = cx + exploreJoystickX * radius * .52f
+        val knobY = cy + exploreJoystickY * radius * .52f
+        paint.color = Color.argb(208, 255, 255, 255)
+        canvas.drawCircle(knobX, knobY, radius * .30f, paint)
+        textPaint.textAlign = Paint.Align.CENTER
+        textPaint.typeface = PaintTypeface.bold()
+        textPaint.textSize = dp(10f)
+        textPaint.color = Color.rgb(59, 42, 84)
+        canvas.drawText("MOVE", cx, cy + dp(3f), textPaint)
+        val jump = exploreJumpRect()
+        paint.color = Color.argb(190, 88, 63, 142)
+        canvas.drawRoundRect(jump, jump.height() * .5f, jump.height() * .5f, paint)
+        textPaint.color = Color.WHITE
+        textPaint.textSize = dp(13f)
+        canvas.drawText("JUMP", jump.centerX(), jump.centerY() + dp(5f), textPaint)
+    }
+
+    private fun drawExploreTitle(canvas: Canvas, title: String, subtitle: String) {
+        val titleRect = RectF(width * .5f - dp(132f), dp(16f), width * .5f + dp(132f), dp(61f))
+        paint.style = Paint.Style.FILL
+        paint.shader = null
+        paint.alpha = 255
+        paint.color = Color.argb(96, 35, 38, 82)
+        canvas.drawRoundRect(titleRect, dp(20f), dp(20f), paint)
+        textPaint.textAlign = Paint.Align.CENTER
+        textPaint.typeface = PaintTypeface.bold()
+        textPaint.textSize = dp(15f)
+        textPaint.color = Color.WHITE
+        canvas.drawText(title, titleRect.centerX(), titleRect.top + dp(18f), textPaint)
+        textPaint.typeface = PaintTypeface.rounded()
+        textPaint.textSize = dp(9f)
+        textPaint.color = Color.argb(230, 255, 255, 255)
+        canvas.drawText(subtitle, titleRect.centerX(), titleRect.top + dp(34f), textPaint)
     }
 
     private fun drawHeader(canvas: Canvas) {
@@ -3604,6 +3928,7 @@ private class PetGameView(context: Context, private val onPetCreated: () -> Unit
         setupPlayerName = pet.playerName
         pressedAction = null
         activeAction = null
+        (appContext as? MainActivity)?.updatePetOrientation()
         invalidate()
     }
 
@@ -3624,7 +3949,59 @@ private class PetGameView(context: Context, private val onPetCreated: () -> Unit
 
     private fun statsTop(): Float = height * 0.5f
 
+    private fun exploreJumpRect(): RectF {
+        val size = min(dp(82f), height * .19f)
+        return RectF(width - size - dp(28f), height - size - dp(32f), width - dp(28f), height - dp(32f))
+    }
+
+    private fun handleExploreTouch(event: MotionEvent): Boolean {
+        if (!pet.hatched) return true
+        val radius = min(dp(58f), height * .14f)
+        val centerX = dp(82f)
+        val centerY = height - dp(78f)
+        when (event.actionMasked) {
+            MotionEvent.ACTION_DOWN, MotionEvent.ACTION_POINTER_DOWN -> {
+                val index = event.actionIndex
+                val x = event.getX(index)
+                val y = event.getY(index)
+                if (exploreJumpRect().contains(x, y)) {
+                    exploreJumpUntil = SystemClock.uptimeMillis() + EXPLORE_JUMP_DURATION_MS
+                    invalidate()
+                    return true
+                }
+                if (exploreJoystickPointer < 0 && (x - centerX) * (x - centerX) + (y - centerY) * (y - centerY) <= radius * radius * 2.25f) {
+                    exploreJoystickPointer = event.getPointerId(index)
+                    updateExploreJoystick(x, y, centerX, centerY, radius)
+                }
+            }
+            MotionEvent.ACTION_MOVE -> {
+                val index = event.findPointerIndex(exploreJoystickPointer)
+                if (index >= 0) updateExploreJoystick(event.getX(index), event.getY(index), centerX, centerY, radius)
+            }
+            MotionEvent.ACTION_POINTER_UP, MotionEvent.ACTION_UP, MotionEvent.ACTION_CANCEL -> {
+                val index = event.actionIndex.coerceAtMost(event.pointerCount - 1)
+                if (event.actionMasked == MotionEvent.ACTION_CANCEL || event.getPointerId(index) == exploreJoystickPointer) {
+                    exploreJoystickPointer = -1
+                    exploreJoystickX = 0f
+                    exploreJoystickY = 0f
+                }
+            }
+        }
+        invalidate()
+        return true
+    }
+
+    private fun updateExploreJoystick(x: Float, y: Float, centerX: Float, centerY: Float, radius: Float) {
+        val dx = (x - centerX) / radius
+        val dy = (y - centerY) / radius
+        val length = kotlin.math.sqrt(dx * dx + dy * dy)
+        val factor = if (length > 1f) 1f / length else 1f
+        exploreJoystickX = dx * factor
+        exploreJoystickY = dy * factor
+    }
+
     override fun onTouchEvent(event: MotionEvent): Boolean {
+        if (isDragonExploreMode()) return handleExploreTouch(event)
         if (menuOpen || menuAnimationStart != 0L) return handleMenuTouch(event)
         if (setupMode) return handleSetupTouch(event)
         if (playSessionId != null && event.y >= carePanelRect().top) return handlePlayTouch(event)
@@ -3780,7 +4157,10 @@ private class PetGameView(context: Context, private val onPetCreated: () -> Unit
             message = "${pet.name}'s egg is settling in!"
             messageUntil = SystemClock.uptimeMillis() + 5000L
             savePet()
-            post { onPetCreated() }
+            post {
+                (appContext as? MainActivity)?.updatePetOrientation()
+                onPetCreated()
+            }
             invalidate()
         }
         return true
@@ -3998,6 +4378,7 @@ private class PetGameView(context: Context, private val onPetCreated: () -> Unit
                 // Restoring must never echo a possibly old read back to the
                 // shared document. A later user action can upload normally.
                 persistPetLocally()
+                (appContext as? MainActivity)?.updatePetOrientation()
                 invalidate()
             }
             CloudRestoreResult.NO_CLOUD_BACKUP -> {
@@ -4117,9 +4498,14 @@ private class PetGameView(context: Context, private val onPetCreated: () -> Unit
         private const val LIFECYCLE_REPROMPT_MS = 20_000L
         private const val IDLE_FRAME_DELAY_MS = 33L
         private const val CLOUD_UPLOAD_INTERVAL_MS = 5 * 60 * 1000L
+        private const val EXPLORE_TURN_DURATION_MS = 340L
+        private const val EXPLORE_FRAME_DURATION_MS = 105L
+        private const val EXPLORE_JUMP_DURATION_MS = 560L
     }
 
     private enum class MotionMode { REST, WALK, CURIOUS, STAND }
+
+    private enum class ExploreFacing { LEFT, RIGHT, AWAY, TOWARD }
 
     private enum class AmbientMode { DAY, RAIN, NIGHT }
 
