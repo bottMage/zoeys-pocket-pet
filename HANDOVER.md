@@ -1,5 +1,32 @@
 # Zoey's Pocket Pet — cloud handover
 
+## Current release: visible sickness condition — v131
+
+The user reviewed the real Android Canvas screenshot and approved the sickness
+condition layout with **"Perfect. Punch it!"**. Source/Android version is
+131 / 131.0. A sick pet's condition now appears in a compact high-contrast
+pink chip immediately below **NEW PET**, rather than sharing the stage/age/
+health line behind that button. The growth hint and four stat bars retain their
+previous positions; no health, medicine, elapsed-time, save/cloud, scenery,
+audio, social, updater, or release behavior changed.
+
+`tools/android-checks/SickConditionRenderTest.java` is a native Android Canvas
+regression test that forces a sickness state and checks the chip's alignment,
+metric clearance, fill and readable label. It passed, along with
+`assembleDebug` / `lintDebug`, PetSaveCheck, PetCloudClockCheck, PetLifeCheck,
+PetHealthCheck, CareReminderCheck, UpdateCheckerCheck and all 148,680
+WholePetCheck bounds cases. The isolated screenshot used for approval remains a
+review artifact only and is not included in the release.
+
+Public v131 APK was downloaded and verified byte-for-byte against the cloud
+signed build. SHA-256:
+`9e9cc25b07be345d4285fa8c2b8f6d1a6fe59865050107263fda474eead69b90`.
+Certificate remains
+`552f2d2f4a8f6e2ddb84306c0183c88ef240ef44acad872e5c3d66df5b566cca`.
+Source/tag commit is `a1543dc`; GitHub release workflow `39554148316`
+succeeded. The updater now advertises the verified public v131 APK:
+`https://github.com/bottMage/zoeys-pocket-pet/releases/download/v131/zoeys-pocket-pet-v131.apk?verify=131-4`.
+
 ## Current release: approved themed menu and Friends center — v130
 
 The user approved the shown UI without further changes. Source/Android version
